@@ -379,6 +379,31 @@ flowchart LR
 
 完整契约见 [`specs/control-api/SPEC.md`](specs/control-api/SPEC.md)。API 使用统一错误结构、请求标识和稳定错误码；写操作校验会话、CSRF 和来源，Token 使用范围化权限。
 
+### 9.1 桌面 IPC 与 HTTP 控制面
+
+桌面与服务端共用同一套 Web UI，但传输不同：
+
+- 服务端：Web UI 同源调用 `/api/v1` 与 `/api/v1/events`。
+- 桌面：Web UI 通过 Tauri IPC 调用 Rust 命令，核心用例在进程内执行；不为管理 UI 启动本地 HTTP 控制面。
+- 桌面自动化 API：独立可选能力，显式开启后只绑定回环、使用 Bearer Token；与管理 UI 的 IPC 通道分离。
+
+```mermaid
+sequenceDiagram
+  participant UI as Web UI
+  participant IPC as Tauri IPC
+  participant Core as 核心
+  participant DB as SQLite
+
+  UI->>IPC: invoke("profiles_list", { query })
+  IPC->>Core: profiles_list(query)
+  Core->>DB: 查询档案页
+  DB-->>Core: rows
+  Core-->>IPC: ProfilePage
+  IPC-->>UI: Promise<ProfilePage>
+```
+
+UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DTO、错误与事件结构保持一致。详细调用链、事件回放和文件对话框约束见 [`DESIGN.md`](DESIGN.md) 与 [`ADR-0008`](adr/0008-tauri-ipc-ui-transport.md)。
+
 ## 10. 安全架构
 
 ### 10.1 信任边界
@@ -499,6 +524,7 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 - [`ADR-0005`](adr/0005-headful-first-display.md)：有头优先与 Xvfb。
 - [`ADR-0006`](adr/0006-fingerprint-spec-model.md)：指纹规格模型。
 - [`ADR-0007`](adr/0007-protocol-engine-forward-proxy.md)：协议引擎承载正向代理。
+- [`ADR-0008`](adr/0008-tauri-ipc-ui-transport.md)：管理网页通过 Tauri IPC 调用核心。
 
 ## 17. 参考
 

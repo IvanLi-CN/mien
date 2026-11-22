@@ -196,10 +196,95 @@ macOS 使用 `~/Library/Application Support/Snailfish` 与 `~/Library/Logs/Snail
 
 ## 11. 宿主适配
 
-- 服务端：axum 接收 DTO，认证后调用核心用例；WebSocket 从 `event_log` 回放；静态 UI 与 API 同源；`/healthz`、`/readyz` 分离。
-- 桌面：Tauri 命令调用同一核心用例；钥匙串实现 `SecretStore`；默认不开放 HTTP 控制面；自动化 API 显式启用后只绑定回环。
-- CLI：迁移、诊断、内核与引擎准入辅助；不实现独立业务规则。
-- 宿主错误映射到统一错误结构；日志注入 request_id、profile_id、runtime_id。
+### 11.1 传输抽象
+
+管理网页不直接调用 `fetch` 或 `invoke`，而是通过领域服务调用统一的 `ControlTransport`。桌面与服务端只在适配器层分化。
+
+```ts
+export interface ControlTransport {
+  command<T>(name: CommandName, args: unknown): Promise<T>;
+  subscribe(handler: (event: DomainEvent) => void): Promise<() => void>;
+}
+
+export function createTransport(): ControlTransport {
+  return isTauri() ? createTauriTransport() : createHttpTransport();
+}
+```
+
+领域服务示例：
+
+```ts
+export const profilesApi = {
+  list: (query: ListQuery) =>
+    transport.command<ProfilePage>("profiles_list", { query }),
+  create: (input: CreateProfile, idempotencyKey: string) =>
+    transport.command<Profile>("profiles_create", { input, idempotencyKey }),
+};
+```
+
+### 11.2 桌面 Tauri 适配器
+
+桌面适配器使用 `@tauri-apps/api/core` 的 `invoke` 和 `@tauri-apps/api/event` 的 `listen`：
+
+```ts
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+
+export const createTauriTransport = (): ControlTransport => ({
+  command: (name, args) => invoke(name, args),
+  subscribe: async (handler) => {
+    const unlisten = await listen<DomainEvent>("snailfish://event", (event) =>
+      handler(event.payload),
+    );
+    return unlisten;
+  },
+});
+```
+
+Rust 侧命令是薄适配器，直接调用核心用例：
+
+```rust
+#[tauri::command(rename_all = "camelCase")]
+async fn profiles_list(
+    state: tauri::State<'_, AppState>,
+    query: ListQuery,
+) -> Result<ProfilePage, ApiError> {
+    state.profiles.list(query).await.map_err(ApiError::from)
+}
+
+tauri::Builder::default()
+    .invoke_handler(tauri::generate_handler![
+        profiles_list,
+        profiles_create,
+        runtime_start,
+        runtime_stop,
+        events_after,
+    ]);
+```
+
+约定：
+
+- 命令名使用 `<domain>_<action>`，由共享 `CommandName` 类型约束；命令参数通过 `rename_all` 明确固定。
+- 核心 DTO 使用 `serde` 序列化，并通过 `ts-rs` 生成 TypeScript 类型；HTTP 侧用 `utoipa` 生成 OpenAPI。
+- Tauri 命令返回 `Result<T, ApiError>`；错误结构与 HTTP 一致，包含稳定 `code`、`message`、`request_id`、`retryable` 和非敏感 `details`。
+- 桌面 UI 不启动 `http://127.0.0.1` 控制面。自动化 HTTP API 是独立能力，默认关闭、只绑定回环、使用 Bearer Token。
+
+### 11.3 事件与重载补齐
+
+- 核心先把事件写入 `event_log`，再调用 Tauri `Emitter` 发送 `snailfish://event`。
+- UI 先订阅事件频道，再调用 `events_after(last_event_id)` 补齐；按事件标识去重。
+- WebView 刷新后从内存或 `sessionStorage` 恢复最后标识；没有标识时先拉取档案与运行时快照，再从最新事件继续。
+- 服务端使用 `/api/v1/events?after=<id>` WebSocket，复用同一事件 DTO 与去重逻辑。
+- 事件频道只传 DTO，不传凭据、完整配置或目标 URL；敏感字段在核心侧已经脱敏。
+
+### 11.4 文件、安全与开发模式
+
+- 导入导出使用 Tauri dialog 插件选择文件；命令接受用户选定路径后仍校验数据根、大小、schema 和符号链接。
+- WebView 不直接读取任意路径；外部链接通过 opener 插件交给系统浏览器，不在主 WebView 导航到远程页面。
+- Tauri capabilities 只授权主窗口调用所需命令；生产 CSP 禁止远程脚本和内联脚本。
+- 服务端适配器使用 `fetch` 与 `credentials: "same-origin"`，写操作带 CSRF Token；WebSocket 使用会话 Cookie 或一次性票据。
+- 开发模式由 Vite dev server 提供页面，Tauri IPC 仍然可用；生产构建使用打包后的静态资源与严格 CSP。
+- 合同测试覆盖：命令名与 DTO 一致、错误结构一致、事件回放、桌面无 HTTP 监听端口、远程内容不能获得 IPC 能力。
 
 ## 12. 测试缝
 

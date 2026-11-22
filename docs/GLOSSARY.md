@@ -29,6 +29,9 @@
 | 控制面 | control plane | 产品自身的 HTTP/WebSocket API 与 Web UI，用于管理档案和运行时。 |
 | 服务端宿主 | server host | 运行控制面、内核、协议引擎与显示环境的 Docker 容器进程。 |
 | 桌面宿主 | desktop host | macOS 上的 Tauri 应用进程，承载 Web UI 并调用共享核心库。 |
+| Tauri IPC | Tauri IPC | 桌面 WebView 与 Rust 宿主之间的进程内调用通道；前端用 `invoke`，Rust 用 `#[tauri::command]`。 |
+| 控制传输 | ControlTransport | Web UI 的传输抽象；桌面实现调用 Tauri IPC，服务端实现调用 HTTP/WebSocket。 |
+| 自动化 API | automation API | 面向脚本的外部控制入口；桌面默认关闭，启用后只绑定回环并使用 Bearer Token。 |
 | 指纹探针 | fingerprint probe | 在页面内采集 UA、Client Hints、时区、语言、WebGL、canvas、音频、字体等属性的测试页或脚本。 |
 | 主机对齐 | host-aligned | 档案声明的操作系统与宿主操作系统一致，从而减少字体、显示和图形栈泄漏。 |
 | 跨系统画像 | cross-OS persona | 档案声明的操作系统与宿主不同，例如在 Linux 容器中声明 Windows。属于高级用法，保证较弱。 |

@@ -42,7 +42,11 @@
 | CLI | clap 4 | 固定 | 迁移、诊断和准入辅助 |
 | 日志 | tracing + tracing-subscriber | 固定 | 结构化 JSON、字段注入、脱敏 |
 | 桌面 | Tauri 2 + WKWebView | 固定主版本 | 体积小、原生进程控制、macOS 集成 |
-| 桌面 IPC | Tauri commands + ts-rs | 固定 | Rust DTO 生成 TypeScript 类型 |
+| 桌面 IPC | Tauri commands + `@tauri-apps/api`（`invoke`/`listen`）+ ts-rs | 固定主版本 | 进程内调用、无本地 HTTP 管理端口、DTO 生成 TypeScript 类型 |
+| 前端传输 | `ControlTransport` 抽象 + Tauri/HTTP 适配器 | 内部接口 | 同一套领域服务适配桌面与服务端 |
+| 文件对话框 | tauri-plugin-dialog | 固定主版本 | 导入导出路径由用户选择并再次校验 |
+| 外链 | tauri-plugin-opener | 固定主版本 | 外部链接交给系统浏览器，不在 WebView 导航 |
+| 桌面安全 | Tauri capabilities + CSP | 固定配置 | 只授权主窗口与必要命令，禁止远程内容 |
 | Web UI | React 19 + TypeScript 5 | 固定主版本 | 桌面与服务端共用，生态成熟 |
 | 构建 | Vite 7 | 固定主版本 | 快速开发与静态构建 |
 | 服务端状态 | TanStack Query 5 | 固定主版本 | 缓存、重试、请求失效 |
@@ -143,6 +147,14 @@
 | --- | --- | --- | --- |
 | SQLite 会话表 | 无额外服务、可审计、易备份 | 仅适合单实例 | 采用 |
 | Redis 会话 | 多实例共享 | 引入外部依赖与运维 | v1 不需要 |
+
+### 4.11 Tauri IPC vs 本地 HTTP 管理面
+
+| 方案 | 优点 | 缺点 | 结论 |
+| --- | --- | --- | --- |
+| Tauri IPC | 无端口、无 Token 注入、进程内调用、攻击面小 | 需要 IPC 适配层、事件回放和命令契约测试 | 采用 |
+| 本地 axum HTTP | 桌面与服务端传输完全一致 | 端口、Token、CORS、CSRF、监听面与竞态 | 不采用 |
+| Electron + Node 后端 | 渲染一致 | 重复捆绑 Chromium、体积与内存高 | 不采用 |
 
 ## 5. 依赖与许可策略
 
