@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snailfish.local/contracts/profile-export.schema.json",
+  "title": "Snailfish profile export",
+  "description": "Machine-readable companion to docs/specs/profile-management/SPEC.md. Default exports never contain proxy passwords, API tokens, cookies, or browser data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "exported_at", "profiles"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "exported_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 120},
+          "sort_order": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 64},
+          "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"}
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kernel_version", "fingerprint", "runtime"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 120},
+          "group": {"type": "string", "maxLength": 120},
+          "tags": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "maxLength": 64}
+          },
+          "notes": {"type": "string", "maxLength": 4000},
+          "kernel_version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "fingerprint": {
+            "$ref": "fingerprint-spec.schema.json"
+          },
+          "proxy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scheme", "host", "port"],
+            "properties": {
+              "scheme": {"enum": ["http", "https", "socks5"]},
+              "host": {"type": "string", "minLength": 1, "maxLength": 255},
+              "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+              "username": {"type": "string", "maxLength": 255},
+              "dns_mode": {"enum": ["remote", "local"]}
+            }
+          },
+          "runtime": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode", "window"],
+            "properties": {
+              "start_url": {
+                "type": "string",
+                "pattern": "^(https?://|about:)"
+              },
+              "mode": {"enum": ["headful", "headless"]},
+              "window": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["width", "height"],
+                "properties": {
+                  "width": {"type": "integer", "minimum": 320, "maximum": 7680},
+                  "height": {"type": "integer", "minimum": 240, "maximum": 4320}
+                }
+              },
+              "automation_api": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

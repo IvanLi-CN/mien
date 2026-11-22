@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snailfish.local/contracts/fingerprint-spec.schema.json",
+  "title": "Snailfish fingerprint spec",
+  "description": "Machine-readable companion to docs/specs/fingerprint-engine/SPEC.md. The SPEC remains normative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "seed",
+    "platform",
+    "platform_version",
+    "brand",
+    "brand_version",
+    "hardware_concurrency",
+    "languages",
+    "timezone",
+    "window",
+    "spoof",
+    "webrtc"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "platform": {
+      "enum": ["windows", "macos", "linux"]
+    },
+    "platform_version": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
+    },
+    "brand": {
+      "enum": ["Chrome", "Edge", "Opera", "Vivaldi"]
+    },
+    "brand_version": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
+    },
+    "hardware_concurrency": {
+      "enum": [2, 4, 6, 8, 10, 12, 16]
+    },
+    "languages": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+      }
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_+\\-/]+$"
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 320,
+          "maximum": 7680
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 240,
+          "maximum": 4320
+        }
+      }
+    },
+    "spoof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["font", "audio", "canvas", "clientrects", "gpu"],
+      "properties": {
+        "font": {"type": "boolean"},
+        "audio": {"type": "boolean"},
+        "canvas": {"type": "boolean"},
+        "clientrects": {"type": "boolean"},
+        "gpu": {"type": "boolean"}
+      }
+    },
+    "webrtc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disable_non_proxied_udp"],
+      "properties": {
+        "disable_non_proxied_udp": {"type": "boolean"}
+      }
+    }
+  }
+}
