@@ -132,6 +132,7 @@ crates/
   snailfish-server/     # 服务端宿主：axum、认证、静态 UI、健康检查
   snailfish-desktop/    # Tauri 宿主、IPC、钥匙串、更新
   snailfish-cli/        # 本地诊断、迁移、内核准入辅助
+xtask/                  # 仓库构建、校验、打包任务
 ui/                     # React + TypeScript + Vite，桌面与服务端共用
 contracts/              # JSON Schema（源文件位于 docs/contracts）
 kernels/                # 构建时下载的校验清单，不提交二进制
@@ -158,6 +159,9 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `kernel_installs` | `version`, `platform`, `path`, `sha256`, `manifest_json`, `installed_at` | 已安装内核；支持并存与回滚 |
 | `proxy_engine_installs` | `version`, `platform`, `path`, `sha256`, `manifest_json`, `license`, `source_url`, `installed_at` | 已安装 sing-box；协议矩阵、许可与回滚 |
 | `api_tokens` | `id`, `name`, `token_hash`, `scopes`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；只存哈希 |
+| `sessions` | `id`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` | 服务端登录会话；Cookie 只存随机标识，库中只存哈希 |
+| `event_log` | `id`, `type`, `payload_json`, `created_at` | WebSocket 事件回放；按保留策略清理 |
+| `idempotency_keys` | `key`, `scope`, `request_hash`, `response_json`, `created_at`, `expires_at` | 写操作幂等；过期清理 |
 | `audit_events` | `id`, `actor`, `action`, `target`, `result`, `metadata_json`, `created_at` | 审计；元数据脱敏 |
 | `settings` | `key`, `value_json`, `updated_at` | 全局设置；不存主密钥 |
 
@@ -438,6 +442,8 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 
 不选 Electron 的原因：桌面端会再次捆绑 Chromium，体积和内存开销大，且与指纹内核的进程管理没有直接收益。不选“桌面端调用远程服务”的原因：本地优先要求离线可用，且 macOS 用户不应被迫部署容器。
 
+完整的选型矩阵、替代方案、版本策略与许可处理见 [`TECH-STACK.md`](TECH-STACK.md)；模块接口、启动/停止事务、并发、错误、配置、存储和部署契约见 [`DESIGN.md`](DESIGN.md)。
+
 ## 13. 构建与发布
 
 ### 13.1 内核供应
@@ -500,4 +506,6 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 - [`ROADMAP.md`](ROADMAP.md)
 - [`TEST-PLAN.md`](TEST-PLAN.md)
 - [`SECURITY.md`](SECURITY.md)
+- [`DESIGN.md`](DESIGN.md)
+- [`TECH-STACK.md`](TECH-STACK.md)
 - [`specs/`](specs/)

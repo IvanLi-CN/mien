@@ -371,5 +371,7 @@ Snailfish 仅用于合法、授权的环境隔离、测试、隐私研究和多�
 - ungoogled-chromium 构建文档：<https://github.com/ungoogled-software/ungoogled-chromium/blob/master/docs/building.md>
 - sing-box 协议引擎：<https://github.com/SagerNet/sing-box>
 - 架构设计：[`ARCHITECTURE.md`](ARCHITECTURE.md)
+- 详细设计：[`DESIGN.md`](DESIGN.md)
+- 技术选型：[`TECH-STACK.md`](TECH-STACK.md)
 - 测试计划：[`TEST-PLAN.md`](TEST-PLAN.md)
 - 安全威胁模型：[`SECURITY.md`](SECURITY.md)

@@ -25,7 +25,7 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 ## 当前状态
 
-仓库处于设计与契约阶段，尚未包含实现代码。本目录中的文档是开发启动前的基线，覆盖产品需求、架构、决策记录、主题规格、路线图、测试计划与安全威胁模型。
+仓库处于设计与契约阶段，尚未包含实现代码。本目录中的文档是开发启动前的基线，覆盖产品需求、系统架构、详细设计、技术选型、决策记录、主题规格、路线图、测试计划与安全威胁模型。
 
 ## 文档地图
 
@@ -33,6 +33,8 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 | --- | --- |
 | [`docs/PRD.md`](docs/PRD.md) | 产品定位、用户、功能与非功能需求、范围、验收与风险 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 系统边界、组件、部署拓扑、数据模型、关键流程与失败处理 |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | 模块接口、启动/停止事务、并发、错误、配置、存储与部署契约 |
+| [`docs/TECH-STACK.md`](docs/TECH-STACK.md) | 技术选型、替代方案、版本策略、许可与构建发布 |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | 里程碑、交付物与退出标准 |
 | [`docs/TEST-PLAN.md`](docs/TEST-PLAN.md) | 指纹、代理、生命周期、安全与发布验证矩阵 |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | 资产、威胁模型、控制措施与残余风险 |
@@ -60,4 +62,4 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 ## 开发入口
 
-实现开始前应先确认 [`docs/PRD.md`](docs/PRD.md) 的范围与验收，再按 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 建立工作区，并以 [`docs/specs/`](docs/specs/) 中的 `REQ-*` 与 `VER-*` 作为实现和验证的契约。
+实现开始前应先确认 [`docs/PRD.md`](docs/PRD.md) 的范围与验收，再阅读 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)、[`docs/DESIGN.md`](docs/DESIGN.md) 与 [`docs/TECH-STACK.md`](docs/TECH-STACK.md) 建立工作区，并以 [`docs/specs/`](docs/specs/) 中的 `REQ-*` 与 `VER-*` 作为实现和验证的契约。
