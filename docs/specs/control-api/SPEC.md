@@ -77,7 +77,7 @@
 
 - The system MUST make start, stop, and other resource-mutating POST requests idempotent when an `Idempotency-Key` is supplied, returning the original result for duplicate keys within a bounded retention window.
 - Inputs: `Idempotency-Key`、请求体、档案状态。
-- Outputs: 首次请求执行；重复键返回相同状态与结果；键冲突且请求体不同返回 409；过期键可重新使用。
+- Outputs: 首次请求执行；重复键返回相同状态与结果；结果包含运行时标识、状态、CDP 地址（如启用）和本机代理端口；键冲突且请求体不同返回 409；过期键可重新使用。
 
 ### REQ-API-011
 
@@ -88,8 +88,8 @@
 ### REQ-API-012
 
 - The system MUST provide liveness and readiness endpoints with distinct semantics and MUST NOT require authentication for their minimal response.
-- Inputs: 服务进程、数据库、内核目录、显示环境。
-- Outputs: `/healthz` 仅表示进程存活；`/readyz` 仅在关键依赖可用时成功；响应不包含敏感配置。
+- Inputs: 服务进程、数据库、内核目录、协议引擎目录、显示环境。
+- Outputs: `/healthz` 仅表示进程存活；`/readyz` 仅在数据库、内核、协议引擎和显示环境可用时成功；响应不包含敏感配置。
 
 ### REQ-API-013
 
@@ -114,6 +114,12 @@
 - The system MUST NOT expose CDP or noVNC through the control API by default, and when viewer access is enabled it MUST return a short-lived one-time URL rather than a reusable credential.
 - Inputs: 查看器请求、会话、Token scope、容器网络。
 - Outputs: 默认无查看器端点；启用后返回一次性 URL；URL 过期或使用一次后失效；CDP 仍只绑定回环。
+
+### REQ-API-017
+
+- The system MUST expose proxy configuration CRUD, single share-link import, and proxy check endpoints, MUST validate inputs against the protocol engine capability manifest, and MUST return only redacted proxy views.
+- Inputs: 代理配置、`vless://`/`vmess://`/`ss://`/`trojan://`/`hysteria2://` 链接、Token scope、引擎能力清单。
+- Outputs: 脱敏代理记录、导入草稿或字段级错误；任何响应不得包含 UUID、密码、私钥、完整分享链接或节点 URL 中的敏感参数；检查通过协议引擎执行。
 
 ## Verification
 
@@ -213,10 +219,17 @@
 - covers: `REQ-API-016`
 - Pass condition: 默认不可用；一次性 URL 第二次失败；CDP 从容器外不可达；API 不返回可复用凭据。
 
+### VER-API-017
+
+- Method: 创建、更新、删除 HTTP/SOCKS/VLESS/VMess/Shadowsocks/Trojan 代理，导入合法与非法分享链接，执行检查并扫描响应。
+- covers: `REQ-API-017`
+- Pass condition: 合法配置成功；非法协议、传输和参数被拒绝；响应只含脱敏字段；检查结果来自协议引擎；越权 Token 返回 403。
+
 ## Related ADRs
 
 - [ADR-0001：共享 Rust 核心与双宿主](../../adr/0001-shared-core-two-hosts.md)
 - [ADR-0003：SQLite 存储与字段级密钥保护](../../adr/0003-storage-and-secret-protection.md)
+- [ADR-0007：协议引擎承载正向代理](../../adr/0007-protocol-engine-forward-proxy.md)
 
 ## Visual Evidence
 

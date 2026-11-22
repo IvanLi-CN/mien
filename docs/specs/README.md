@@ -33,5 +33,5 @@
 | 环境档案管理 | active | 未开始 | `profile-management/SPEC.md` | - | 档案 CRUD、隔离、导入导出与路径安全 |
 | 指纹规格与启动参数 | active | 未开始 | `fingerprint-engine/SPEC.md` | - | 规格、种子、一致性、能力清单与 argv |
 | 浏览器运行时与显示环境 | active | 未开始 | `browser-runtime/SPEC.md` | - | 状态机、监督、有头/无头、Xvfb 与沙箱 |
-| 代理中继与网络泄漏防护 | active | 未开始 | `proxy-gateway/SPEC.md` | - | 认证注入、远程 DNS、失败关闭与检查 |
+| 正向代理协议与网络泄漏防护 | active | 未开始 | `proxy-gateway/SPEC.md` | - | VLESS/VMess/SS/Trojan/Hysteria2、协议引擎、分享链接、远程 DNS 与失败关闭 |
 | 控制面 API 与鉴权 | active | 未开始 | `control-api/SPEC.md` | - | REST/WS、会话、Token、CSRF 与审计 |

@@ -10,7 +10,7 @@
 
 ## Terms and Interfaces
 
-- `runtime`: 一个受监督的内核进程实例及其代理中继、调试端口、日志和显示环境。
+- `runtime`: 一个受监督的内核进程实例及其协议引擎、调试端口、日志和显示环境。
 - `runtime state`: `stopped`、`starting`、`running`、`stopping`、`crashed`、`failed`。
 - `process group`: 内核及其子进程组成的进程组，用于可靠终止和孤儿清理。
 - `headful`: 内核创建可见窗口；macOS 使用宿主桌面，Docker 使用 Xvfb。
@@ -22,7 +22,7 @@
 ### REQ-RUNTIME-001
 
 - The system MUST spawn the kernel as a direct child process using an argument array, a dedicated user-data directory, and a new process group; it MUST NOT invoke a shell.
-- Inputs: 内核可执行路径、指纹 argv、档案数据目录、代理中继地址、运行模式。
+- Inputs: 内核可执行路径、指纹 argv、档案数据目录、协议引擎 mixed 入口、运行模式。
 - Outputs: 内核 PID 与进程组 ID；子进程环境变量最小化；任何启动参数不得来自未校验的字符串拼接。
 
 ### REQ-RUNTIME-002
@@ -41,7 +41,7 @@
 
 - The system MUST verify the kernel file exists and its SHA-256 matches the installed manifest before first launch, and MUST refuse to start on mismatch.
 - Inputs: 内核版本、平台、期望校验和、实际文件。
-- Outputs: 校验通过或稳定错误 `KERNEL_CHECKSUM_MISMATCH`；不创建中继、不启动进程。
+- Outputs: 校验通过或稳定错误 `KERNEL_CHECKSUM_MISMATCH`；不启动协议引擎、不启动进程。
 
 ### REQ-RUNTIME-005
 
@@ -81,9 +81,9 @@
 
 ### REQ-RUNTIME-011
 
-- The system MUST stop a runtime by requesting graceful shutdown, waiting for a bounded timeout, then terminating the whole process group, and MUST close the proxy relay and release the profile lock in all cases.
+- The system MUST stop a runtime by requesting graceful shutdown, waiting for a bounded timeout, then terminating the whole process group, and MUST stop the protocol engine and release the profile lock in all cases.
 - Inputs: 停止请求、进程状态、超时配置。
-- Outputs: 正常退出或强制终止后状态 `stopped`；中继关闭；锁释放；强制终止记录为审计事件。
+- Outputs: 正常退出或强制终止后状态 `stopped`；协议引擎停止；锁释放；强制终止记录为审计事件。
 
 ### REQ-RUNTIME-012
 
@@ -111,9 +111,9 @@
 
 ### REQ-RUNTIME-016
 
-- The system MUST provide liveness and readiness signals that distinguish process health from database, kernel, and display availability.
-- Inputs: 服务端进程、SQLite、内核目录、Xvfb 状态。
-- Outputs: `/healthz` 在进程存活时成功；`/readyz` 仅在数据库可用、内核校验通过且所需显示环境可用时成功。
+- The system MUST provide liveness and readiness signals that distinguish process health from database, kernel, protocol engine, and display availability.
+- Inputs: 服务端进程、SQLite、内核目录、协议引擎目录、Xvfb 状态。
+- Outputs: `/healthz` 在进程存活时成功；`/readyz` 仅在数据库可用、内核与协议引擎校验通过且所需显示环境可用时成功。
 
 ## Verification
 
@@ -139,7 +139,7 @@
 
 - Method: 篡改内核文件、删除内核、替换清单校验和。
 - covers: `REQ-RUNTIME-004`
-- Pass condition: 所有不匹配均拒绝启动，返回 `KERNEL_CHECKSUM_MISMATCH`，且无中继或子进程残留。
+- Pass condition: 所有不匹配均拒绝启动，返回 `KERNEL_CHECKSUM_MISMATCH`，且无协议引擎或子进程残留。
 
 ### VER-RUNTIME-005
 
@@ -181,7 +181,7 @@
 
 - Method: 在页面加载、下载和大内存占用时停止档案，并在超时场景强制终止。
 - covers: `REQ-RUNTIME-011`
-- Pass condition: 优先正常退出；超时后进程组全部终止；中继关闭、锁释放；审计事件记录强制终止。
+- Pass condition: 优先正常退出；超时后进程组全部终止；协议引擎停止、锁释放；审计事件记录强制终止。
 
 ### VER-RUNTIME-012
 
@@ -209,7 +209,7 @@
 
 ### VER-RUNTIME-016
 
-- Method: 分别停止数据库、移除内核、停止 Xvfb，调用健康与就绪端点。
+- Method: 分别停止数据库、移除内核、移除协议引擎、停止 Xvfb，调用健康与就绪端点。
 - covers: `REQ-RUNTIME-016`
 - Pass condition: `/healthz` 仅反映进程存活；`/readyz` 在依赖不可用时失败；恢复后重新成功。
 
@@ -217,8 +217,8 @@
 
 - [ADR-0001：共享 Rust 核心与双宿主](../../adr/0001-shared-core-two-hosts.md)
 - [ADR-0002：固定 fingerprint-chromium 148 并建立内核准入](../../adr/0002-pin-kernel-148.md)
-- [ADR-0004：每档案本地代理中继](../../adr/0004-local-proxy-relay.md)
 - [ADR-0005：有头优先的显示策略](../../adr/0005-headful-first-display.md)
+- [ADR-0007：协议引擎承载正向代理](../../adr/0007-protocol-engine-forward-proxy.md)
 
 ## Visual Evidence
 

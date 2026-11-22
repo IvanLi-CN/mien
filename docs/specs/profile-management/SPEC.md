@@ -69,13 +69,13 @@
 
 ### REQ-PROFILE-009
 
-- The system MUST validate import files against the declared schema, including field types, size limits, proxy URL shape, and path fields.
+- The system MUST validate import files against the declared schema, including field types, size limits, proxy configuration shape, share-link fields, and path fields.
 - Inputs: JSON 导入文件、可选口令。
 - Outputs: 通过校验的档案草稿或逐项错误；非法 schema、超大文件、未知版本、路径穿越和符号链接必须被拒绝。
 
 ### REQ-PROFILE-010
 
-- The system MUST exclude proxy passwords, API tokens, cookies, and browser data from default exports, and MUST support passphrase-encrypted exports using authenticated encryption.
+- The system MUST exclude proxy credentials, API tokens, cookies, and browser data from default exports, and MUST support passphrase-encrypted exports using authenticated encryption.
 - Inputs: 档案集合、导出模式、可选口令。
 - Outputs: 带 schema 版本的导出文件；默认导出不含秘密；加密导出只包含口令派生密钥可解开的密文。
 
@@ -83,7 +83,7 @@
 
 - The system MUST redact sensitive values from API responses, logs, audit metadata, and error messages.
 - Inputs: 档案、代理、Token 和运行时数据。
-- Outputs: 密码、完整代理 URL、Cookie、Token 和授权头不出现在任何可读输出中；只允许返回“已设置/未设置”。
+- Outputs: 代理凭据（密码、UUID、私钥）、完整代理 URL/分享链接、Cookie、Token 和授权头不出现在任何可读输出中；只允许返回“已设置/未设置”。
 
 ### REQ-PROFILE-012
 
@@ -163,13 +163,13 @@
 
 - Method: 执行默认导出与加密导出，检查文件内容和解密结果。
 - covers: `REQ-PROFILE-010`
-- Pass condition: 默认导出不含密码、Token、Cookie；加密导出无法在无口令时读取，正确口令可还原配置。
+- Pass condition: 默认导出不含代理凭据、Token、Cookie；加密导出无法在无口令时读取，正确口令可还原配置。
 
 ### VER-PROFILE-011
 
 - Method: 扫描 API 响应、日志、审计事件和错误消息中的敏感值。
 - covers: `REQ-PROFILE-011`
-- Pass condition: 密码、完整代理 URL、Cookie 和 Token 均不出现；UI 只显示“已设置”。
+- Pass condition: 代理凭据、完整代理 URL/分享链接、Cookie 和 Token 均不出现；UI 只显示“已设置”。
 
 ### VER-PROFILE-012
 

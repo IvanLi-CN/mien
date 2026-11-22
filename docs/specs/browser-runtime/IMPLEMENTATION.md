@@ -10,7 +10,7 @@
 
 ## Implementation Coverage
 
-- Requirement coverage: 计划由 `snailfish-core` 的 runtime 模块、服务端宿主和 Docker 入口脚本覆盖 `REQ-RUNTIME-001` 至 `REQ-RUNTIME-016`。
+- Requirement coverage: 计划由 `snailfish-core` 的 runtime 模块、代理网关、服务端宿主和 Docker 入口脚本覆盖 `REQ-RUNTIME-001` 至 `REQ-RUNTIME-016`；协议引擎先于内核启动并在停止时关闭。
 - Verification commands: 尚未建立；实现后使用生命周期集成测试、强杀对账测试、Docker 端到端测试和沙箱配置测试。
 - Rollout facts: 首个实现仅覆盖 macOS Apple Silicon 与 Docker `linux/amd64`；Windows/Linux 桌面后续接入。
 
@@ -20,7 +20,7 @@
 
 ## Remaining Gaps
 
-- 进程启动、状态机、对账、CDP、Xvfb、openbox、noVNC、沙箱探测和日志轮转均未实现。
+- 进程启动、状态机、对账、代理引擎联动、CDP、Xvfb、openbox、noVNC、沙箱探测和日志轮转均未实现。
 - 需要先验证目标容器环境的命名空间沙箱可行性，再确定默认容器安全配置。
 
 ## Related Changes

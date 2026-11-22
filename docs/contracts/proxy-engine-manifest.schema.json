@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://snailfish.local/contracts/proxy-engine-manifest.schema.json",
+  "title": "Snailfish proxy engine capability manifest",
+  "description": "Machine-readable companion to docs/specs/proxy-gateway/SPEC.md. The SPEC remains normative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "engine",
+    "version",
+    "platform",
+    "sha256",
+    "license",
+    "protocols"
+  ],
+  "properties": {
+    "engine": {
+      "enum": ["sing-box", "xray-core"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "platform": {
+      "enum": ["macos-arm64", "linux-x86_64", "windows-x64"]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "license": {
+      "enum": ["GPL-3.0-or-later", "MPL-2.0"]
+    },
+    "source_url": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "protocols": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/protocolSpec"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "protocolSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier"],
+      "properties": {
+        "tier": {
+          "enum": ["A", "B", "C"]
+        },
+        "transports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["tcp", "ws", "grpc", "http", "httpupgrade", "quic"]
+          }
+        },
+        "tls_modes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["none", "tls", "reality"]
+          }
+        },
+        "methods": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string"}
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

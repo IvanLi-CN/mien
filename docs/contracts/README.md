@@ -6,7 +6,8 @@
 | --- | --- | --- |
 | [`fingerprint-spec.schema.json`](fingerprint-spec.schema.json) | [`fingerprint-engine`](../specs/fingerprint-engine/SPEC.md) | 指纹规格校验、UI 表单约束、golden fixture |
 | [`kernel-manifest.schema.json`](kernel-manifest.schema.json) | [`browser-runtime`](../specs/browser-runtime/SPEC.md)、[`fingerprint-engine`](../specs/fingerprint-engine/SPEC.md) | 内核能力清单、启动前校验、升级差异比较 |
-| [`profile-export.schema.json`](profile-export.schema.json) | [`profile-management`](../specs/profile-management/SPEC.md) | 明文配置导出、导入校验；不包含密码、Token、Cookie |
+| [`proxy-engine-manifest.schema.json`](proxy-engine-manifest.schema.json) | [`proxy-gateway`](../specs/proxy-gateway/SPEC.md) | 协议引擎版本、校验和、协议矩阵、许可与升级差异 |
+| [`profile-export.schema.json`](profile-export.schema.json) | [`profile-management`](../specs/profile-management/SPEC.md) | 明文配置导出、导入校验；不包含代理凭据、Token、Cookie |
 
 约定：
 
@@ -15,4 +16,4 @@
 - schema 版本通过 `schema_version` 字段表达，不通过文件名后缀表达。
 - 导入校验必须拒绝未知字段、越界值和超出大小限制的数组；schema 中的 `additionalProperties: false` 是默认要求。
 - 指纹种子、内核版本和 schema 版本是复现指纹的三要素；导出必须保留。
-- 密码、Token、Cookie、完整代理 URL 和浏览器数据不属于配置导出。
+- 代理凭据、UUID、密码、私钥、Token、Cookie、完整分享链接和浏览器数据不属于默认配置导出。

@@ -17,7 +17,11 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 首个发布固定使用 fingerprint-chromium `148.0.7778.215`：macOS ARM64 DMG、Linux x86_64 TAR.XZ、Windows x64 ZIP 均由上游提供。选择该版本而不是更新的 `150.0.7871.186`，原因包括上游尚无可用的 macOS 构建，以及 150 在启用 canvas 伪装时存在已复现的渲染进程崩溃与站点加载失败；148 同时具备已公开源码，便于安全审计。
 
-内核不修改、不分叉。产品通过命令行开关、能力清单、校验和与版本绑定来使用上游二进制，升级必须经过独立的内核准入测试。
+内核不修改、不分叉。产品通过命令行开关、能力清单、校验和与版本绑定来使用上游二进制，升级必须经过独立内核准入测试。
+
+## 协议引擎基线
+
+正向代理由每档案独立的 [sing-box](https://github.com/SagerNet/sing-box) 协议引擎承载，首个发布覆盖 VLESS、VMess、Shadowsocks、Trojan，并按能力清单支持 Hysteria2、TUIC、WireGuard。HTTP/HTTPS/SOCKS5 也走同一引擎，Chromium 只连接回环 mixed 入口，代理凭据不进入浏览器进程。sing-box 以 GPL-3.0-or-later 分发，发布物必须保留许可证、源码链接或书面要约，并通过法律评审。
 
 ## 当前状态
 
@@ -42,14 +46,15 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 - [`docs/specs/profile-management/SPEC.md`](docs/specs/profile-management/SPEC.md)：环境档案、分组、导入导出与生命周期元数据。
 - [`docs/specs/fingerprint-engine/SPEC.md`](docs/specs/fingerprint-engine/SPEC.md)：指纹规格、种子、一致性校验与启动参数生成。
 - [`docs/specs/browser-runtime/SPEC.md`](docs/specs/browser-runtime/SPEC.md)：内核进程、有头/无头模式、监督、崩溃恢复与显示环境。
-- [`docs/specs/proxy-gateway/SPEC.md`](docs/specs/proxy-gateway/SPEC.md)：本地中继、上游认证、远程 DNS 与泄漏防护。
+- [`docs/specs/proxy-gateway/SPEC.md`](docs/specs/proxy-gateway/SPEC.md)：VLESS/VMess/Shadowsocks/Trojan/Hysteria2、协议引擎、分享链接、远程 DNS 与泄漏防护。
 - [`docs/specs/control-api/SPEC.md`](docs/specs/control-api/SPEC.md)：控制面 HTTP/WS 契约、鉴权、事件与自动化入口。
 
 ## 关键产品约束
 
 - 指纹内核不能凭空创造宿主不存在的显示属性。`screen.width`、`screen.height`、`devicePixelRatio` 与字体枚举仍受宿主显示器和已安装字体影响；跨操作系统画像只能做到尽力对齐，不能承诺与真实设备完全一致。
 - 无头模式不是有头模式的等价替代。fingerprint-chromium 只处理了部分 Headless 特征，其余特征仍可能暴露；无头档案会被标记为“降低保证”。
-- 代理认证不由内核直接支持。产品通过本地中继注入上游凭据，内核只看到无认证的本地代理地址。
+- Chromium 不支持代理认证和 VLESS/VMess/Shadowsocks 等协议。产品为每个运行档案启动独立的 sing-box 协议引擎，内核只看到回环 mixed 入口，凭据不进入浏览器进程。
+- sing-box 以 GPL-3.0-or-later 分发。产品将其作为独立进程使用，发布物保留许可、源码链接或书面要约，并在发布前完成法律评审。
 - 指纹浏览器提供环境隔离与指纹一致性，不提供匿名性保证，也不承诺绕过任何平台的风控或服务条款。
 - 上游项目明确不提供技术支持，源码按延迟策略发布。内核缺陷只能通过版本准入、沙箱、功能降级或自建补丁分支应对。
 

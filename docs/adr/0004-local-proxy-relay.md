@@ -1,7 +1,9 @@
 # ADR-0004：每档案本地代理中继
 
-- 状态：已接受
+- 状态：被 [ADR-0007](0007-protocol-engine-forward-proxy.md) 取代
 - 决策范围：代理认证、DNS 解析、泄漏防护与失败行为
+
+> 本决策的本地中继不再作为数据面。VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与认证由 ADR-0007 的协议引擎处理；本文件保留为历史背景，当前契约以 `docs/specs/proxy-gateway/SPEC.md` 为准。
 
 ## 背景
 
