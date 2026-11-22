@@ -25,15 +25,18 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 ## 当前状态
 
-仓库处于设计与契约阶段，尚未包含实现代码。本目录中的文档是开发启动前的基线，覆盖产品需求、系统架构、详细设计、技术选型、决策记录、主题规格、路线图、测试计划与安全威胁模型。
+仓库处于设计与契约阶段，尚未包含实现代码。产品上下文、视觉系统 seed 与 Profiles surface brief 已锁定；本目录中的文档覆盖产品需求、系统架构、详细设计、技术选型、决策记录、主题规格、路线图、测试计划与安全威胁模型。
 
 ## 文档地图
 
 | 文档 | 内容 |
 | --- | --- |
+| [`PRODUCT.md`](PRODUCT.md) | 产品事实：用户、目的、定位、约束、证据与产品原则 |
+| [`DESIGN.md`](DESIGN.md) | 已锁定的视觉系统 seed：Press Proof 世界、色彩、字体、布局与规则 |
+| [`.impeccable/surfaces/ui-src-pages-profiles.md`](.impeccable/surfaces/ui-src-pages-profiles.md) | Profiles 管理面的 surface brief 与方向契约 |
 | [`docs/PRD.md`](docs/PRD.md) | 产品定位、用户、功能与非功能需求、范围、验收与风险 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 系统边界、组件、部署拓扑、数据模型、关键流程与失败处理 |
-| [`docs/DESIGN.md`](docs/DESIGN.md) | 模块接口、启动/停止事务、并发、错误、配置、存储与部署契约 |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | 工程详细设计：模块接口、启动/停止事务、并发、错误、配置、存储与部署契约 |
 | [`docs/TECH-STACK.md`](docs/TECH-STACK.md) | 技术选型、替代方案、版本策略、许可与构建发布 |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | 里程碑、交付物与退出标准 |
 | [`docs/TEST-PLAN.md`](docs/TEST-PLAN.md) | 指纹、代理、生命周期、安全与发布验证矩阵 |
