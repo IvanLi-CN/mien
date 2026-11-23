@@ -4,28 +4,30 @@
 
 ## Context and Scope
 
-- Context: fingerprint-chromium 只向浏览器暴露 HTTP、HTTPS 与 SOCKS 代理入口，且 `--proxy-server` 不支持认证凭据。产品必须支持 VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等主流正向代理协议，同时保证凭据不进入浏览器进程、目标域名不本地泄漏、引擎故障时失败关闭。
-- In scope: 代理配置 schema、协议矩阵、分享链接导入、sing-box 协议引擎、每档案引擎生命周期、mixed 入站、配置生成与校验、远程 DNS、WebRTC/IPv6/DoH 防护、代理检查、脱敏、直接模式。
+- Context: fingerprint-chromium 只向浏览器暴露 HTTP、HTTPS 与 SOCKS 代理入口，且 `--proxy-server` 不支持认证凭据。产品必须支持 VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等主流正向代理协议，同时保证凭据不进入浏览器进程、目标域名不本地泄漏、引擎故障时失败关闭。正向代理节点可能有连接数上限或共享风控，网络层不能为每个档案建立独立连接池。
+- In scope: 代理配置 schema、协议矩阵、分享链接导入、单实例共享 Xray 协议引擎、每运行档案 HTTP 入站与路由、共享出站与引用计数、连接复用、动态配置、远程 DNS、WebRTC/IPv6/DoH 防护、代理检查、脱敏、直接模式。
 - Out of scope: 订阅 URL 定时刷新与多节点调度（后续范围）、指纹字段（由 `fingerprint-engine` 负责）、内核进程监督（由 `browser-runtime` 负责）、代理服务销售。
 
 ## Terms and Interfaces
 
 - `proxy profile`: 一个带类型的正向代理配置，包含 `kind`、`server`、`port`、非敏感 `options` 和加密凭据。
-- `protocol engine`: 产品固定并校验的 sing-box 可执行文件，负责 VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议、认证、TLS/REALITY/WS/gRPC/QUIC 与出站 DNS。
-- `proxy gateway`: 核心库中的监督组件，负责配置校验、引擎启动/停止、就绪探测、健康事件和端口生命周期；不转发字节流。
-- `mixed inbound`: sing-box 在 `127.0.0.1` 上提供的 HTTP+SOCKS 入站；Chromium 只连接该入口。
+- `protocol engine`: 产品固定并校验的 Xray-core 可执行文件，每个宿主一个共享进程，负责 VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议、认证、TLS/REALITY/WS/gRPC/QUIC 与出站 DNS。
+- `proxy gateway`: 核心库中的监督组件，负责配置校验、Xray 管理 API 调用、共享出站引用计数、入站/路由生命周期、就绪探测、健康事件和端口生命周期；不转发字节流。
+- `runtime inbound`: Xray 在 `127.0.0.1` 上为单个运行档案创建的 HTTP 入站；Chromium 只连接该入口。
+- `shared outbound`: 由 `outbound_key` 标识的 Xray 出站；相同节点、凭据、传输、TLS/REALITY 与 mux 配置的档案共享它及其连接池。
+- `route rule`: 将 runtime inbound 的 `inboundTag` 指向 shared outbound 的 Xray 路由规则。
 - `bootstrap resolution`: 仅对代理节点主机名进行的本地解析；目标域名不得本地解析。
 - `Tier A protocol`: 首个发布必须通过发布门禁的协议：VLESS、VMess、Shadowsocks、Trojan。
-- `Tier B protocol`: 受支持但按能力清单和独立测试标注的协议：Hysteria2、TUIC、WireGuard。
+- `Tier B protocol`: 受支持但按能力清单和独立测试标注的协议：Hysteria2、WireGuard；TUIC 不进入 v1。
 - `share link`: `vless://`、`vmess://`、`ss://`、`trojan://`、`hysteria2://` 形式的单节点配置链接。
 - `fail-closed`: 引擎不可用、配置无效或出站失败时，浏览器失去网络，而不是回退直连或其他代理。
-- Interface: 内核启动参数 `--proxy-server=http://127.0.0.1:<proxy_port>`；`proxies` 表；`/api/v1/proxies` 系列端点；sing-box 配置 JSON。
+- Interface: 内核启动参数 `--proxy-server=http://127.0.0.1:<proxy_port>`；`proxies` 表；`/api/v1/proxies` 系列端点；Xray 管理 API 与出站/入站/路由配置。
 
 ## Requirements
 
 ### REQ-PROXY-001
 
-- The system MUST support the Tier A protocols VLESS, VMess, Shadowsocks (AEAD and 2022 methods, plugins when declared), and Trojan, and MUST support the Tier B protocols Hysteria2, TUIC, and WireGuard when declared by the installed engine capability manifest.
+- The system MUST support the Tier A protocols VLESS, VMess, Shadowsocks (AEAD and 2022 methods, plugins when declared), and Trojan, and MUST support the Tier B protocols Hysteria2 and WireGuard when declared by the installed engine capability manifest. TUIC MUST be rejected in v1.
 - Inputs: 代理协议类型、服务器地址、端口、协议选项、凭据、引擎能力清单。
 - Outputs: 可生成的引擎出站配置；未在清单中声明或未通过测试的协议必须被拒绝，不得静默降级为 HTTP/SOCKS。
 
@@ -37,32 +39,32 @@
 
 ### REQ-PROXY-003
 
-- The system MUST start exactly one protocol engine per running profile, wait for its mixed inbound to become ready before spawning the browser, and stop it when the runtime stops or fails to start.
-- Inputs: 运行时启动/停止、代理配置、端口分配。
-- Outputs: 独占的引擎进程与 `proxy_port`；引擎失败时浏览器不得启动；运行时结束后引擎退出且端口释放；不同档案不得共享引擎进程。
+- The system MUST run exactly one shared protocol engine per host, create one loopback HTTP inbound per running profile, add a route rule from that inbound to the selected outbound, and wait for the inbound to become ready before spawning the browser.
+- Inputs: 运行时启动/停止、代理配置、端口分配、共享引擎状态。
+- Outputs: 单实例引擎；每运行档案独立的 `proxy_port`、入站标签和路由规则；共享出站与引用计数；引擎失败时浏览器不得启动；运行时结束后入站和规则被删除，出站按引用归零删除。
 
 ### REQ-PROXY-004
 
 - The system MUST verify the engine binary version and SHA-256 against the installed engine manifest before first use, and MUST refuse to launch on mismatch.
 - Inputs: 引擎版本、平台、期望校验和、实际文件。
-- Outputs: 校验通过或稳定错误 `PROXY_ENGINE_CHECKSUM_MISMATCH`；不创建配置、不启动进程。
+- Outputs: 校验通过或稳定错误 `PROXY_ENGINE_CHECKSUM_MISMATCH`；不创建入站、出站或路由。
 
 ### REQ-PROXY-005
 
-- The system MUST generate a complete engine configuration for each runtime with one loopback mixed inbound and one proxy outbound, and MUST set the route final target to that outbound without a direct fallback.
-- Inputs: 代理配置、端口、DNS 策略、引擎能力清单。
-- Outputs: 通过 `sing-box check` 的配置；不启用 Clash API、不启用远程控制、不生成浏览器流量可走的直连出站。
+- The system MUST dynamically add a loopback HTTP inbound and a route rule for each runtime, and MUST add or reuse a shared outbound keyed by node, credential, transport, TLS/REALITY and mux settings. The default route MUST be block.
+- Inputs: 代理配置、端口、DNS 策略、引擎能力清单、共享引擎状态。
+- Outputs: 通过 Xray API 创建的入站、出站和规则；不生成浏览器流量可走的直连出站；同一 `outbound_key` 只存在一个出站。
 
 ### REQ-PROXY-006
 
-- The system MUST write engine configuration containing credentials to a 0600 file, MUST NOT place credentials in the engine argv, logs, events, or API responses, and MUST delete the configuration file after successful startup.
-- Inputs: 代理凭据、运行时目录、文件系统权限、日志采集。
-- Outputs: 权限正确的临时配置；启动成功后文件被删除；崩溃重启时从加密数据库重新生成；任何可读输出只显示凭据是否已设置。
+- The system MUST pass credentials to the shared engine only through the loopback management API or a protected bootstrap channel, MUST NOT place credentials in the engine argv, logs, events, or API responses, and MUST NOT persist a credential-bearing engine config.
+- Inputs: 代理凭据、运行时目录、管理 API、日志采集。
+- Outputs: 凭据仅在受保护进程内存与本地 API 中短暂出现；任何可读输出只显示凭据是否已设置；引擎重启时从加密数据库重新生成。
 
 ### REQ-PROXY-007
 
-- The system MUST expose only the loopback mixed endpoint to Chromium and MUST NOT place proxy credentials or protocol secrets in the browser argv or profile data.
-- Inputs: 引擎 mixed 端口、内核启动参数。
+- The system MUST expose only the per-runtime loopback HTTP endpoint to Chromium and MUST NOT place proxy credentials or protocol secrets in the browser argv or profile data.
+- Inputs: 每运行档案 HTTP 入站端口、内核启动参数。
 - Outputs: `--proxy-server=http://127.0.0.1:<proxy_port>`；内核配置中无 UUID、密码、私钥或 TLS/REALITY 秘密。
 
 ### REQ-PROXY-008
@@ -81,7 +83,7 @@
 
 - The system MUST pass `--disable-non-proxied-udp` by default for every proxied profile and MUST require explicit advanced confirmation with an audit event to omit it.
 - Inputs: WebRTC 策略、档案配置、审计上下文。
-- Outputs: 默认阻止非代理 UDP；高级关闭时记录操作者、时间和档案；UI 持续显示风险标记；Hysteria2/TUIC 的 QUIC 仅用于引擎到节点，不改变浏览器非代理 UDP 策略。
+- Outputs: 默认阻止非代理 UDP；高级关闭时记录操作者、时间和档案；UI 持续显示风险标记；Hysteria2 的 QUIC 仅用于引擎到节点，不改变浏览器非代理 UDP 策略。
 
 ### REQ-PROXY-011
 
@@ -97,9 +99,9 @@
 
 ### REQ-PROXY-013
 
-- The system MUST provide a proxy check through the running engine that verifies protocol connectivity, TLS/REALITY handshake, authentication, latency, and, when an echo endpoint is configured, the exit IP and optional region.
-- Inputs: 代理配置、引擎 mixed 入口、可选回显端点、超时。
-- Outputs: 成功/失败、延迟、可选出口 IP 与地区、稳定错误类；检查不记录凭据、UUID、完整节点 URL 或目标 URL。
+- The system MUST provide a proxy check through temporary inbound, route and outbound resources in the shared engine, then remove those resources; it MUST NOT start a second engine for the check.
+- Inputs: 代理配置、共享引擎管理 API、可选回显端点、超时。
+- Outputs: 成功/失败、延迟、可选出口 IP 与地区、稳定错误类；检查不记录凭据、UUID、完整节点 URL 或目标 URL；临时资源在成功或失败后都被删除。
 
 ### REQ-PROXY-014
 
@@ -121,15 +123,15 @@
 
 ### REQ-PROXY-017
 
-- The system MUST bind the engine mixed inbound to `127.0.0.1` only, allocate a per-runtime ephemeral port, and document the residual risk that same-user local processes can use the loopback endpoint.
-- Inputs: 端口分配、运行时生命周期、本机进程。
-- Outputs: 非回环地址无法连接；运行时结束后端口关闭；安全文档记录同用户残余风险。
+- The system MUST bind the Xray management API and every runtime HTTP inbound to `127.0.0.1` only, allocate a stable per-runtime port, and document the residual risk that same-user local processes can use the loopback endpoints.
+- Inputs: 端口分配、运行时生命周期、本机进程、管理 API。
+- Outputs: 非回环地址无法连接；运行时结束后入站端口关闭；管理 API 不暴露到容器外；安全文档记录同用户残余风险。
 
 ### REQ-PROXY-018
 
-- The system MUST treat direct mode as an explicit risky configuration and MUST NOT start the protocol engine for a direct profile.
+- The system MUST treat direct mode as an explicit risky configuration and MUST NOT create a runtime inbound/outbound for a direct profile.
 - Inputs: 档案代理模式、启动请求。
-- Outputs: 直连档案不启动引擎；UI 与 API 标记 `direct=true` 和风险说明；不得把直连伪装成代理。
+- Outputs: 直连档案不创建入站/出站；UI 与 API 标记 `direct=true` 和风险说明；不得把直连伪装成代理。
 
 ### REQ-PROXY-019
 
@@ -139,53 +141,71 @@
 
 ### REQ-PROXY-020
 
-- The system MUST publish a protocol engine capability manifest containing version, platform, checksum, license, supported protocols, transports, TLS modes, and known limitations, and MUST use it to drive UI and validation.
+- The system MUST publish a protocol engine capability manifest containing version, platform, checksum, license, supported protocols, transports, TLS modes, connection-reuse support, and known limitations, and MUST use it to drive UI and validation.
 - Inputs: 引擎安装包、构建清单、测试结果。
 - Outputs: 机器可读清单；UI 不展示未声明能力；协议组合按清单拒绝或标注；升级前可比对差异。
+
+### REQ-PROXY-021
+
+- The system MUST share an outbound and its connection pool among running profiles with the same stable `outbound_key`; profiles with different credentials, transport, TLS/REALITY or mux settings MUST NOT share.
+- Inputs: 代理配置、凭据引用、传输设置、mux 设置、运行档案。
+- Outputs: 每个 key 一个出站；引用计数准确；最后一个引用释放时删除出站；复用能力由引擎清单声明。
+
+### REQ-PROXY-022
+
+- The system MUST fail closed when the shared engine crashes, the management API is unavailable, or rebuilding the running configuration fails; it MUST restart with bounded backoff and recreate inbounds on their original `proxy_port`.
+- Inputs: 引擎 PID、API 健康、运行档案状态、原端口。
+- Outputs: 所有运行档案网络失败；全局 `proxy.engine.failed` 事件；重建成功产生 `proxy.engine.rebuilt`；重建失败把受影响运行时标记为 `failed`。
+
+### REQ-PROXY-023
+
+- The system MUST bind the Xray management API to loopback only, serialize mutations, make add/remove idempotent, and reconcile outbound refcounts after restart.
+- Inputs: 管理 API 地址、并发启动/停止请求、引擎重启。
+- Outputs: 无重复出站、无孤儿入站或规则、引用计数可重建；API 不暴露到非回环地址。
 
 ## Verification
 
 ### VER-PROXY-001
 
-- Method: 对 Tier A 与 Tier B 的每种协议启动受控节点，生成配置并通过浏览器访问探针页。
+- Method: 对 Tier A 与 Tier B 的每种协议启动受控节点，通过共享引擎创建入站/出站并通过浏览器访问探针页。
 - covers: `REQ-PROXY-001`
-- Pass condition: Tier A 全部通过；Tier B 按清单通过或明确标注；未声明协议被拒绝；无静默降级。
+- Pass condition: Tier A 全部通过；Hysteria2/WireGuard 按清单通过或明确标注；TUIC 被拒绝；无静默降级。
 
 ### VER-PROXY-002
 
 - Method: 使用合法配置、未知字段、错误端口、缺失凭据、非法传输组合和超长字段执行 schema 校验。
 - covers: `REQ-PROXY-002`
-- Pass condition: 合法配置通过；非法输入返回字段级错误；不产生引擎进程。
+- Pass condition: 合法配置通过；非法输入返回字段级错误；不产生入站、出站或规则。
 
 ### VER-PROXY-003
 
-- Method: 启动两个使用不同协议的档案，检查进程、端口和停止顺序。
+- Method: 启动两个使用不同协议的档案，再启动第三个使用相同节点/凭据的档案，检查进程、端口、出站复用和停止顺序。
 - covers: `REQ-PROXY-003`
-- Pass condition: 每个档案一个引擎；浏览器在引擎就绪后启动；停止后引擎退出、端口释放；无共享进程。
+- Pass condition: 全宿主只有一个 Xray 引擎；每个运行档案有独立入站/端口/规则；相同 key 的档案共享出站；停止后入站和规则释放、引用归零时出站删除。
 
 ### VER-PROXY-004
 
 - Method: 篡改引擎二进制、删除清单、替换校验和。
 - covers: `REQ-PROXY-004`
-- Pass condition: 所有不匹配拒绝启动，返回 `PROXY_ENGINE_CHECKSUM_MISMATCH`，无配置或进程残留。
+- Pass condition: 所有不匹配拒绝启动，返回 `PROXY_ENGINE_CHECKSUM_MISMATCH`，无入站、出站或规则残留。
 
 ### VER-PROXY-005
 
-- Method: 检查生成配置，使用 `sing-box check` 校验，并尝试构造直连规则。
+- Method: 检查由 Xray API 创建的入站、出站和规则，并尝试构造直连或未匹配流量。
 - covers: `REQ-PROXY-005`
-- Pass condition: 配置只有一个 mixed 入站和一个代理出站；final 指向代理；无 Clash API 和直连回退；检查通过。
+- Pass condition: 每个运行档案有一个 HTTP 入站和一条路由规则；默认出站为 block；无直连回退；同一 key 只有一个出站。
 
 ### VER-PROXY-006
 
-- Method: 启动后检查配置权限与存在性，扫描 argv、日志、事件和 API 响应。
+- Method: 启动后扫描 argv、日志、事件、API 响应和持久化文件，检查凭据是否只经回环 API 传递。
 - covers: `REQ-PROXY-006`
-- Pass condition: 启动前配置为 0600；启动后文件被删除；凭据不出现在任何可读输出；重启可重新生成。
+- Pass condition: 凭据不出现在 argv、日志、事件、API 响应或持久化引擎配置；重启可重新生成；管理 API 只绑定回环。
 
 ### VER-PROXY-007
 
-- Method: 检查 Chromium argv、profile 配置和引擎配置中的秘密分布。
+- Method: 检查 Chromium argv、profile 配置、运行档案入站和 Xray 出站中的秘密分布。
 - covers: `REQ-PROXY-007`
-- Pass condition: 浏览器只看到回环 mixed 地址；无 UUID、密码、私钥或 REALITY 秘密。
+- Pass condition: 浏览器只看到本运行档案的回环 HTTP 地址；无 UUID、密码、私钥或 REALITY 秘密。
 
 ### VER-PROXY-008
 
@@ -195,7 +215,7 @@
 
 ### VER-PROXY-009
 
-- Method: 关闭引擎、使用错误凭据、断开节点网络、使配置非法。
+- Method: 关闭共享引擎、使用错误凭据、断开节点网络、使配置非法。
 - covers: `REQ-PROXY-009`
 - Pass condition: 所有场景浏览器网络失败；无直连或其他节点回退；UI 显示对应错误类。
 
@@ -219,9 +239,9 @@
 
 ### VER-PROXY-013
 
-- Method: 对可用节点、错误凭据、错误 TLS/REALITY、超时和不可达节点执行检查，配置与不配置回显端点。
+- Method: 对可用节点、错误凭据、错误 TLS/REALITY、超时和不可达节点执行检查，配置与不配置回显端点；检查后扫描临时资源。
 - covers: `REQ-PROXY-013`
-- Pass condition: 结果与错误类正确；延迟和出口 IP 仅在可用时返回；日志不含秘密。
+- Pass condition: 结果与错误类正确；延迟和出口 IP 仅在可用时返回；日志不含秘密；临时入站/出站/规则被删除。
 
 ### VER-PROXY-014
 
@@ -243,15 +263,15 @@
 
 ### VER-PROXY-017
 
-- Method: 从非回环地址连接 mixed 端口，并在运行时结束后重试；检查安全文档。
+- Method: 从非回环地址连接管理 API 和运行档案入站，并在运行时结束后重试；检查安全文档。
 - covers: `REQ-PROXY-017`
-- Pass condition: 非回环连接被拒绝；运行时结束后端口关闭；文档明确记录同用户残余风险。
+- Pass condition: 非回环连接被拒绝；运行时结束后入站端口关闭；管理 API 不可从非回环访问；文档记录同用户残余风险。
 
 ### VER-PROXY-018
 
 - Method: 创建直连档案并启动，检查进程、UI 与 API。
 - covers: `REQ-PROXY-018`
-- Pass condition: 不启动引擎；`direct=true` 与风险说明可见；无代理成功伪装。
+- Pass condition: 不创建运行档案入站/出站；`direct=true` 与风险说明可见；无代理成功伪装。
 
 ### VER-PROXY-019
 
@@ -265,11 +285,29 @@
 - covers: `REQ-PROXY-020`
 - Pass condition: 清单字段完整；UI 只显示声明能力；未声明组合被拒绝；升级差异可比较。
 
+### VER-PROXY-021
+
+- Method: 使用相同节点/凭据启动多个档案，再使用不同凭据启动一个档案；检查 Xray 出站、连接和引用计数。
+- covers: `REQ-PROXY-021`
+- Pass condition: 相同 key 只创建一个出站并复用；不同凭据创建不同出站；最后一个引用释放时删除；日志不泄露凭据。
+
+### VER-PROXY-022
+
+- Method: 运行多个档案时强杀 Xray，观察失败关闭、事件、重启和原端口重建；再模拟重建失败。
+- covers: `REQ-PROXY-022`
+- Pass condition: 所有运行档案网络失败；产生全局事件；重启后按原端口重建；重建失败标记受影响运行时 `failed`；无直连回退。
+
+### VER-PROXY-023
+
+- Method: 并发启动/停止档案，重启引擎，检查 Xray API 访问控制、幂等和引用计数对账。
+- covers: `REQ-PROXY-023`
+- Pass condition: 无重复出站、无孤儿入站/规则；引用计数正确；API 仅回环可达；并发操作不产生竞争状态。
+
 ## Related ADRs
 
 - [ADR-0003：SQLite 存储与字段级密钥保护](../../adr/0003-storage-and-secret-protection.md)
-- [ADR-0004：每档案本地代理中继](../../adr/0004-local-proxy-relay.md)
-- [ADR-0007：协议引擎承载正向代理](../../adr/0007-protocol-engine-forward-proxy.md)
+- [ADR-0007：每档案独立协议引擎（已被 ADR-0009 取代）](../../adr/0007-protocol-engine-forward-proxy.md)
+- [ADR-0009：单实例 Xray 动态协议引擎与连接复用](../../adr/0009-shared-xray-engine.md)
 
 ## Visual Evidence
 
@@ -282,4 +320,4 @@
 - [`../../PRD.md`](../../PRD.md)
 - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)
 - [`../../contracts/proxy-engine-manifest.schema.json`](../../contracts/proxy-engine-manifest.schema.json)
-- <https://github.com/SagerNet/sing-box>
+- <https://github.com/XTLS/Xray-core>

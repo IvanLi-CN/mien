@@ -10,7 +10,7 @@
 
 ## Terms and Interfaces
 
-- `runtime`: 一个受监督的内核进程实例及其协议引擎、调试端口、日志和显示环境。
+- `runtime`: 一个受监督的内核进程实例及其运行档案回环 HTTP 入站、路由规则、调试端口、日志和显示环境；共享 Xray 引擎由代理网关单独监督。
 - `runtime state`: `stopped`、`starting`、`running`、`stopping`、`crashed`、`failed`。
 - `process group`: 内核及其子进程组成的进程组，用于可靠终止和孤儿清理。
 - `headful`: 内核创建可见窗口；macOS 使用宿主桌面，Docker 使用 Xvfb。
@@ -22,7 +22,7 @@
 ### REQ-RUNTIME-001
 
 - The system MUST spawn the kernel as a direct child process using an argument array, a dedicated user-data directory, and a new process group; it MUST NOT invoke a shell.
-- Inputs: 内核可执行路径、指纹 argv、档案数据目录、协议引擎 mixed 入口、运行模式。
+- Inputs: 内核可执行路径、指纹 argv、档案数据目录、每运行档案回环 HTTP 入站、运行模式。
 - Outputs: 内核 PID 与进程组 ID；子进程环境变量最小化；任何启动参数不得来自未校验的字符串拼接。
 
 ### REQ-RUNTIME-002
@@ -81,9 +81,9 @@
 
 ### REQ-RUNTIME-011
 
-- The system MUST stop a runtime by requesting graceful shutdown, waiting for a bounded timeout, then terminating the whole process group, and MUST stop the protocol engine and release the profile lock in all cases.
+- The system MUST stop a runtime by requesting graceful shutdown, waiting for a bounded timeout, then terminating the whole process group; it MUST remove the runtime's route rule and inbound and release its shared-outbound reference, while leaving the shared engine running for other profiles.
 - Inputs: 停止请求、进程状态、超时配置。
-- Outputs: 正常退出或强制终止后状态 `stopped`；协议引擎停止；锁释放；强制终止记录为审计事件。
+- Outputs: 正常退出或强制终止后状态 `stopped`；运行档案入站与路由被删除；共享出站引用释放；锁释放；强制终止记录为审计事件。
 
 ### REQ-RUNTIME-012
 
@@ -111,9 +111,9 @@
 
 ### REQ-RUNTIME-016
 
-- The system MUST provide liveness and readiness signals that distinguish process health from database, kernel, protocol engine, and display availability.
-- Inputs: 服务端进程、SQLite、内核目录、协议引擎目录、Xvfb 状态。
-- Outputs: `/healthz` 在进程存活时成功；`/readyz` 仅在数据库可用、内核与协议引擎校验通过且所需显示环境可用时成功。
+- The system MUST provide liveness and readiness signals that distinguish process health from database, kernel, shared protocol engine, and display availability.
+- Inputs: 服务端进程、SQLite、内核目录、共享 Xray 引擎、Xvfb 状态。
+- Outputs: `/healthz` 在进程存活时成功；`/readyz` 仅在数据库可用、内核与 Xray 引擎校验通过且所需显示环境可用时成功。
 
 ## Verification
 
@@ -181,7 +181,7 @@
 
 - Method: 在页面加载、下载和大内存占用时停止档案，并在超时场景强制终止。
 - covers: `REQ-RUNTIME-011`
-- Pass condition: 优先正常退出；超时后进程组全部终止；协议引擎停止、锁释放；审计事件记录强制终止。
+- Pass condition: 优先正常退出；超时后进程组全部终止；运行档案入站与路由删除、共享出站引用释放；共享引擎继续运行；审计事件记录强制终止。
 
 ### VER-RUNTIME-012
 
@@ -218,7 +218,7 @@
 - [ADR-0001：共享 Rust 核心与双宿主](../../adr/0001-shared-core-two-hosts.md)
 - [ADR-0002：固定 fingerprint-chromium 148 并建立内核准入](../../adr/0002-pin-kernel-148.md)
 - [ADR-0005：有头优先的显示策略](../../adr/0005-headful-first-display.md)
-- [ADR-0007：协议引擎承载正向代理](../../adr/0007-protocol-engine-forward-proxy.md)
+- [ADR-0009：单实例 Xray 动态协议引擎与连接复用](../../adr/0009-shared-xray-engine.md)
 
 ## Visual Evidence
 

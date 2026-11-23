@@ -88,8 +88,8 @@
 ### REQ-API-012
 
 - The system MUST provide liveness and readiness endpoints with distinct semantics and MUST NOT require authentication for their minimal response.
-- Inputs: 服务进程、数据库、内核目录、协议引擎目录、显示环境。
-- Outputs: `/healthz` 仅表示进程存活；`/readyz` 仅在数据库、内核、协议引擎和显示环境可用时成功；响应不包含敏感配置。
+- Inputs: 服务进程、数据库、内核目录、共享 Xray 引擎、显示环境。
+- Outputs: `/healthz` 仅表示进程存活；`/readyz` 仅在数据库、内核、共享 Xray 引擎和显示环境可用时成功；响应不包含敏感配置。
 
 ### REQ-API-013
 
@@ -229,7 +229,7 @@
 
 - [ADR-0001：共享 Rust 核心与双宿主](../../adr/0001-shared-core-two-hosts.md)
 - [ADR-0003：SQLite 存储与字段级密钥保护](../../adr/0003-storage-and-secret-protection.md)
-- [ADR-0007：协议引擎承载正向代理](../../adr/0007-protocol-engine-forward-proxy.md)
+- [ADR-0009：单实例 Xray 动态协议引擎与连接复用](../../adr/0009-shared-xray-engine.md)
 
 ## Visual Evidence
 

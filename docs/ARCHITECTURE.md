@@ -7,9 +7,9 @@
 架构必须满足以下硬约束。
 
 - 指纹内核固定为 fingerprint-chromium `148.0.7778.215`，不修改、不分叉，升级必须经过独立准入。
-- 协议引擎首选固定为构建清单中的 sing-box 1.14.x，独立进程、不修改、校验 SHA-256；升级必须经过协议矩阵准入与 GPL 合规评审。若 GPL 评审不通过，按 ADR-0007 切换到 Xray-core 并更新能力清单。
+- 协议引擎固定为构建清单中的 Xray-core，每个宿主一个共享进程、不修改、校验 SHA-256；运行时通过 Xray API 动态增删入站、出站与路由规则，升级必须经过协议矩阵准入。
 - 每个档案独占浏览器数据目录、种子和运行时；档案之间不共享 Cookie、缓存或存储。
-- Chromium 只连接本地协议引擎的 mixed 入口；VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与凭据由协议引擎（默认 sing-box）处理，产品不自行实现协议。
+- Chromium 只连接所属运行档案的回环 HTTP 入站；VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与凭据由共享 Xray 引擎处理，产品不自行实现协议。
 - Docker 默认有头运行，使用 Xvfb；无头是显式降级选项。
 - macOS 只支持 Apple Silicon；Docker 只支持 `linux/amd64`。
 - 显示尺寸、设备像素比、颜色深度和字体枚举受宿主约束，架构必须让这些限制可观测，而不是假装可伪造。
@@ -23,7 +23,7 @@ flowchart LR
   Automation["自动化客户端"] -->|"REST / WebSocket"| Control
   Control --> Core["共享核心"]
   Core --> Kernel["fingerprint-chromium 148"]
-  Core --> Proxy["代理网关 + sing-box"]
+  Core --> Proxy["代理网关 + 共享 Xray"]
   Kernel --> Proxy
   Proxy --> Upstream["代理节点"]
   Kernel --> Sites["目标站点"]
@@ -32,7 +32,7 @@ flowchart LR
   Core --> Secrets["钥匙串或主密钥文件"]
 ```
 
-系统边界内包含控制面、核心、内核进程、代理网关、sing-box 协议引擎、SQLite 和数据目录。系统边界外是操作者、自动化客户端、代理节点和目标站点。产品不销售代理服务，也不托管节点。
+系统边界内包含控制面、核心、内核进程、代理网关、共享 Xray 协议引擎、SQLite 和数据目录。系统边界外是操作者、自动化客户端、代理节点和目标站点。产品不销售代理服务，也不托管节点。
 
 ## 3. 运行拓扑
 
@@ -45,7 +45,7 @@ flowchart TB
     UI["Web UI（WKWebView）"]
     Core["共享核心库"]
     Kernel["内核进程（有头）"]
-    Proxy["每档案 sing-box 引擎"]
+    Proxy["共享 Xray 引擎"]
     DB[("SQLite")]
     Keychain[("系统钥匙串")]
     Files[("Application Support")]
@@ -74,7 +74,7 @@ flowchart TB
     Core["共享核心库"]
     Xvfb["Xvfb :99 + openbox"]
     Kernel["内核进程"]
-    Proxy["每档案 sing-box 引擎"]
+    Proxy["共享 Xray 引擎"]
     Viewer["noVNC + x11vnc（可选）"]
     DB[("SQLite /data")]
     KeyFile[("主密钥文件 /data")]
@@ -94,7 +94,7 @@ flowchart TB
   Proxy --> Upstream["代理节点"]
 ```
 
-容器内只有一个控制面进程和一个共享 Xvfb。多个档案可以有头运行在同一虚拟显示上，通过不同窗口和用户数据目录隔离；窗口尺寸由启动参数控制，屏幕尺寸由 Xvfb 启动参数统一决定。需要每档案独立分辨率时，后续版本可以引入每档案 Xvfb，首个发布不做。
+容器内只有一个控制面进程、一个共享 Xray 引擎和一个共享 Xvfb。多个档案可以有头运行在同一虚拟显示上，通过不同窗口和用户数据目录隔离；网络层共享引擎，但每个运行档案有独立回环入站和路由；窗口尺寸由启动参数控制，屏幕尺寸由 Xvfb 启动参数统一决定。需要每档案独立分辨率时，后续版本可以引入每档案 Xvfb，首个发布不做。
 
 ### 3.3 端口与监听
 
@@ -102,7 +102,8 @@ flowchart TB
 | --- | --- | --- | --- |
 | 服务端控制面 | 容器内 `0.0.0.0:8080` | 开启 | 由部署者映射；必须置于认证之后 |
 | 桌面自动化 API | `127.0.0.1` 随机端口 | 关闭 | 用户显式启用；Token 鉴权 |
-| 协议引擎 mixed 入站 | `127.0.0.1` 随机端口 | 每运行档案一个 | 不对外暴露；Chromium 只连接此处 |
+| 每运行档案 HTTP 入站 | `127.0.0.1` 固定分配端口 | 每个运行档案一个 | 不对外暴露；Chromium 只连接此处 |
+| Xray 管理 API | `127.0.0.1` 随机端口 | 常驻 | 只允许本机代理网关调用；不映射到容器外 |
 | CDP | `127.0.0.1` 随机端口 | 按档案启用 | 不对外暴露 |
 | noVNC | 容器内 `0.0.0.0:6080` | 关闭 | 一次性令牌或独立认证 |
 | Xvfb | 容器内 `:99` | 有头模式 | Unix socket，不监听 TCP |
@@ -116,11 +117,11 @@ flowchart TB
 | 服务端宿主 | HTTP/WS、登录、Token、静态 UI、健康检查、优雅关闭 | 指纹算法、内核启动细节 |
 | Web UI | 档案管理、指纹编辑、代理配置、运行控制、日志与限制提示 | 直接启动内核、直接读取数据库 |
 | 内核 | 浏览器渲染与指纹伪装 | 档案管理、代理协议、认证、进程监督 |
-| 代理网关 | 代理配置校验、引擎配置生成、启动/停止、就绪探测、失败关闭、健康事件 | 协议密码学、字节流转发、档案存储 |
-| sing-box 协议引擎 | VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议、认证、TLS/REALITY/WS/gRPC/QUIC、出站 DNS | 档案管理、UI、浏览器进程监督 |
+| 代理网关 | 代理配置校验、Xray API 调用、出站引用计数、入站/路由生命周期、失败关闭、健康事件 | 协议密码学、字节流转发、档案存储 |
+| Xray 协议引擎 | VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议、认证、TLS/REALITY/WS/gRPC/QUIC、出站 DNS、共享出站连接池 | 档案管理、UI、浏览器进程监督 |
 | 显示监督 | Xvfb、openbox、x11vnc、noVNC 生命周期 | 浏览器进程监督 |
 | 内核注册表 | 安装包校验、能力清单、版本选择、回滚 | 修改内核二进制 |
-| 协议引擎注册表 | sing-box 安装包校验、协议清单、版本选择、许可与回滚 | 修改引擎二进制 |
+| 协议引擎注册表 | Xray-core 安装包校验、协议清单、版本选择、许可与回滚 | 修改引擎二进制 |
 
 ## 5. 代码组织
 
@@ -136,7 +137,7 @@ xtask/                  # 仓库构建、校验、打包任务
 ui/                     # React + TypeScript + Vite，桌面与服务端共用
 contracts/              # JSON Schema（源文件位于 docs/contracts）
 kernels/                # 构建时下载的校验清单，不提交二进制
-engines/                # sing-box 版本与校验清单，不提交二进制
+engines/                # Xray-core 版本与校验清单，不提交二进制
 deploy/
   docker/               # Dockerfile、入口脚本、Xvfb/openbox/noVNC 配置
 docs/
@@ -155,9 +156,10 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `tags` | `id`, `name`, `color` | 标签；名称唯一 |
 | `profile_tags` | `profile_id`, `tag_id` | 多对多 |
 | `proxies` | `id`, `name`, `kind`, `server`, `port`, `config_ciphertext`, `last_check_json`, `created_at`, `updated_at` | 正向代理；`kind` 为 HTTP/SOCKS/VLESS/VMess/Shadowsocks/Trojan/Hysteria2 等；完整协议选项与凭据加密存储 |
-| `runtimes` | `id`, `profile_id`, `state`, `pid`, `pgid`, `engine_pid`, `started_at`, `cdp_port`, `proxy_port`, `exit_code`, `last_error` | 运行态；控制面启动时对账内核与引擎进程 |
+| `runtimes` | `id`, `profile_id`, `state`, `pid`, `pgid`, `proxy_port`, `proxy_inbound_tag`, `proxy_outbound_key`, `proxy_rule_tag`, `started_at`, `cdp_port`, `exit_code`, `last_error` | 运行态；共享引擎按这些标签重建入站、出站和路由 |
 | `kernel_installs` | `version`, `platform`, `path`, `sha256`, `manifest_json`, `installed_at` | 已安装内核；支持并存与回滚 |
-| `proxy_engine_installs` | `version`, `platform`, `path`, `sha256`, `manifest_json`, `license`, `source_url`, `installed_at` | 已安装 sing-box；协议矩阵、许可与回滚 |
+| `proxy_engine_installs` | `version`, `platform`, `path`, `sha256`, `manifest_json`, `license`, `source_url`, `installed_at` | 已安装 Xray-core；协议矩阵、许可与回滚 |
+| `proxy_engine_state` | `pid`, `api_port`, `state`, `started_at`, `last_error` | 单实例引擎运行态；控制面启动时对账 |
 | `api_tokens` | `id`, `name`, `token_hash`, `scopes`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；只存哈希 |
 | `sessions` | `id`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` | 服务端登录会话；Cookie 只存随机标识，库中只存哈希 |
 | `event_log` | `id`, `type`, `payload_json`, `created_at` | WebSocket 事件回放；按保留策略清理 |
@@ -200,7 +202,7 @@ stateDiagram-v2
   stopped --> [*]
 ```
 
-`starting` 期间任何一步失败都必须回滚：停止协议引擎、终止已启动内核、释放档案锁、写回错误。`crashed` 不自动无限重启；退避次数和窗口可配置。
+`starting` 期间任何一步失败都必须回滚：删除路由规则与入站、释放共享出站引用、终止已启动内核、释放档案锁、写回错误。共享引擎本身不因单个档案启动失败而退出。`crashed` 不自动无限重启；退避次数和窗口可配置。
 
 ## 7. 关键流程
 
@@ -213,7 +215,7 @@ sequenceDiagram
   participant FP as 指纹引擎
   participant KS as 内核注册表
   participant GW as 代理网关
-  participant PE as sing-box
+  participant PE as 共享 Xray
   participant OS as 操作系统
   participant K as 内核
 
@@ -224,8 +226,11 @@ sequenceDiagram
   Core->>KS: 校验内核存在与 SHA-256
   KS-->>Core: 可执行路径
   Core->>GW: 校验代理配置与引擎清单
-  GW->>PE: 写 0600 配置 + sing-box check + 启动
-  PE-->>GW: mixed 入站就绪
+  GW->>PE: 确保共享引擎运行并连接管理 API
+  GW->>PE: AddOutbound 或复用相同 key 的出站
+  GW->>PE: AddInbound(proxy_port, runtime tag)
+  GW->>PE: AddRule(inboundTag -> outboundTag)
+  PE-->>GW: 入站就绪
   GW-->>Core: proxy_port
   Core->>OS: spawn(argv, env, process_group)
   OS-->>Core: pid / pgid
@@ -235,7 +240,7 @@ sequenceDiagram
   Core-->>UI: 状态事件 + cdp_url / proxy_port
 ```
 
-启动流程是串行的资源获取过程。协议引擎必须先于内核就绪；任何一步失败都返回稳定错误码，并在 UI 中提供可复制的诊断信息。代理检查失败默认允许启动但标记警告；内核校验失败、引擎校验失败、代理配置无效、规格不一致或配额不足必须拒绝。
+启动流程是串行的资源获取过程。共享引擎必须先于内核就绪；出站、入站和路由规则按顺序创建，任何一步失败都回滚并返回稳定错误码。代理检查失败默认允许启动但标记警告；内核校验失败、引擎校验失败、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。
 
 ### 7.2 停止档案
 
@@ -245,33 +250,35 @@ sequenceDiagram
   participant Core as 核心
   participant K as 内核
   participant GW as 代理网关
-  participant PE as sing-box
+  participant PE as 共享 Xray
 
   UI->>Core: stop(profile_id)
   Core->>Core: 状态置为 stopping
   Core->>K: SIGTERM（或平台等价信号）
   K-->>Core: 退出
   Core->>Core: 等待超时，必要时终止进程组
-  Core->>GW: 停止协议引擎
-  GW->>PE: SIGTERM / 超时终止
+  Core->>GW: 删除本档案路由规则与入站
+  GW->>PE: RemoveRule + RemoveInbound
+  Core->>GW: 释放共享出站引用
+  GW->>PE: 引用归零时 RemoveOutbound
   Core->>Core: 写入 stopped，释放锁
   Core-->>UI: 状态事件
 ```
 
-停止操作幂等。已经停止的档案再次停止返回成功，不报错。强制终止后必须记录事件，标记该次运行非正常结束。
+停止操作幂等。已经停止的档案再次停止返回成功，不报错。共享引擎不因单个档案停止而退出；只有引用归零的出站被删除。强制终止后必须记录事件，标记该次运行非正常结束。
 
 ### 7.3 控制面重启对账
 
-1. 读取 `runtimes` 中非终态记录。
-2. 检查内核与引擎 PID 是否存在、进程启动时间是否匹配、命令行是否包含当前档案的数据目录和引擎路径。
-3. 可确认归属的进程：若控制面支持重新接管，则恢复监控；否则安全终止并标记 `crashed` 或 `stopped`。
-4. 不可确认归属的进程：不得盲目杀死，记录隔离事件；按配置清理超时孤儿。
-5. 清理过期锁文件、临时代理端口、临时引擎配置和残留调试端口。
-6. 将未完成的操作标记为失败，并通过事件流通知 UI。
+1. 读取 `runtimes` 中非终态记录和 `proxy_engine_state`。
+2. 检查共享 Xray 引擎 PID、进程启动时间和 API 端口是否匹配；检查各内核 PID 与数据目录。
+3. 共享引擎不存在或不可接管时，安全终止残留引擎并启动新实例，然后按 `proxy_port` 重建所有运行档案的出站、入站和路由规则。
+4. 共享引擎可接管时，通过 Xray API 列出出站/入站，补齐缺失配置并删除孤儿入站或规则。
+5. 不可确认归属的内核进程不得盲目杀死，记录隔离事件；按配置清理超时孤儿。
+6. 清理过期锁文件、临时规则、残留调试端口，并将未完成操作标记为失败并通过事件流通知 UI。
 
 ### 7.4 代理检查
 
-代理检查通过运行时协议引擎的 mixed 入口发起独立短连接，或为未运行档案启动一个临时引擎实例。检查内容包括协议握手、TLS/REALITY、认证、节点可达性、出口 IP、延迟和可选地区信息。检查结果写入 `proxies.last_check_json`，不作为启动的硬阻塞，除非用户配置了“检查失败禁止启动”。
+代理检查通过共享引擎临时创建的回环入站、路由规则和出站发起独立短连接，检查完成后立即删除临时资源；不启动第二个引擎。检查内容包括协议握手、TLS/REALITY、认证、节点可达性、出口 IP、延迟和可选地区信息。检查结果写入 `proxies.last_check_json`，不作为启动的硬阻塞，除非用户配置了“检查失败禁止启动”。
 
 ## 8. 指纹流水线
 
@@ -411,7 +418,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 - 浏览器渲染进程运行不可信网页，必须假定其可被攻击。
 - 代理配置、分享链接和导入文件是外部输入，必须校验。
 - 服务端控制面暴露在网络上，必须认证、限流和防 CSRF。
-- CDP 和 noVNC 是高权限入口，默认只绑定回环或关闭。
+- CDP、noVNC 和 Xray 管理 API 是高权限入口，默认只绑定回环或关闭。
 - 内核与协议引擎二进制是供应链输入，必须校验和版本绑定。
 
 ### 10.2 关键控制
@@ -423,9 +430,9 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 | 密钥 | 桌面使用系统钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 `MIEN_MASTER_KEY`；字段级 AES-256-GCM。 |
 | 进程 | 参数数组启动，不经过 shell；进程组管理；档案锁；并发配额；子进程最小环境变量。 |
 | 文件 | 档案目录 0700；路径规范化并校验前缀；导入文件大小限制；符号链接拒绝。 |
-| 网络 | 协议引擎 mixed 入站与 CDP 绑定回环；服务端默认只允许认证流量；noVNC 一次性令牌；容器网络最小化。 |
+| 网络 | 每运行档案 HTTP 入站、Xray 管理 API 与 CDP 都绑定回环；服务端默认只允许认证流量；noVNC 一次性令牌；容器网络最小化。 |
 | 内核 | SHA-256 校验；能力清单；版本固定；沙箱状态检查；不允许静默升级。 |
-| 协议引擎 | sing-box 独立进程；SHA-256 校验；协议能力清单；配置 0600 且启动后删除；不启用 Clash API；GPL 许可与源码要约。 |
+| 协议引擎 | Xray-core 单实例共享进程；SHA-256 校验；协议能力清单；管理 API 只绑定回环；凭据不写日志；MPL-2.0 许可与来源信息。 |
 | 容器 | 非 root；只读根文件系统（数据卷除外）；丢弃能力；seccomp/AppArmor；镜像扫描；不使用 Docker socket。 |
 | 日志 | 密码、Token、Cookie、UUID、私钥、完整代理 URL、分享链接和敏感头脱敏；审计事件独立保留。 |
 
@@ -437,14 +444,14 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 
 | 失败 | 行为 |
 | --- | --- |
-| 内核缺失或校验失败 | 拒绝启动，状态 `failed`，不启动协议引擎。 |
+| 内核缺失或校验失败 | 拒绝启动，状态 `failed`，不创建该档案的入站/路由。 |
 | 指纹规格与能力清单不符 | 拒绝启动，返回具体字段和原因。 |
 | 代理配置无效或引擎校验失败 | 拒绝启动，释放配额，保留档案数据。 |
-| 协议引擎启动或就绪失败 | 停止引擎，拒绝启动内核，返回稳定错误。 |
-| 内核启动后立即退出 | 状态 `crashed`，停止协议引擎，记录退出码与日志尾部，按退避策略决定是否允许重试。 |
-| 协议引擎运行中退出 | 浏览器网络失败，不发直连回退；记录 `proxy.engine.failed`，运行时保持可诊断状态。 |
-| CDP 在超时内未就绪 | 终止内核进程组，停止协议引擎，状态 `failed`。 |
-| 控制面崩溃 | 内核或协议引擎可能成为孤儿；下次启动对账，确认归属后接管或清理。 |
+| 共享引擎启动或 API 就绪失败 | 拒绝启动新档案，返回稳定错误；已运行档案按引擎故障策略处理。 |
+| 内核启动后立即退出 | 状态 `crashed`，删除该档案的路由与入站，记录退出码与日志尾部，按退避策略决定是否允许重试；共享引擎继续服务其他档案。 |
+| 共享引擎运行中退出 | 所有运行档案网络失败，不发直连回退；记录 `proxy.engine.failed`，按有界退避重启并按原端口重建；重建失败标记受影响运行时 `failed`。 |
+| CDP 在超时内未就绪 | 终止内核进程组，删除该档案的路由与入站，状态 `failed`。 |
+| 控制面崩溃 | 内核与共享引擎可能成为孤儿；下次启动对账，确认引擎归属后接管并重建或清理入站/规则。 |
 | 数据库锁定 | 短重试后返回可重试错误；迁移使用单写者。 |
 | Xvfb 不可用 | 有头启动失败；无头模式仍可用，但 UI 明确提示。 |
 | noVNC 不可用 | 不影响浏览器运行；查看器入口显示不可用。 |
@@ -461,7 +468,7 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 | 加密 | AES-256-GCM、Argon2id、系统钥匙串 | 字段级认证加密与口令派生 |
 | 桌面 | Tauri 2 + WKWebView | 体积小、原生进程控制、macOS 集成好 |
 | Web UI | React + TypeScript + Vite + TanStack Query | 桌面与服务端共用，生态成熟 |
-| 协议引擎 | sing-box 1.14.x，固定版本、SHA-256、能力清单 | 覆盖 VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议；GPL-3.0 合规 |
+| 协议引擎 | Xray-core v26.11.9+，固定版本、SHA-256、能力清单 | 单实例动态入站/出站/路由；覆盖 VLESS、VMess、Shadowsocks、Trojan、Hysteria2；MPL-2.0 |
 | 容器 | Debian slim、Xvfb、openbox、x11vnc、noVNC | 无桌面环境下提供有头浏览与可选查看 |
 | CI | GitHub Actions macOS arm64 + linux/amd64 | 原生平台构建、签名、镜像发布 |
 
@@ -481,16 +488,16 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 
 ### 13.2 协议引擎供应
 
-- 构建时从固定 URL 下载 sing-box 发行包，校验 SHA-256，记录版本、平台、协议矩阵、许可和源码链接。
-- 引擎不提交到 Git；macOS 应用与 Docker 镜像均包含未修改的二进制、GPL-3.0 许可证和对应源码或书面要约。
-- 每个运行档案生成独立配置，只包含一个 loopback mixed 入站和一个代理出站；不启用 Clash API。
-- 引擎升级独立于应用和内核，升级前比对能力清单并跑协议矩阵；运行中的档案不被静默替换。
-- 若法律评审不接受 GPL-3.0，改用 Xray-core 适配器并缩减协议矩阵；接口保持为“每档案一个引擎进程 + mixed 入站”。
+- 构建时从固定 URL 下载 Xray-core 发行包，校验 SHA-256，记录版本、平台、协议矩阵、许可和来源信息。
+- 引擎不提交到 Git；macOS 应用与 Docker 镜像均包含未修改的二进制、MPL-2.0 许可证与来源信息。
+- 引擎启动时使用最小引导配置；代理出站、每档案回环 HTTP 入站和路由规则通过仅绑定回环的 Xray 管理 API 动态创建。
+- 引擎升级独立于应用和内核，升级前比对能力清单并跑协议矩阵；运行中的档案不被静默替换，升级会重置共享连接池。
+- TUIC 不进入 v1；Hysteria2 依赖锁定版本中的 Xray 实现，并在发布准入中验证。
 
 ### 13.3 macOS
 
 - 通用构建目标为 `aarch64-apple-darwin`，最低 macOS 13。
-- 应用、嵌套内核、sing-box 二进制和更新包使用 Developer ID 签名；发布前公证并验证 Gatekeeper。
+- 应用、嵌套内核、Xray-core 二进制和更新包使用 Developer ID 签名；发布前公证并验证 Gatekeeper。
 - 自动更新使用签名清单，禁止降级到未签名版本。
 - 主密钥存入登录钥匙串；卸载不自动删除数据目录。
 
@@ -501,30 +508,31 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 - 入口脚本负责 Xvfb、openbox、可选 noVNC 和主进程信号转发。
 - 健康检查调用 `/healthz`；就绪检查验证数据库、内核和协议引擎可用。
 - 镜像发布 `linux/amd64`；Apple Silicon 通过模拟运行，文档标注性能影响。
-- 镜像扫描、SBOM、GPL 许可与源码要约进入发布门禁。
+- 镜像扫描、SBOM、MPL-2.0 许可与来源信息进入发布门禁。
 
 ## 14. 可观测性
 
 - 结构化日志字段：`ts`、`level`、`request_id`、`profile_id`、`runtime_id`、`event`、`error_code`。
-- 启动失败返回稳定错误码，例如 `KERNEL_CHECKSUM_MISMATCH`、`FINGERPRINT_INVALID`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_CONFIG_INVALID`、`PROXY_ENGINE_START_FAILED`、`CDP_TIMEOUT`、`QUOTA_EXCEEDED`。
-- 运行时事件通过 WebSocket 推送：`runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`proxy.engine.failed`、`proxy.check.completed`。
+- 启动失败返回稳定错误码，例如 `KERNEL_CHECKSUM_MISMATCH`、`FINGERPRINT_INVALID`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT`、`PROXY_CONFIG_INVALID`、`CDP_TIMEOUT`、`QUOTA_EXCEEDED`。
+- 运行时事件通过 WebSocket 推送：`runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
 - 指标：启动次数、成功率、启动耗时、运行档案数、代理检查失败率、崩溃次数。
 - 日志轮转按档案和总量限制；默认保留最近 7 天或 100 MB，取较小者。
 
 ## 15. 测试策略
 
-架构把可测试边界放在核心库：指纹规格到 argv 的纯函数、代理配置到引擎配置的映射、引擎生命周期、运行时状态机、存储迁移和 API 契约都可以在没有真实浏览器的情况下测试。真实内核与协议矩阵通过内核准入和端到端探针验证。完整矩阵见 [`TEST-PLAN.md`](TEST-PLAN.md)。
+架构把可测试边界放在核心库：指纹规格到 argv 的纯函数、代理配置到出站/入站/路由的映射、共享引擎生命周期与引用计数、运行时状态机、存储迁移和 API 契约都可以在没有真实浏览器的情况下测试。真实内核与协议矩阵通过内核准入和端到端探针验证。完整矩阵见 [`TEST-PLAN.md`](TEST-PLAN.md)。
 
 ## 16. 相关决策
 
 - [`ADR-0001`](adr/0001-shared-core-two-hosts.md)：共享核心与双宿主。
 - [`ADR-0002`](adr/0002-pin-kernel-148.md)：固定内核 148 与准入策略。
 - [`ADR-0003`](adr/0003-storage-and-secret-protection.md)：SQLite 与密钥保护。
-- [`ADR-0004`](adr/0004-local-proxy-relay.md)：本地代理中继（已被 ADR-0007 取代）。
+- [`ADR-0004`](adr/0004-local-proxy-relay.md)：本地代理中继（历史背景，已被 ADR-0007 与 ADR-0009 取代）。
 - [`ADR-0005`](adr/0005-headful-first-display.md)：有头优先与 Xvfb。
 - [`ADR-0006`](adr/0006-fingerprint-spec-model.md)：指纹规格模型。
-- [`ADR-0007`](adr/0007-protocol-engine-forward-proxy.md)：协议引擎承载正向代理。
+- [`ADR-0007`](adr/0007-protocol-engine-forward-proxy.md)：每档案独立协议引擎（已被 ADR-0009 取代）。
 - [`ADR-0008`](adr/0008-tauri-ipc-ui-transport.md)：管理网页通过 Tauri IPC 调用核心。
+- [`ADR-0009`](adr/0009-shared-xray-engine.md)：单实例 Xray 动态协议引擎与连接复用。
 
 ## 17. 参考
 

@@ -31,9 +31,10 @@ mien-cli     ─┘
 - `ProfileId(Ulid)`、`RuntimeId(Ulid)`、`KernelVersion`、`EngineVersion`。
 - `SpecSchema`、`KernelManifest`、`EngineManifest` 各自独立版本。
 - `RuntimeState`：`Stopped`、`Starting`、`Running`、`Stopping`、`Crashed`、`Failed`。
-- `ProxyConfig`：`Http`、`Https`、`Socks5`、`Vless`、`Vmess`、`Shadowsocks`、`Trojan`、`Hysteria2`、`Tuic`、`Wireguard` 的 tagged enum；秘密字段使用 `SecretString`，`Debug` 输出必须脱敏。
+- `ProxyConfig`：`Http`、`Https`、`Socks5`、`Vless`、`Vmess`、`Shadowsocks`、`Trojan`、`Hysteria2`、`Wireguard` 的 tagged enum；秘密字段使用 `SecretString`，`Debug` 输出必须脱敏。TUIC 不进入 v1。
 - `LaunchPlan`：内核 argv、环境变量、用户数据目录、代理入口、是否启用 CDP、日志目标。
-- `RuntimeHandle`：运行时标识、档案标识、内核 PID、引擎 PID、代理端口、CDP 端口、取消令牌。
+- `RuntimeHandle`：运行时标识、档案标识、内核 PID、代理端口、CDP 端口、`proxy_inbound_tag`、`proxy_outbound_key`、`proxy_rule_tag`、取消令牌。
+- `ProxyEngineHandle`：共享 Xray 进程 PID、管理 API 端口、启动时间、状态和取消令牌。
 
 ### 3.2 核心端口
 
@@ -70,11 +71,14 @@ pub trait EventSink {
 ### 3.3 注册表与校验
 
 - `KernelRegistry`：解析版本与平台、校验 SHA-256、读取内核能力清单。
-- `EngineRegistry`：解析协议引擎版本与平台、校验 SHA-256、读取协议能力清单与许可信息。
+- `EngineRegistry`：解析 Xray-core 版本与平台、校验 SHA-256、读取协议能力清单与许可信息。
 - `FingerprintValidator`：schema、一致性、能力清单校验，输出规范化规格。
 - `ProxyValidator`：协议、传输、TLS/REALITY、凭据字段、能力清单校验，输出可生成的引擎配置。
 - `BuildArgv`：纯函数，输入规格与运行时参数，输出确定性参数数组。
-- `BuildEngineConfig`：纯函数，输入代理配置、端口与路径策略，输出引擎配置对象；写盘与启动由运行时负责。
+- `BuildEngineOutbound`：纯函数，输入代理配置与凭据引用，输出 Xray 出站配置和稳定 `outbound_key`；相同 key 必须复用出站。
+- `BuildInbound`：纯函数，输入运行时标识与 `proxy_port`，输出回环 HTTP 入站配置和标签。
+- `BuildRouteRule`：纯函数，输入入站标签与出站标签，输出 Xray 路由规则。
+- `EngineController`：封装 Xray gRPC 管理 API，提供 ensure、add/reuse outbound、add inbound、add rule、remove、reconcile 和引用计数操作。
 
 ## 4. 启动与停止事务
 
@@ -86,22 +90,22 @@ pub trait EventSink {
 4. 获取全局运行时配额；检查可用内存、磁盘和并发上限。
 5. 校验指纹规格、代理配置、内核与协议引擎能力清单。
 6. 校验内核与引擎二进制 SHA-256；失败则不创建任何临时资源。
-7. 分配回环代理端口；生成引擎配置到运行时临时目录，权限 0600。
-8. 执行引擎配置校验并启动引擎；等待 mixed 入站就绪。
-9. 生成内核 argv，注入 `--proxy-server=http://127.0.0.1:<proxy_port>`、数据目录、CDP 和显示参数。
-10. 启动内核；等待 `DevToolsActivePort` 与 CDP 探测（如启用）。
-11. 持久化 `runtimes=running`，发布 `runtime.running`，返回运行时句柄。
-12. 删除临时引擎配置；运行时只保留加密数据库中的代理配置。
+7. 分配回环代理端口；确保共享 Xray 引擎运行并连接管理 API。
+8. 计算 `outbound_key`，添加或复用出站，并增加引用计数。
+9. 添加本运行时的回环 HTTP 入站和入站到出站的路由规则。
+10. 生成内核 argv，注入 `--proxy-server=http://127.0.0.1:<proxy_port>`、数据目录、CDP 和显示参数。
+11. 启动内核；等待 `DevToolsActivePort` 与 CDP 探测（如启用）。
+12. 持久化 `runtimes=running`，发布 `runtime.running`，返回运行时句柄。
 
-失败回滚顺序与启动相反：终止内核进程组、停止引擎、删除临时配置、释放端口、释放配额、释放 actor 锁、写入 `failed` 与稳定错误码。回滚中的二次失败必须记录，但不得掩盖原始错误。
+失败回滚顺序与启动相反：终止内核进程组、删除路由规则与入站、释放出站引用、释放端口、释放配额、释放 actor 锁、写入 `failed` 与稳定错误码。共享引擎本身不因单个运行时失败而退出。回滚中的二次失败必须记录，但不得掩盖原始错误。
 
 ### 4.2 停止顺序
 
 1. 状态改为 `stopping`，发布事件。
 2. 向内核发送正常退出信号，等待数据落盘。
 3. 超时后终止内核进程组。
-4. 停止协议引擎；超时后终止引擎进程组。
-5. 删除临时配置与端口占用，释放配额与 actor 锁。
+4. 删除该运行时的路由规则与入站；释放共享出站引用，引用归零时删除出站。
+5. 释放端口、配额与 actor 锁；共享引擎保持运行。
 6. 写入 `stopped`，发布事件；强制终止写入审计事件。
 
 停止对已停止档案幂等返回成功。停止失败时保留 `runtimes` 记录和诊断信息，允许重试清理。
@@ -110,17 +114,17 @@ pub trait EventSink {
 
 控制面启动时读取非终态 `runtimes`：
 
-- 通过 PID、进程启动时间、命令行和数据目录确认内核与引擎归属。
-- 可确认归属且支持接管时恢复监控；否则安全终止并标记 `crashed` 或 `stopped`。
+- 通过 PID、进程启动时间和 API 端口确认共享 Xray 引擎；通过 PID、命令行和数据目录确认各内核。
+- 引擎可接管时通过 API 对账入站/出站/规则；不可接管时重启引擎并按 `proxy_port` 重建全部运行配置。
 - 无法确认归属的进程不盲目杀死，标记为孤儿并按 TTL 清理。
-- 删除过期临时配置、锁文件和端口引用；未完成操作写入失败事件。
+- 删除过期锁文件和端口引用；未完成操作写入失败事件。
 
 ## 5. 并发与锁
 
 - 每个档案一个 actor，命令通过 `mpsc` 串行化；启动/停止不会并发执行。
 - 全局 `Semaphore` 控制最大运行档案数；资源检查在获取配额后进行，失败立即释放。
 - SQLite 使用连接池，事务短小；禁止在持有数据库事务时等待进程、网络或引擎就绪。
-- 锁顺序固定为：档案 actor → 全局配额 → 代理端口 → 引擎 → 内核；反向释放。
+- 锁顺序固定为：档案 actor → 全局配额 → 共享引擎写锁 → 代理端口/入站 → 内核；反向释放。引擎 API 操作必须串行化，避免重复出站或引用计数漂移。
 - 事件持久化与广播通过独立任务解耦；广播无订阅者不影响事件落库。
 - 进程等待使用异步子进程 API；文件哈希、目录清理等可能阻塞的操作放入阻塞线程池。
 - 关闭时设置全局取消令牌，按启动逆序停止运行时，最后执行 WAL checkpoint。
@@ -138,7 +142,7 @@ pub trait EventSink {
 | `VALIDATION_` | `FINGERPRINT_INVALID`、`PROXY_CONFIG_INVALID` | 422 | 输入不可用 |
 | `QUOTA_` | `QUOTA_EXCEEDED` | 429 | 并发或资源不足 |
 | `KERNEL_` | `KERNEL_CHECKSUM_MISMATCH` | 500/409 | 内核缺失、损坏或版本不兼容 |
-| `PROXY_` | `PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_NOT_READY` | 502/503 | 引擎或节点失败 |
+| `PROXY_` | `PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_NOT_READY`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT` | 502/503/409 | 引擎、API、端口或节点失败 |
 | `RUNTIME_` | `RUNTIME_CDP_TIMEOUT`、`RUNTIME_SPAWN_FAILED` | 500 | 进程生命周期失败 |
 | `STORAGE_` | `STORAGE_BUSY`、`STORAGE_MIGRATION_FAILED` | 500 | 数据库或文件系统失败 |
 | `INTERNAL_` | `INTERNAL_UNEXPECTED` | 500 | 未分类错误，必须带 request_id |
@@ -177,7 +181,7 @@ macOS 使用 `~/Library/Application Support/Mien` 与 `~/Library/Logs/Mien`；Do
 事件类型至少包括：
 
 - `runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`。
-- `proxy.engine.failed`、`proxy.check.completed`。
+- `proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
 - `profile.created`、`profile.updated`、`profile.archived`、`profile.deleted`。
 - `kernel.installed`、`engine.installed`、`audit.recorded`。
 
@@ -189,9 +193,9 @@ macOS 使用 `~/Library/Application Support/Mien` 与 `~/Library/Logs/Mien`；Do
 
 - 核心不信任宿主输入；所有路径规范化并校验位于数据根内，拒绝符号链接穿越。
 - argv 使用数组，不经过 shell；代理配置由产品生成，不直接透传用户 JSON。
-- 引擎配置 0600，启动后删除；秘密不进入进程参数、日志、事件或 API。
+- 引擎凭据只经回环管理 API 传递，不写入持久化配置；秘密不进入进程参数、日志、事件或 API。
 - 内核与引擎启动前校验 SHA-256；Docker 拒绝未验证沙箱的无沙箱启动，除非显式开启 `ALLOW_UNSANDBOXED`。
-- 控制面写操作校验会话/Token、范围、Origin 与 CSRF；CDP、noVNC 和 mixed 入站只绑定回环。
+- 控制面写操作校验会话/Token、范围、Origin 与 CSRF；CDP、noVNC、运行档案 HTTP 入站和 Xray 管理 API 只绑定回环。
 - 事件与审计元数据统一脱敏；错误响应带 request_id，不带堆栈。
 
 ## 11. 宿主适配
@@ -289,19 +293,19 @@ tauri::Builder::default()
 ## 12. 测试缝
 
 - `FakeProcessLauncher` 模拟启动、退出码、超时和强杀。
-- `FakeEngine` 模拟配置校验、就绪、失败和节点不可达。
+- `FakeEngine` 模拟动态入站/出站/规则、引用计数、API 失败、引擎崩溃和重建。
 - `FakeClock` 固定时间，验证退避、过期和事件排序。
 - 临时数据目录与临时 SQLite 文件，保证测试隔离。
-- Golden fixture：指纹规格 → argv；代理配置 → 引擎配置；错误 → HTTP 映射。
+- Golden fixture：指纹规格 → argv；代理配置 → 出站/入站/规则；错误 → HTTP 映射。
 - 合同测试：OpenAPI、JSON Schema、事件 schema、导入导出 schema。
 - 端到端：受控协议节点、DNS canary、WebRTC 探测、Docker 有头/无头。
 
 ## 13. 部署契约
 
-- macOS 应用包含内核与 sing-box 二进制、许可与更新清单；数据目录不随应用卸载删除。
+- macOS 应用包含内核与 Xray-core 二进制、MPL-2.0 许可与更新清单；数据目录不随应用卸载删除。
 - Docker 镜像使用非 root 用户、只读根文件系统、`/data` 唯一可写卷；入口脚本管理 Xvfb、openbox、可选 noVNC 和信号转发。
-- Docker 端口：控制面 8080、noVNC 6080（默认关闭）、CDP 与 mixed 入站不映射。
-- Hysteria2/TUIC 需要容器允许 UDP 出站；不满足时明确报错，不回退其他协议。
+- Docker 端口：控制面 8080、noVNC 6080（默认关闭）、CDP、Xray 管理 API 与每运行档案 HTTP 入站均不映射。
+- Hysteria2 需要容器允许 UDP 出站；不满足时明确报错，不回退其他协议；TUIC 不进入 v1。
 - Apple Silicon 运行 `linux/amd64` 镜像时记录模拟性能；原生 ARM64 不在首个发布范围。
 
 ## 14. 版本与兼容

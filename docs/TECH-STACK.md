@@ -7,7 +7,7 @@
 - 少服务：v1 不引入 Postgres、Redis、消息队列或外部会话服务。
 - 可验证：进程、网络、密钥和时间都通过可替换端口注入，便于测试。
 - 安全边界清晰：内核、协议引擎、控制面、代理凭据和浏览器数据分层隔离。
-- 许可可审计：链接依赖只接受宽松许可；GPL 协议引擎以独立进程隔离并单独评审。
+- 许可可审计：链接依赖只接受宽松许可；协议引擎以独立进程分发并保留 MPL-2.0 许可与来源信息。
 - 版本可回滚：内核、协议引擎、数据库和应用分别版本化，升级不静默改变已有档案。
 
 ## 2. 版本策略
@@ -60,8 +60,7 @@
 | 端到端 | Playwright | 固定主版本 | CDP 连接、桌面与服务端流程 |
 | 包管理 | Bun 1.x；Node 22 LTS 用于工具链 | 固定主版本 | 安装快；Playwright/Tauri 兼容 Node |
 | 浏览器内核 | fingerprint-chromium 148.0.7778.215 | 固定 | 上游 macOS 构建与 canvas 稳定性最优 |
-| 协议引擎 | sing-box 1.14.x | 固定补丁版本与 SHA-256 | VLESS/VMess/SS/Trojan/Hysteria2/TUIC/WireGuard；GPL-3.0 |
-| 协议引擎回退 | Xray-core（MPL-2.0） | 仅在 GPL 评审不通过时启用 | 覆盖 VLESS/VMess/SS/Trojan，缩减协议矩阵 |
+| 协议引擎 | Xray-core v26.11.9+ | 固定补丁版本与 SHA-256 | 单实例动态入站/出站/路由；VLESS/VMess/SS/Trojan/Hysteria2/WireGuard；MPL-2.0 |
 | 容器基础 | Debian bookworm-slim | 固定摘要 | 需要 X11、Chromium 运行库与字体 |
 | 容器 init | tini | 固定 | 信号转发与僵尸进程回收 |
 | 虚拟显示 | Xvfb + openbox | 固定主版本 | 无桌面环境的有头运行 |
@@ -103,12 +102,12 @@
 | Actix + Diesel | 成熟、同步 ORM 强 | 运行时与异步生态分裂；迁移与测试成本高 | 不采用 |
 | axum + SeaORM | ORM 抽象高 | 复杂查询与性能调优可控性较差 | 不采用 |
 
-### 4.5 sing-box vs Xray-core vs 自研协议
+### 4.5 Xray-core vs sing-box vs 自研协议
 
 | 方案 | 优点 | 缺点 | 结论 |
 | --- | --- | --- | --- |
-| sing-box | 协议覆盖广、单二进制、跨平台、配置成熟 | GPL-3.0、额外进程、配置含凭据 | 采用 |
-| Xray-core | MPL-2.0、VLESS/VMess/SS/Trojan 成熟 | 缺少 Hysteria2/TUIC，协议矩阵较窄 | 法律回退 |
+| sing-box | 协议覆盖广、单二进制、跨平台 | 无动态入站/出站/路由 CRUD；SIGHUP 全量重建；多实例连接池违反节点连接约束；GPL-3.0 | 不采用 |
+| Xray-core | MPL-2.0、动态 HandlerService/RoutingService、Hysteria2、共享出站连接复用 | 共享故障域；API 是高权限控制面；不支持 TUIC | 采用 |
 | 自研协议 | 单进程、完全可控 | 密码学与传输维护成本极高 | 不采用 |
 
 ### 4.6 REST + WebSocket vs gRPC / GraphQL
@@ -162,8 +161,8 @@
 - `cargo-deny` 检查许可证、重复版本、禁用源与安全公告；`cargo-audit` 作为补充。
 - 前端依赖允许 MIT、Apache-2.0、BSD、ISC；锁文件提交并定期审计。
 - fingerprint-chromium 为 BSD-3-Clause；发布物保留版权与许可声明。
-- sing-box 为 GPL-3.0-or-later，作为独立进程分发，不链接；发布物保留许可证、源码链接或书面要约，并完成名称使用限制评审。
-- Xray-core 回退为 MPL-2.0；切换时更新能力清单、测试矩阵和发布说明。
+- Xray-core 为 MPL-2.0，作为独立进程分发，不链接；发布物保留许可证、来源信息并完成再分发合规评审。
+- TUIC 不进入 v1；协议矩阵与 Xray 能力清单、测试结果绑定。
 - 所有发布物生成 SBOM；容器镜像固定摘要并签名。
 
 ## 6. 构建与发布
@@ -173,7 +172,7 @@
 - 本地检查：`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo nextest run`、`biome check`、`tsc --noEmit`、`vitest run`。
 - 合约检查：OpenAPI 生成差异、JSON Schema 编译、事件 schema、导入导出 fixture。
 - 端到端：Playwright 连接 CDP；Docker 有头/无头；受控协议节点；DNS canary。
-- macOS：`aarch64-apple-darwin` 构建，嵌套内核与 sing-box 签名，公证与 stapler 验证。
+- macOS：`aarch64-apple-darwin` 构建，嵌套内核与 Xray-core 签名，公证与 stapler 验证。
 - Docker：`buildx` 构建 `linux/amd64`，非 root、只读根、`/data` 卷、健康检查、SBOM、Trivy、cosign。
 - 内核与引擎：构建时下载、SHA-256 校验、写入能力清单；不提交二进制。
 
@@ -186,7 +185,7 @@
 | 前端单元 | Vitest + Testing Library | 组件与 hooks |
 | 端到端 | Playwright | CDP、桌面与服务端流程 |
 | 契约 | utoipa、ajv、JSON Schema | OpenAPI 与 schema 校验 |
-| 协议节点 | sing-box / Xray-core 测试镜像 | VLESS、VMess、SS、Trojan、Hysteria2 |
+| 协议节点 | Xray-core 测试镜像 | VLESS、VMess、SS、Trojan、Hysteria2 |
 | 漏洞 | Trivy、cargo-audit、依赖审计 | 镜像与依赖 |
 | 许可 | cargo-deny、SBOM | 链接依赖与发布物 |
 
@@ -196,8 +195,8 @@
 | --- | --- | --- |
 | WKWebView 与 Chromium 渲染差异 | UI 在桌面与服务端表现不同 | Playwright 覆盖关键页面；CSS 约束；视觉证据 |
 | SQLite 单写者 | 并发写操作排队或超时 | 短事务、WAL、单写者队列、错误重试 |
-| sing-box GPL 合规 | 分发与商业使用受限 | 独立进程、许可与源码要约、法律评审、Xray 回退 |
-| 协议引擎崩溃 | 档案网络中断 | 失败关闭、事件、稳定错误码、不直连回退 |
+| Xray MPL-2.0 与共享引擎合规 | 再分发与共享故障域 | 独立进程、许可证与来源信息、再分发评审、失败关闭与重建 |
+| 共享引擎崩溃或 API 不可用 | 所有运行档案网络中断 | 失败关闭、全局事件、有界重启、原端口重建、不直连回退 |
 | Docker 沙箱不可用 | 安全边界削弱 | 启动前检测、默认拒绝、显式无沙箱开关与审计 |
 | Apple Silicon 模拟 amd64 | 性能下降 | 文档标注；性能基线在 x86_64 测量；原生 ARM64 后续 |
 | 上游内核缺陷 | 指纹或稳定性问题 | 固定 148、准入测试、沙箱、回滚 |
@@ -208,7 +207,7 @@
 | 组件 | 首个发布基线 |
 | --- | --- |
 | fingerprint-chromium | `148.0.7778.215` |
-| sing-box | `1.14.x`，构建时锁定补丁版本与 SHA-256 |
+| Xray-core | `v26.11.9` 或经准入的后继补丁版本，构建时锁定 SHA-256 |
 | Rust | stable，edition 2024，MSRV 1.85 |
 | Tauri | 2.x |
 | React / TypeScript / Vite | 19.x / 5.x / 7.x |

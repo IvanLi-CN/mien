@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mien.local/contracts/proxy-engine-manifest.schema.json",
   "title": "Mien proxy engine capability manifest",
-  "description": "Machine-readable companion to docs/specs/proxy-gateway/SPEC.md. The SPEC remains normative.",
+  "description": "Machine-readable companion to docs/specs/proxy-gateway/SPEC.md. The SPEC remains normative. v1 records the shared Xray-core engine.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,15 +11,16 @@
     "platform",
     "sha256",
     "license",
-    "protocols"
+    "protocols",
+    "connection_reuse"
   ],
   "properties": {
     "engine": {
-      "enum": ["sing-box", "xray-core"]
+      "enum": ["xray-core"]
     },
     "version": {
       "type": "string",
-      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+      "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
     "platform": {
       "enum": ["macos-arm64", "linux-x86_64", "windows-x64"]
@@ -29,11 +30,14 @@
       "pattern": "^[a-f0-9]{64}$"
     },
     "license": {
-      "enum": ["GPL-3.0-or-later", "MPL-2.0"]
+      "enum": ["MPL-2.0"]
     },
     "source_url": {
       "type": "string",
       "pattern": "^https://"
+    },
+    "connection_reuse": {
+      "type": "boolean"
     },
     "protocols": {
       "type": "object",

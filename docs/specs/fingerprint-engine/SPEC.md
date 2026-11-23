@@ -88,7 +88,7 @@
 ### REQ-FP-012
 
 - The system MUST build launch argv as a typed argument array, MUST NOT invoke a shell, and MUST reject duplicate or conflicting arguments.
-- Inputs: 规格、内核路径、用户数据目录、协议引擎 mixed 入口、显示与运行模式。
+- Inputs: 规格、内核路径、用户数据目录、每运行档案回环 HTTP 入站、显示与运行模式。
 - Outputs: 确定性参数数组；每个内核开关最多出现一次；敏感值不进入 argv。
 
 ### REQ-FP-013
@@ -217,7 +217,7 @@
 
 - [ADR-0002：固定 fingerprint-chromium 148 并建立内核准入](../../adr/0002-pin-kernel-148.md)
 - [ADR-0006：显式指纹规格与种子派生模型](../../adr/0006-fingerprint-spec-model.md)
-- [ADR-0007：协议引擎承载正向代理](../../adr/0007-protocol-engine-forward-proxy.md)
+- [ADR-0009：单实例 Xray 动态协议引擎与连接复用](../../adr/0009-shared-xray-engine.md)
 
 ## Visual Evidence
 

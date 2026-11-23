@@ -21,7 +21,7 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 ## 协议引擎基线
 
-正向代理由每档案独立的 [sing-box](https://github.com/SagerNet/sing-box) 协议引擎承载，首个发布覆盖 VLESS、VMess、Shadowsocks、Trojan，并按能力清单支持 Hysteria2、TUIC、WireGuard。HTTP/HTTPS/SOCKS5 也走同一引擎，Chromium 只连接回环 mixed 入口，代理凭据不进入浏览器进程。sing-box 以 GPL-3.0-or-later 分发，发布物必须保留许可证、源码链接或书面要约，并通过法律评审。
+正向代理由每宿主一个共享的 [Xray-core](https://github.com/XTLS/Xray-core) 协议引擎承载，首个发布覆盖 VLESS、VMess、Shadowsocks、Trojan，并按能力清单支持 Hysteria2、WireGuard；TUIC 不进入 v1。每个运行档案有独立回环 HTTP 入站和路由，相同节点/凭据共享出站与连接池；Chromium 不接触代理凭据。Xray-core 以 MPL-2.0 分发，发布物必须保留许可证与来源信息。
 
 ## 当前状态
 
@@ -59,8 +59,8 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 - 指纹内核不能凭空创造宿主不存在的显示属性。`screen.width`、`screen.height`、`devicePixelRatio` 与字体枚举仍受宿主显示器和已安装字体影响；跨操作系统画像只能做到尽力对齐，不能承诺与真实设备完全一致。
 - 无头模式不是有头模式的等价替代。fingerprint-chromium 只处理了部分 Headless 特征，其余特征仍可能暴露；无头档案会被标记为“降低保证”。
-- Chromium 不支持代理认证和 VLESS/VMess/Shadowsocks 等协议。产品为每个运行档案启动独立的 sing-box 协议引擎，内核只看到回环 mixed 入口，凭据不进入浏览器进程。
-- sing-box 以 GPL-3.0-or-later 分发。产品将其作为独立进程使用，发布物保留许可、源码链接或书面要约，并在发布前完成法律评审。
+- Chromium 不支持代理认证和 VLESS/VMess/Shadowsocks 等协议。产品运行单实例共享 Xray 引擎，为每个运行档案创建回环 HTTP 入站和路由；相同节点/凭据复用出站与连接池，凭据不进入浏览器进程。
+- Xray-core 以 MPL-2.0 分发。产品将其作为独立进程使用，发布物保留许可证与来源信息；共享引擎是网络单点，必须失败关闭并在崩溃后按原端口重建。
 - 指纹浏览器提供环境隔离与指纹一致性，不提供匿名性保证，也不承诺绕过任何平台的风控或服务条款。
 - 上游项目明确不提供技术支持，源码按延迟策略发布。内核缺陷只能通过版本准入、沙箱、功能降级或自建补丁分支应对。
 

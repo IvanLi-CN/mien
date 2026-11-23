@@ -24,7 +24,7 @@ Mien 管理多个相互隔离的浏览器档案；每个档案拥有独立的数
 
 ## Positioning
 
-Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动器。它把可复现的指纹规格、每档案独立的 VLESS/VMess/Shadowsocks/Trojan 等协议引擎、失败关闭代理，以及对内核与宿主限制的诚实披露组合在一起。竞品无法如实复制的机制，是同一套共享 Rust 核心同时驱动 macOS 桌面应用和 Docker Web 服务，并保持一致的档案、指纹、代理与运行时语义。
+Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动器。它把可复现的指纹规格、单实例共享 Xray 协议引擎、按节点/凭据复用连接、失败关闭代理，以及对内核与宿主限制的诚实披露组合在一起。竞品无法如实复制的机制，是同一套共享 Rust 核心同时驱动 macOS 桌面应用和 Docker Web 服务，并保持一致的档案、指纹、代理与运行时语义。
 
 ## Operating Context
 
@@ -34,14 +34,14 @@ Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动
 
 - 档案 CRUD、复制、归档、分组、标签、搜索、导入、导出与加密导出。
 - 指纹字段：种子、平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、伪装开关与 WebRTC 策略。
-- 正向代理支持 HTTP、HTTPS、SOCKS5、VLESS、VMess、Shadowsocks、Trojan；Hysteria2、TUIC 与 WireGuard 属于 Tier B，取决于协议引擎能力清单。
-- 每档案独立的 sing-box 协议引擎与回环 mixed 入站；代理凭据不进入 Chromium。
+- 正向代理支持 HTTP、HTTPS、SOCKS5、VLESS、VMess、Shadowsocks、Trojan；Hysteria2 与 WireGuard 属于 Tier B，取决于协议引擎能力清单；TUIC 不进入 v1。
+- 每宿主一个共享 Xray 引擎；每个运行档案有独立回环 HTTP 入站与路由；相同节点/凭据共享出站和连接池；代理凭据不进入 Chromium。
 - 失败关闭网络、目标域名远程 DNS、默认阻止 WebRTC 非代理 UDP、禁用 DoH 绕过、显式处理 IPv6。
 - 仅支持 macOS Apple Silicon 与 macOS 13+；仅支持 Docker `linux/amd64`。macOS Intel 与原生 Linux ARM64 不在首个发布范围。
-- Apple Silicon 上的 Docker 通过模拟运行 amd64 镜像；Hysteria2 与 TUIC 需要 UDP 出站。
+- Apple Silicon 上的 Docker 通过模拟运行 amd64 镜像；Hysteria2 需要 UDP 出站。
 - 固定 fingerprint-chromium `148.0.7778.215`。已知内核限制，包括 canvas 与字体行为，必须披露而不能隐藏。
 - 屏幕尺寸、设备像素比、颜色深度和字体枚举受宿主约束，不能承诺按档案伪造。
-- sing-box 以 GPL-3.0-or-later 分发，并作为独立进程运行；法律评审与 Xray-core 回退是发布约束。
+- Xray-core 以 MPL-2.0 分发，并作为单实例独立进程运行；共享引擎故障会同时影响所有运行档案，必须失败关闭并记录。
 - 首个发布不包含云同步、团队 RBAC、订阅刷新、节点市场或内置代理销售。
 - 产品不提供匿名性，也不保证通过第三方检测。
 

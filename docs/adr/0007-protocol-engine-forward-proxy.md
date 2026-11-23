@@ -1,6 +1,6 @@
 # ADR-0007：协议引擎承载正向代理
 
-- 状态：已接受
+- 状态：已被 [ADR-0009](0009-shared-xray-engine.md) 取代
 - 决策范围：VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等正向代理协议、认证、DNS 与进程边界
 - 取代：[ADR-0004](0004-local-proxy-relay.md)
 
