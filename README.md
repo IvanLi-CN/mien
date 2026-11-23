@@ -17,13 +17,13 @@ macOS 应用使用 AdHoc 签名、不公证；首次启动会被 Gatekeeper 阻�
 
 ## 浏览器内核基线
 
-首个发布固定使用 fingerprint-chromium `148.0.7778.215`：macOS ARM64 DMG、Linux x86_64 TAR.XZ、Windows x64 ZIP 均由上游提供。选择该版本而不是更新的 `150.0.7871.186`，原因包括上游尚无可用的 macOS 构建，以及 150 在启用 canvas 伪装时存在已复现的渲染进程崩溃与站点加载失败；148 同时具备已公开源码，便于安全审计。
+首个发布固定使用 fingerprint-chromium `148.0.7778.215`：上游提供 macOS ARM64 DMG、Linux x86_64 TAR.XZ 与 Windows x64 ZIP 三种构建，但首个发布只分发 macOS ARM64 桌面应用与 `linux/amd64` 镜像，Windows 构建不在首个发布范围。选择该版本而不是更新的 `150.0.7871.186`，原因包括上游尚无可用的 macOS 构建，以及 150 在启用 canvas 伪装时存在已复现的渲染进程崩溃与站点加载失败；148 同时具备已公开源码，便于安全审计。
 
 首个发布不修改、不分叉内核。产品通过命令行开关、能力清单、校验和与版本绑定来使用上游二进制，升级必须经过独立内核准入测试；补丁分支只作为后续安全兜底，不属于首个发布。
 
 ## 协议引擎基线
 
-正向代理由每宿主一个共享的 [Xray-core](https://github.com/XTLS/Xray-core) 协议引擎承载，首个发布覆盖 HTTP、HTTPS、SOCKS5、VLESS、VMess、Shadowsocks、Trojan，并按能力清单支持 Hysteria2、WireGuard；TUIC 不进入 v1。每个运行档案有独立回环 HTTP 入站和路由，相同节点/凭据共享出站与连接池；Chromium 不接触代理凭据。Xray-core 以 MPL-2.0 分发，发布物必须保留许可证与来源信息。
+正向代理由每宿主一个共享的 [Xray-core](https://github.com/XTLS/Xray-core) 协议引擎承载：HTTP、HTTPS、SOCKS5 为基础协议，Tier A 的 VLESS、VMess、Shadowsocks、Trojan 参与首发受控节点门禁，Tier B 的 Hysteria2、WireGuard 按能力清单提供并明确标注失败原因；TUIC 不进入 v1。每个运行档案有独立回环 HTTP 入站和路由，相同节点/凭据共享出站与连接池；Chromium 不接触代理凭据。Xray-core 以 MPL-2.0 分发，发布物必须保留许可证与来源信息。
 
 ## 当前状态
 
@@ -33,6 +33,7 @@ macOS 应用使用 AdHoc 签名、不公证；首次启动会被 Gatekeeper 阻�
 
 | 文档 | 内容 |
 | --- | --- |
+| [`LICENSE`](LICENSE) | Apache-2.0 全文与说明 |
 | [`PRODUCT.md`](PRODUCT.md) | 产品事实：用户、目的、定位、约束、证据与产品原则 |
 | [`DESIGN.md`](DESIGN.md) | 已锁定的 Deep Current 视觉系统：深色空间、身份色、布局、动效与可访问性规则 |
 | [`docs/design/profiles-dark.png`](docs/design/profiles-dark.png) | 已批准的 Profiles 首屏视觉 comp，1440×900 |
@@ -78,6 +79,10 @@ macOS 应用使用 AdHoc 签名、不公证；首次启动会被 Gatekeeper 阻�
 - Xray-core 以 MPL-2.0 分发。产品将其作为独立进程使用，发布物保留许可证与来源信息；共享引擎是网络单点，必须失败关闭并在崩溃后按原端口重建。
 - 指纹浏览器提供环境隔离与指纹一致性，不提供匿名性保证，也不承诺绕过任何平台的风控或服务条款。
 - 上游项目明确不提供技术支持，源码按延迟策略发布。内核缺陷只能通过版本准入、沙箱、功能降级或自建补丁分支应对。
+
+## 许可证
+
+Mien 以 [Apache-2.0](LICENSE) 发布。第三方组件各自保留其许可：fingerprint-chromium 为 BSD-3-Clause、Xray-core 为 MPL-2.0，容器内 GPL/LGPL 组件以独立进程分发；逐组件义务、来源与合规状态见 [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md)。发布资产包含 `LICENSE`、`NOTICE`、`LICENSES/` 与 SBOM，许可扫描有未处置项即阻断发布。
 
 ## 开发入口
 

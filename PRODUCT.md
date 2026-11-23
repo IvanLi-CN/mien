@@ -6,6 +6,8 @@
 
 web
 
+管理界面只有一套 Web UI：macOS 桌面由 Tauri 原生窗口承载，Docker 由服务端宿主提供，二者共用同一 Rust 核心、领域契约与 DTO。首个发布只覆盖 macOS Apple Silicon 桌面与 Docker `linux/amd64` 服务；Windows 与 Linux 桌面属于后续范围。
+
 ## Stack
 
 Tauri 2 + React 19 + TypeScript + Vite + Rust 核心，由用户确认。管理界面是一套 Web UI，打包在 macOS Tauri 应用中，并由 Docker Web 宿主提供；Rust 核心由两种宿主共享。
@@ -34,7 +36,7 @@ Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动
 
 - 档案 CRUD、复制、归档、分组、标签、搜索、导入、导出与加密导出。
 - 指纹字段：种子、平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、伪装开关与 WebRTC 策略。
-- 正向代理支持 HTTP、HTTPS、SOCKS5、VLESS、VMess、Shadowsocks、Trojan；Hysteria2 与 WireGuard 属于 Tier B，取决于协议引擎能力清单；TUIC 不进入 v1。
+- 正向代理支持 HTTP、HTTPS、SOCKS5 基础协议与 Tier A 的 VLESS、VMess、Shadowsocks、Trojan（首发受控节点必过）；Hysteria2 与 WireGuard 属于 Tier B，按协议引擎能力清单提供并显式标注能力与失败原因；TUIC 不进入 v1。
 - 每宿主一个共享 Xray 引擎；每个运行档案有独立回环 HTTP 入站与路由；相同节点/凭据共享出站和连接池；代理凭据不进入 Chromium。
 - 运行模式包括有头、无头和伪有头；后两者为显式降低保证，伪有头需要内核能力清单声明 UA 补丁。
 - 失败关闭网络、目标域名远程 DNS、默认阻止 WebRTC 非代理 UDP、禁用 DoH 绕过、显式处理 IPv6。
@@ -44,6 +46,7 @@ Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动
 - 固定 fingerprint-chromium `148.0.7778.215`。已知内核限制，包括 canvas 与字体行为，必须披露而不能隐藏。
 - 屏幕尺寸、设备像素比、颜色深度和字体枚举受宿主约束，不能承诺按档案伪造。
 - Xray-core 以 MPL-2.0 分发，并作为单实例独立进程运行；共享引擎故障会同时影响所有运行档案，必须失败关闭并记录。
+- 项目以 Apache-2.0 发布（仓库根 `LICENSE`）；fingerprint-chromium 为 BSD-3-Clause、Xray-core 为 MPL-2.0，容器内 GPL/LGPL 组件以独立进程分发。发布物必须随附项目与第三方许可文本、来源信息与许可清单。
 - 首个发布不包含云同步、团队 RBAC、订阅刷新、节点市场或内置代理销售。
 - 产品不提供匿名性，也不保证通过第三方检测。
 
