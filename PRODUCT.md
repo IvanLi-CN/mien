@@ -28,7 +28,7 @@ Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动
 
 ## Operating Context
 
-用户从 macOS 桌面或连接 Docker 部署的浏览器工作。档案按分组、标签、备注和运行状态组织；每个档案绑定一套指纹规格、一个代理配置和一个启动地址。运行中的档案提供状态、日志、代理检查，以及可选的、仅绑定回环地址的 CDP 自动化入口。服务端版本使用共享 Xvfb 显示运行有头档案，并支持显式标记“降低保证”的无头与无头 UA 档案；无头 UA 只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
+用户从 macOS 桌面或连接 Docker 部署的浏览器工作。档案按分组、标签、备注和运行状态组织；每个档案绑定一套指纹规格、一个代理配置和一个启动地址。运行中的档案提供状态、日志、代理检查，以及可选的、仅绑定回环地址的 CDP 自动化入口。服务端版本使用共享 Xvfb 显示运行有头档案，并支持显式标记“降低保证”的无头与伪有头档案；伪有头只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
 
 ## Capabilities and Constraints
 
@@ -36,7 +36,7 @@ Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动
 - 指纹字段：种子、平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、伪装开关与 WebRTC 策略。
 - 正向代理支持 HTTP、HTTPS、SOCKS5、VLESS、VMess、Shadowsocks、Trojan；Hysteria2 与 WireGuard 属于 Tier B，取决于协议引擎能力清单；TUIC 不进入 v1。
 - 每宿主一个共享 Xray 引擎；每个运行档案有独立回环 HTTP 入站与路由；相同节点/凭据共享出站和连接池；代理凭据不进入 Chromium。
-- 运行模式包括有头、无头和无头 UA；后两者为显式降低保证，无头 UA 需要内核能力清单声明 UA 补丁。
+- 运行模式包括有头、无头和伪有头；后两者为显式降低保证，伪有头需要内核能力清单声明 UA 补丁。
 - 失败关闭网络、目标域名远程 DNS、默认阻止 WebRTC 非代理 UDP、禁用 DoH 绕过、显式处理 IPv6。
 - 仅支持 macOS Apple Silicon 与 macOS 13+；仅支持 Docker `linux/amd64`。macOS Intel 与原生 Linux ARM64 不在首个发布范围。
 - Apple Silicon 上的 Docker 通过模拟运行 amd64 镜像；Hysteria2 需要 UDP 出站。

@@ -4,7 +4,7 @@
 
 ## Context and Scope
 
-- Context: 产品必须可靠地启动、监督和停止 fingerprint-chromium 进程，并在 macOS 宿主桌面与 Docker 无桌面环境中提供有头、无头和“无头 UA”三种运行方式。
+- Context: 产品必须可靠地启动、监督和停止 fingerprint-chromium 进程，并在 macOS 宿主桌面与 Docker 无桌面环境中提供有头、无头和“伪有头”三种运行方式。
 - In scope: 运行时状态机、启动/停止、进程组、崩溃处理、控制面重启对账、并发准入、内核校验、沙箱检查、CDP 暴露、日志、Xvfb/openbox/noVNC 生命周期。
 - Out of scope: 指纹字段与 argv 语义（由 `fingerprint-engine` 负责）、代理协议与 DNS（由 `proxy-gateway` 负责）、档案元数据（由 `profile-management` 负责）。
 
@@ -15,7 +15,7 @@
 - `process group`: 内核及其子进程组成的进程组，用于可靠终止和孤儿清理。
 - `headful`: 内核创建可见窗口；macOS 使用宿主桌面，Docker 使用 Xvfb。
 - `headless`: 内核不创建可见窗口；标记为降低保证。
-- `headless_ua`: 无头模式，依赖 fingerprint-chromium 的 `HeadlessChrome` → `Chrome` UA 补丁；其他 Headless 特征保留；标记为降低保证。`headless` 不承诺 UA 结果；在 pinned 148 上 UA 补丁可能是编译期默认，`headless_ua` 通过能力清单把该行为变成显式契约。
+- `pseudo_headful`: 无头模式，依赖 fingerprint-chromium 的 `HeadlessChrome` → `Chrome` UA 补丁；其他 Headless 特征保留；标记为降低保证。`headless` 不承诺 UA 结果；在 pinned 148 上 UA 补丁可能是编译期默认，`pseudo_headful` 通过能力清单把该行为变成显式契约。
 - Interface: `/api/v1/profiles/{id}/start`、`/stop`、`/runtime`；运行时事件 `runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`；`runtimes` 表。
 
 ## Requirements
@@ -118,9 +118,9 @@
 
 ### REQ-RUNTIME-017
 
-- The system MUST support `headless_ua` as an explicit reduced-assurance mode that requires the installed kernel manifest to declare `headless_ua_patch=true`, runs Chromium headless, and exposes only the UA-patch scope.
-- Inputs: `headless_ua` 偏好、内核能力清单、启动请求。
-- Outputs: 参数包含 `--headless=new`；响应包含 `mode=headless_ua`、`reduced_assurance=true`、`ua_scope=chrome` 和“其他 Headless 特征保留”的限制说明；能力缺失时拒绝启动，不得静默降级为 `headless` 或 `headful`。
+- The system MUST support `pseudo_headful` as an explicit reduced-assurance mode that requires the installed kernel manifest to declare `headless_chrome_ua_patch=true`, runs Chromium headless, and exposes only the UA-patch scope.
+- Inputs: `pseudo_headful` 偏好、内核能力清单、启动请求。
+- Outputs: 参数包含 `--headless=new`；响应包含 `mode=pseudo_headful`、`reduced_assurance=true`、`ua_scope=chrome` 和“其他 Headless 特征保留”的限制说明；能力缺失时拒绝启动，不得静默降级为 `headless` 或 `headful`。
 
 ## Verification
 
@@ -222,7 +222,7 @@
 
 ### VER-RUNTIME-017
 
-- Method: 在内核能力清单声明和未声明 `headless_ua_patch` 的两种情况下启动 `headless_ua`，检查 argv、UA、响应标记和其他 Headless 特征。
+- Method: 在内核能力清单声明和未声明 `headless_chrome_ua_patch` 的两种情况下启动 `pseudo_headful`，检查 argv、UA、响应标记和其他 Headless 特征。
 - covers: `REQ-RUNTIME-017`
 - Pass condition: 声明时启动成功并返回 `ua_scope=chrome`；未声明时拒绝并返回稳定错误；不静默降级；UI/API 显示降低保证和其他 Headless 特征仍保留。
 

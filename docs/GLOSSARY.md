@@ -15,7 +15,7 @@
 | 启动参数 | launch argv | 由指纹引擎生成、以参数数组形式传给内核的完整命令行；不经过 shell。 |
 | 有头模式 | headful | 内核创建可见窗口并使用图形显示服务的运行方式。macOS 使用宿主桌面；Docker 使用 Xvfb 虚拟显示。 |
 | 无头模式 | headless | 内核不创建可见窗口的运行方式。指纹保证弱于有头模式，属于显式降级选项。 |
-| 无头 UA | headless_ua | 无头运行，但依赖内核把 `HeadlessChrome` UA 改为 `Chrome`；其他 Headless 特征保留，属于显式降低保证。 |
+| 伪有头 | pseudo_headful | 无头运行，但依赖内核把 `HeadlessChrome` UA 改为 `Chrome`；其他 Headless 特征保留，属于显式降低保证，不是有头等价。 |
 | 虚拟显示 | Xvfb | Docker 中提供无物理显示器图形环境的 X 服务器。 |
 | 窗口管理器 | openbox | Docker 有头模式下的轻量窗口管理器，用于让 Chromium 窗口获得正常的焦点、尺寸和状态行为。 |
 | 远程查看 | noVNC | 通过 WebSocket 在浏览器中查看 Xvfb 画面的可选组件；不是运行内核的必需依赖。 |

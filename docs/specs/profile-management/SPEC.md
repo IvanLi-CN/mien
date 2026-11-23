@@ -99,7 +99,7 @@
 
 ### REQ-PROFILE-014
 
-- The system MUST define startup preferences per profile, including start URL, headful/headless/headless_ua mode, window size, and whether the automation API is exposed.
+- The system MUST define startup preferences per profile, including start URL, headful/headless/pseudo_headful mode, window size, and whether the automation API is exposed.
 - Inputs: 用户偏好与能力清单。
 - Outputs: 持久化偏好；不支持的显示或运行模式在保存时拒绝或在启动时给出明确错误。
 
@@ -185,7 +185,7 @@
 
 ### VER-PROFILE-014
 
-- Method: 保存有头/无头/无头 UA、窗口尺寸、启动地址和自动化开关，并与能力清单比较。
+- Method: 保存有头/无头/伪有头、窗口尺寸、启动地址和自动化开关，并与能力清单比较。
 - covers: `REQ-PROFILE-014`
 - Pass condition: 支持的偏好被持久化；不支持的模式在保存或启动时被明确拒绝，不静默降级。
 

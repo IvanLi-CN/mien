@@ -13,7 +13,7 @@
     "seed_derived",
     "known_issues",
     "sandbox",
-    "headless_ua_patch"
+    "headless_chrome_ua_patch"
   ],
   "properties": {
     "kernel_version": {
@@ -46,7 +46,7 @@
       "type": "array",
       "items": {"type": "string"}
     },
-    "headless_ua_patch": {
+    "headless_chrome_ua_patch": {
       "type": "boolean"
     },
     "sandbox": {
