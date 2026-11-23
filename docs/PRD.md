@@ -111,7 +111,7 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 
 ### 8.1 首次启动 macOS 档案
 
-用户安装签名应用，首次打开时应用解压内置内核并校验校验和，创建主密钥并存入钥匙串。用户新建档案，选择“macOS 主机对齐”预设，系统生成种子、语言、时区、CPU 核心数和窗口尺寸。用户配置代理并测试连接，点击启动，浏览器窗口打开，控制面显示运行状态、调试端口和代理延迟。
+用户从 GitHub Release 下载 DMG，先校验 SHA-256 或 artifact attestation，再按发布说明手动放行 AdHoc 应用；首次打开时应用解压内置内核并校验校验和，创建主密钥并存入钥匙串。用户新建档案，选择“macOS 主机对齐”预设，系统生成种子、语言、时区、CPU 核心数和窗口尺寸。用户配置代理并测试连接，点击启动，浏览器窗口打开，控制面显示运行状态、调试端口和代理延迟。
 
 ### 8.2 Docker 服务端集中运行
 
@@ -315,7 +315,7 @@ Tier A 参与发布门禁；Tier B 必须明确标注能力与失败原因，不
 | PRD-ACC-007 | 导入导出 | 明文与加密导出可导入；错误 schema、超长字段、路径穿越和非法代理被拒绝；默认导出不含代理凭据；加密导出可完整恢复代理配置。 |
 | PRD-ACC-008 | 安全基线 | 未登录不能写操作；错误密码限流；Token 可撤销；代理凭据为密文；内核与协议引擎校验失败拒绝启动；容器非 root；Xray 管理 API 只绑定回环，日志与 API 无秘密。 |
 | PRD-ACC-009 | 容量与性能 | 10 个档案并发运行；启动与停止满足性能目标；24 小时浸泡通过。 |
-| PRD-ACC-010 | 发布物 | macOS 应用签名并公证；Docker 镜像可复现构建、带健康检查、通过漏洞扫描；内核与 Xray-core 的 MPL-2.0 许可、来源信息和已知限制文档齐全。 |
+| PRD-ACC-010 | 发布物 | macOS 应用为 AdHoc 签名，`codesign --verify` 通过且 `Signature=adhoc`；不公证，Gatekeeper 首次启动被阻止且有经校验的手动放行说明；Docker 镜像可复现构建、带健康检查、通过漏洞扫描；内核与 Xray-core 的 MPL-2.0 许可、来源信息和已知限制文档齐全。 |
 
 ### 12.2 发布门槛
 
@@ -371,6 +371,7 @@ Mien 仅用于合法、授权的环境隔离、测试、隐私研究和多账号
 | 有头优先 | Docker 默认 Xvfb + openbox；无头与伪有头仅显式降级；noVNC 可选 | [`ADR-0005`](adr/0005-headful-first-display.md) |
 | 指纹模型 | 显式规格 + 种子派生，主机对齐优先，能力清单校验 | [`ADR-0006`](adr/0006-fingerprint-spec-model.md) |
 | 桌面调用 | 管理网页通过 Tauri IPC 调用核心；服务端使用 HTTP/WS；两套传输共享同一套领域服务与 DTO | [`ADR-0008`](adr/0008-tauri-ipc-ui-transport.md) |
+| macOS 分发 | AdHoc 签名，不公证；GitHub Actions tag 发布；SHA-256、artifact attestation 与 Tauri 更新签名组成信任链 | [`ADR-0010`](adr/0010-adhoc-macos-distribution.md)、[`CI.md`](CI.md) |
 
 ## 16. 参考
 
@@ -383,3 +384,4 @@ Mien 仅用于合法、授权的环境隔离、测试、隐私研究和多账号
 - 技术选型：[`TECH-STACK.md`](TECH-STACK.md)
 - 测试计划：[`TEST-PLAN.md`](TEST-PLAN.md)
 - 安全威胁模型：[`SECURITY.md`](SECURITY.md)
+- CI 与发布流水线：[`CI.md`](CI.md)

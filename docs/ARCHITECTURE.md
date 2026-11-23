@@ -471,7 +471,7 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 | Web UI | React + TypeScript + Vite + TanStack Query | 桌面与服务端共用，生态成熟 |
 | 协议引擎 | Xray-core v26.11.9+，固定版本、SHA-256、能力清单 | 单实例动态入站/出站/路由；覆盖 VLESS、VMess、Shadowsocks、Trojan、Hysteria2；MPL-2.0 |
 | 容器 | Debian slim、Xvfb、openbox、x11vnc、noVNC | 无桌面环境下提供有头浏览与可选查看 |
-| CI | GitHub Actions macOS arm64 + linux/amd64 | 原生平台构建、签名、镜像发布 |
+| CI | GitHub Actions macOS arm64 + linux/amd64 | 原生平台构建、AdHoc 打包、镜像发布 |
 
 不选 Electron 的原因：桌面端会再次捆绑 Chromium，体积和内存开销大，且与指纹内核的进程管理没有直接收益。不选“桌面端调用远程服务”的原因：本地优先要求离线可用，且 macOS 用户不应被迫部署容器。
 
@@ -483,7 +483,7 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 
 - 构建时从固定 URL 下载 fingerprint-chromium 发行包，校验 SHA-256，记录到 `kernels/<version>/manifest.json`。
 - 二进制不提交到 Git；构建缓存与发布物包含内核和 BSD-3-Clause 许可声明。
-- macOS 应用将内核放入应用资源目录，随应用一起签名和公证；首次启动解压到 Application Support 并再次校验。
+- macOS 应用将内核放入应用资源目录，随应用一起做 AdHoc 签名；首次启动解压到 Application Support 并再次校验。
 - Docker 镜像在构建阶段安装 Linux 内核到 `/opt/mien/kernel`，镜像内再次校验。
 - 内核升级通过独立发行物或镜像标签交付，不通过静默后台下载。
 
@@ -498,8 +498,10 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 ### 13.3 macOS
 
 - 通用构建目标为 `aarch64-apple-darwin`，最低 macOS 13。
-- 应用、嵌套内核、Xray-core 二进制和更新包使用 Developer ID 签名；发布前公证并验证 Gatekeeper。
-- 自动更新使用签名清单，禁止降级到未签名版本。
+- 应用、嵌套内核、Xray-core 二进制和 frameworks 使用 AdHoc 签名；不执行公证，也不把 Gatekeeper 通过作为发布门禁。AdHoc 只提供包完整性信号，不证明发布者身份。
+- 发布物提供 SHA-256SUMS、SBOM、许可证和 Tauri 更新清单；仓库计划支持时生成 GitHub artifact attestation。Gatekeeper 首次启动会阻止 AdHoc 应用，发布说明要求用户先校验资产，再手动放行。
+- 自动更新使用 Tauri 更新签名清单，和 Apple 代码签名无关；禁止降级到未签名版本。
+- CI 与发布 workflow 的触发、权限、制品和门禁见 [`CI.md`](CI.md) 与 [`ADR-0010`](adr/0010-adhoc-macos-distribution.md)。
 - 主密钥存入登录钥匙串；卸载不自动删除数据目录。
 
 ### 13.4 Docker
@@ -548,3 +550,5 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 - [`DATABASE-SCHEMA.md`](DATABASE-SCHEMA.md)
 - [`XRAY-MAPPING.md`](XRAY-MAPPING.md)
 - [`ERROR-CODES.md`](ERROR-CODES.md)
+- [`CI.md`](CI.md)
+- [`adr/0010-adhoc-macos-distribution.md`](adr/0010-adhoc-macos-distribution.md)

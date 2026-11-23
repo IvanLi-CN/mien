@@ -68,7 +68,7 @@ flowchart LR
 | T-10 | noVNC 暴露 | 直接访问 VNC/WebSocket | 默认关闭；一次性令牌；容器网络限制；不默认公网映射 | 令牌在有效期内被截获 |
 | T-11 | 恶意网页利用内核漏洞 | canvas/WebGL 读回、渲染进程攻击 | 强制沙箱；站点隔离；固定内核并跟踪上游；不允许默认无沙箱 | 148 存在已报告越界访问（#102） |
 | T-12 | 容器逃逸或权限过大 | root、额外 capability、挂载 Docker socket | 非 root；cap-drop ALL；no-new-privileges；只读根；seccomp/AppArmor；不挂载宿主目录 | 内核或运行时漏洞 |
-| T-13 | 内核或引擎供应链篡改 | 替换二进制、劫持下载、静默升级 | 固定 URL；SHA-256；签名应用/镜像；版本绑定；不静默下载；能力清单 | 上游构建或签名密钥被攻破 |
+| T-13 | 内核或引擎供应链篡改 | 替换二进制、劫持下载、静默升级 | 固定 URL；SHA-256；AdHoc 签名仅保证包完整性；Docker digest/cosign；GitHub artifact attestation（支持时）；版本绑定；不静默下载；能力清单 | AdHoc 不证明发布者身份；GitHub 账户或发布资产被攻破 |
 | T-14 | 日志泄露 | 记录代理 URL、Token、Cookie、页面内容 | 结构化日志字段白名单；统一脱敏；日志轮转与权限 | 调试日志可能临时包含更多信息 |
 | T-15 | 同用户滥用回环代理 | 本机进程连接运行档案入站或 Xray 管理 API | 回环绑定；固定分配端口；容器网络隔离；API 不暴露 | macOS 同用户进程仍可使用 |
 | T-16 | 主密钥丢失或泄露 | 误删钥匙串、环境变量泄露 | 钥匙串或 0600 文件；Secret 管理；备份流程；轮换流程 | 丢失后敏感字段不可恢复 |
@@ -129,7 +129,7 @@ flowchart LR
 ### 5.6 供应链与更新
 
 - 内核与协议引擎固定版本、固定 URL、SHA-256 清单；不静默下载或替换。
-- macOS 应用、嵌套内核、Xray-core 二进制和更新包使用 Developer ID 签名；发布前公证。
+- macOS 应用、嵌套内核、Xray-core 二进制和 frameworks 使用 AdHoc 签名；不公证。发布物提供 SHA-256SUMS、SBOM 和 Tauri 更新签名；仓库计划支持时生成 GitHub artifact attestation。Gatekeeper 首次启动会阻止 AdHoc 应用，用户必须先校验资产再手动放行。
 - Docker 镜像签名或摘要固定；构建使用锁定的依赖版本。
 - 升级经过内核准入与协议矩阵；运行中档案不被替换；保留回滚版本。
 - 发布物包含 BSD-3-Clause 与 MPL-2.0 许可声明、上游来源信息；Xray-core 名称使用与再分发合规完成评审。
@@ -182,7 +182,7 @@ flowchart LR
 
 ### 7.1 macOS
 
-- 从签名发布物安装；启用 Gatekeeper；不在共享账户或公共机器上运行。
+- 从 GitHub Release 安装；先校验 SHA-256 或 artifact attestation；AdHoc 应用首次启动会被 Gatekeeper 阻止，按发布说明手动放行，不关闭系统级 Gatekeeper；不在共享账户或公共机器上运行。
 - 开启 FileVault；使用独立登录账户；限制数据目录访问。
 - 主密钥仅存登录钥匙串；不要在脚本中传递主密钥。
 - 保持应用、内核和协议引擎版本受控；不使用未校验的第三方二进制。

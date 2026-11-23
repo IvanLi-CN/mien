@@ -127,7 +127,7 @@ M0 结束前必须冻结：
 
 以下可以在 M1/M2 并行推进，不阻塞第一个切片：
 
-- Docker 镜像发布流水线、签名/公证、SBOM/许可构建。
+- GitHub Actions CI/release workflow、AdHoc 打包、SBOM/许可构建。
 - 10 档案容量与 24 小时浸泡。
 - noVNC 之外的远程查看增强。
 - 订阅、节点测速、多节点调度和 TUIC。
@@ -140,3 +140,4 @@ M0 结束前必须冻结：
 - [`TEST-PLAN.md`](TEST-PLAN.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`RELEASE.md`](RELEASE.md)
+- [`CI.md`](CI.md)

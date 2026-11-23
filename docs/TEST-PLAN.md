@@ -17,7 +17,7 @@
 
 | 环境 | 配置 | 用途 |
 | --- | --- | --- |
-| macOS 桌面 | Apple Silicon，macOS 13+，干净用户账户 | 桌面宿主、钥匙串、有头运行、签名与公证 |
+| macOS 桌面 | Apple Silicon，macOS 13+，干净用户账户 | 桌面宿主、钥匙串、有头运行、AdHoc 打包与完整性 |
 | Docker x86_64 | Linux x86_64，8 vCPU / 16 GB，非 root 容器 | 服务端、Xvfb 有头、无头、代理与容量 |
 | Docker on Apple Silicon | Docker Desktop 或 OrbStack，`linux/amd64` 模拟 | 兼容性与性能记录，不作为性能基线 |
 | HTTP/SOCKS fixture | 本地 HTTP、HTTPS、SOCKS5 代理，支持认证与 DNS 日志 | 基础代理、认证、远程 DNS、失败关闭 |
@@ -40,7 +40,7 @@
 | 安全 | 认证、CSRF、密钥、路径、沙箱、镜像 | 安全用例与扫描器 | 每次合并与发布前 |
 | 视觉/UI | 首屏空间布局、响应式、键盘、双语、状态语义 | Playwright 截图与人工检查 | 每次 UI 变更与发布前 |
 | 性能/浸泡 | 启动耗时、并发、内存、文件描述符 | 压测脚本与监控 | 发布前 |
-| 打包 | 签名、公证、镜像、SBOM、健康检查 | 平台工具 | 发布前 |
+| 打包 | AdHoc 签名、镜像、SBOM、健康检查 | 平台工具 | 发布前 |
 
 ### 3.1 UI 与视觉验收
 
@@ -245,14 +245,15 @@
 
 | 编号 | 用例 | 通过条件 |
 | --- | --- | --- |
-| PKG-001 | macOS 签名 | 应用、嵌套内核与 Xray-core 二进制签名有效 |
-| PKG-002 | 公证与 Gatekeeper | 干净机器可打开，无阻止提示 |
-| PKG-003 | 自动更新 | 签名清单有效，拒绝未签名或降级包 |
+| PKG-001 | macOS AdHoc 签名 | 应用、嵌套内核与 Xray-core 的 `codesign --verify` 通过；`codesign -dv` 显示 `Signature=adhoc`；不要求 Developer ID |
+| PKG-002 | Gatekeeper 行为 | 干净机器首次启动被阻止；发布说明提供 SHA-256 校验和手动放行步骤；不要求无提示打开 |
+| PKG-003 | 自动更新 | Tauri 更新清单签名有效，拒绝未签名或降级包；不依赖 Apple 签名或公证 |
 | PKG-004 | Docker 构建 | 多阶段构建可复现，镜像非 root，健康检查有效 |
 | PKG-005 | Docker 数据卷 | 删除并重建容器后数据保留 |
 | PKG-006 | SBOM 与许可 | 镜像和应用包含 SBOM、BSD-3-Clause、MPL-2.0 许可与来源信息 |
 | PKG-007 | 漏洞扫描 | 无未接受的高危/严重漏洞 |
 | PKG-008 | 发布说明 | 列出内核缺陷、代理协议矩阵、节点 bootstrap 泄漏、无头限制、跨系统限制、显示与字体限制 |
+| PKG-009 | GitHub Actions 发布 | tag workflow 仅在 main 已绿时发布；产物含 SHA-256SUMS、SBOM、许可证与支持的 attestation；不存在 Apple 证书或公证 secret |
 
 ## 11. 缺陷分级与发布门禁
 

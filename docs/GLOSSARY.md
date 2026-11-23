@@ -44,6 +44,10 @@
 | UA-CH | User-Agent Client Hints | 浏览器通过 `navigator.userAgentData` 与请求头暴露的结构化客户端信息。 |
 | 沙箱 | Chromium sandbox | Chromium 的渲染进程隔离机制；容器内是否启用是安全验收项。 |
 | 内核准入 | kernel qualification | 新内核版本进入产品前必须通过的指纹、稳定性、安全与兼容测试。 |
+| AdHoc 签名 | ad-hoc signing | macOS 的 `codesign --sign -` 签名方式；提供包完整性信号，不提供可验证的发布者身份，也不构成公证。 |
+| Gatekeeper | Gatekeeper | macOS 对下载应用的启动检查；AdHoc 且未公证的应用会被阻止首次启动。 |
+| 发布环境 | release environment | GitHub Actions 中受保护的 environment，要求人工批准并限制 release secrets 的使用。 |
+| 制品证明 | artifact attestation | 由构建平台生成的制品来源与完整性证明，用于补充 SHA-256 和 GitHub Release 的信任链。 |
 | VLESS | VLESS | 基于用户 ID 的轻量代理协议，常与 TLS、REALITY、WebSocket 或 gRPC 组合。 |
 | VMess | VMess | 基于用户 ID 与加密选型的代理协议，支持多种传输。 |
 | Shadowsocks | Shadowsocks | 基于 AEAD 或 2022 方法的加密代理协议。 |

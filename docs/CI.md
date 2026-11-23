@@ -1,0 +1,184 @@
+# Mien CI 与发布流水线
+
+本文固定 GitHub Actions 上的持续集成、发布触发、macOS AdHoc 打包、制品和门禁。CI 只使用 GitHub-hosted runner；macOS 发布不使用 Developer ID 证书，也不使用 Apple 公证账号。`.github/workflows/` 的实际 YAML 在实现阶段按本文件落地；在 workflow、分支保护与发布环境配置完成前，不宣称门禁已经生效。
+
+## 1. 固定决策
+
+- CI 与 release 全部由 GitHub Actions 执行，不使用自托管 runner。
+- PR 只使用只读权限和测试 fixture，不接触 release secrets。
+- macOS 使用 AdHoc 签名（`codesign --sign -`），不公证，不做 `stapler`。AdHoc 只提供包完整性信号，不证明发布者身份。
+- macOS 分发的信任链是 GitHub Release、SHA-256SUMS、GitHub artifact attestation（仓库计划支持时）和 Tauri 更新签名，不是 Apple Gatekeeper。
+- 发布由维护者推送 `vX.Y.Z` tag 触发；不由 PR 合并或 main push 自动发布。tag 必须指向已通过 main CI 的提交。
+- release workflow 使用受保护的 `release` environment，发布前需要人工批准。
+- Docker 固定构建 `linux/amd64`；macOS 构建 Apple Silicon `aarch64-apple-darwin`。
+- 第三方 Actions 固定到完整 commit SHA；依赖升级由 Dependabot 或人工 PR 完成。
+
+## 2. Workflow 拓扑
+
+| 文件 | 触发 | 并发 | 作用 |
+| --- | --- | --- | --- |
+| `.github/workflows/ci-reusable.yml` | `workflow_call` | 由调用方决定 | 共享 lint、Rust、Web、契约、集成和 e2e smoke |
+| `.github/workflows/ci-pr.yml` | `pull_request` 的 `opened`、`synchronize`、`reopened`、`ready_for_review`；`merge_group` | `ci-pr-${{ github.event.pull_request.number || github.ref }}`，取消过期 candidate | PR candidate gate；`CI PR / required` 是唯一 required check |
+| `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与打包 smoke |
+| `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、容器和已知漏洞复查 |
+| `.github/workflows/release.yml` | `push` tag `v[0-9]+.[0-9]+.[0-9]+` | `release-${{ github.ref_name }}`，不取消 | 全量验证、macOS/Docker 构建、attestation、GitHub Release |
+
+`ci-pr.yml` 不监听 `pull_request.edited`；只有代码或 review-ready 状态变化才重新评估 required gate。`ci-main.yml` 与 `release.yml` 使用独立并发 namespace，不能被 PR 的取消策略误伤。
+
+## 3. PR 流水线
+
+```mermaid
+flowchart TD
+  PR[PR 或 merge queue] --> R[ci-reusable]
+  R --> L[lint]
+  R --> T[rust 单元与集成]
+  R --> W[web 单元与构建]
+  R --> C[契约与迁移]
+  L --> I[integration]
+  T --> I
+  W --> I
+  C --> I
+  I --> E[e2e smoke]
+  E --> G[CI PR / required]
+```
+
+| Job | 主要命令 | 说明 |
+| --- | --- | --- |
+| `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bunx biome check .`、`bunx tsc --noEmit`、`actionlint` | 静态检查与许可检查；不使用 `continue-on-error` |
+| `rust` | `cargo nextest run --workspace` | 单元和库级集成；失败上传 nextest JUnit 报告 |
+| `web` | `bun install --frozen-lockfile`、`bun run typecheck`、`bun run test`、`bun run build` | 前端类型、测试和静态资源构建 |
+| `contracts` | JSON Schema 编译、OpenAPI lint、事件 schema 校验、SQLite DDL/迁移测试、导入导出 fixture | 对应 `docs/contracts/` 与 `docs/DATABASE-SCHEMA.md`；校验失败阻断 |
+| `integration` | 服务端启动、SQLite、档案生命周期、API 鉴权、代理配置与 Xray fixture | 使用真实进程和临时数据目录；不连接外部网络 |
+| `e2e smoke` | Docker `linux/amd64` + Xvfb + Playwright | PR 只跑一条代表性有头启动/停止链路；完整矩阵留在 main 与 release |
+| `required` | 聚合 `needs` 结果 | `if: always()`；任何上游 `failure`、`cancelled` 或意外 `skipped` 都判失败 |
+
+PR 初始阶段不按路径过滤。等基线稳定后可以引入 classifier 减少无关 workload，但 required 聚合 job 必须始终存在并覆盖实际改动域；不能用 paths filter 让 required check 缺席。
+
+`ci-main.yml` 复用同一套验证，但增加完整 e2e、容器矩阵、容量 smoke 和 macOS 打包 smoke。main 失败不回滚已合并代码，但阻断后续 tag 发布。
+
+## 4. 发布流水线
+
+```mermaid
+flowchart TD
+  Tag[vX.Y.Z tag] --> V[verify-tag]
+  V --> T[ci-reusable: release]
+  T --> M[macOS arm64 构建]
+  T --> D[Docker amd64 构建]
+  M --> P[publish draft 并上传]
+  D --> P
+  P --> A[attest]
+  A --> X[verify-published]
+  X --> R[finalize 公开 Release]
+```
+
+| Job | 内容 | 失败处理 |
+| --- | --- | --- |
+| `verify-tag` | 校验 SemVer、tag 指向 `main` 祖先提交、目标提交存在成功的 `CI Main` 结论、版本号与包清单一致、同名公开 release 尚不存在；允许重跑未发布 draft | 不构建，不创建公开 release |
+| `test` | 调用 `ci-reusable.yml`，`profile=release`，运行全量测试与 e2e | 不构建发布物 |
+| `macos-arm64` | 在 `release` environment 中构建 Tauri 应用，下载并校验内核/Xray，AdHoc 签名，生成 DMG、SBOM、许可证与更新清单 | 上传失败诊断；不进入 publish |
+| `docker-amd64` | `buildx` 构建 `linux/amd64`，Trivy，SBOM，推送 GHCR digest，cosign keyless 签名 | 不进入 publish |
+| `publish` | 汇总制品，校验 SHA-256，创建 draft GitHub Release 并上传 | 保留未发布 draft；不公开半成品 |
+| `attest` | 对 DMG 和容器 digest 生成 GitHub artifact attestation；仓库计划不支持时显式跳过并记录，退回 SHA-256 校验 | attestation 已启用但失败则不公开 release |
+| `verify-published` | 下载已上传资产，校验 checksums、AdHoc 签名、更新清单和 DMG 内容 | 标记 release 无效；不得静默忽略 |
+| `finalize` | 公开 draft release | 仅在全部前置验证成功后执行 |
+
+tag 由维护者创建，workflow 不自动创建 tag。失败后对同一 tag 重跑 workflow；不创建内容相同的新 tag。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
+
+## 5. macOS AdHoc 打包
+
+macOS job 的顺序固定为：
+
+1. 下载 fingerprint-chromium 148 DMG 和 Xray-core v26.11.9 ARM64；校验 SHA-256，记录最终二进制的 SHA-256。
+2. 构建 `aarch64-apple-darwin` 应用，把内核和 Xray 放入应用资源目录。
+3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。
+4. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`。
+5. 生成 DMG、`SHA256SUMS`、SBOM、许可证和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
+6. 在干净的 macOS 13+ 机器下载发布资产，先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级。
+
+`spctl --assess` 在 AdHoc 应用上预期失败，不作为 release gate 的成功条件；CI 记录这个预期结果。禁止在应用、安装器或发布脚本中自动移除 `com.apple.quarantine`，也禁止建议用户关闭系统级 Gatekeeper。
+
+发布说明必须明确：
+
+- 应用没有 Apple Developer ID 签名，也没有公证。
+- 首次启动会被 Gatekeeper 阻止。
+- 用户应先核对发布的 SHA-256 或 artifact attestation，再通过“系统设置 → 隐私与安全性 → 仍要打开”或用 `xattr -dr com.apple.quarantine /Applications/Mien.app` 手动放行。
+- AdHoc 签名不能证明发布者身份；GitHub Release 账户和制品证明才是分发信任边界。
+
+Tauri 自动更新使用独立的更新签名密钥，和 Apple 签名无关；客户端必须拒绝未签名或降级的更新包。更新密钥只存在于 release environment，不进入 PR 或普通 main job。
+
+## 6. 缓存、制品与保留
+
+| 对象 | 策略 |
+| --- | --- |
+| Rust 编译缓存 | `Swatinem/rust-cache`，按 `Cargo.lock` 和 runner 建立 key；不上传完整 `target/` |
+| Bun 依赖缓存 | 按 `bun.lock` 建立 key；安装仍使用 `--frozen-lockfile` |
+| 内核缓存 | 按发行资产 SHA-256 建立 key；恢复后必须重新校验，不信任缓存内容 |
+| Playwright 浏览器 | 按锁文件和 Playwright 版本建立 key |
+| PR 诊断 | nextest JUnit、失败 e2e 的 trace/screenshot/video，保留 7 至 14 天 |
+| Release 资产 | DMG、Docker digest、SBOM、许可证、`SHA256SUMS`、更新清单、attestation；随 GitHub Release 长期保留，Actions artifact 保留 90 天 |
+
+成功 run 不长期上传整个 workspace、`node_modules`、浏览器安装目录或没有消费者的文件。release job 只上传可验证、可追溯的发布资产。
+
+## 7. 权限与 Secrets
+
+PR workflow 默认 `permissions: contents: read`；release workflow 按 job 最小授权：
+
+| Job | 权限 |
+| --- | --- |
+| `verify-tag`、`test` | `contents: read` |
+| `macos-arm64` | `contents: read`；使用 `release` environment 读取更新签名密钥 |
+| `docker-amd64` | `contents: read`、`packages: write`、`id-token: write` |
+| `publish` | `contents: write` |
+| `attest` | `contents: read`、`attestations: write`、`id-token: write` |
+| `verify-published` | `contents: read` |
+| `finalize` | `contents: write` |
+
+`release` environment 的人工批准在 `macos-arm64` 入口执行；`publish` 依赖该 job，因此公开 release 前必然经过批准。
+
+release environment 仅保存：
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+不保存 `APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_ID`、`APPLE_TEAM_ID` 或 `APPLE_APP_SPECIFIC_PASSWORD`，因为本项目不执行 Developer ID 签名和公证。Docker 的 cosign keyless 使用 GitHub OIDC，不需要长期签名私钥。
+
+fork PR 不获得任何 release secret；不使用 `pull_request_target` 执行不可信 PR 内容。PR 标题、分支名和 issue 文本不得直接插入 shell 命令，必须经环境变量或参数数组传递。
+
+## 8. 质量门禁合同
+
+`main` 分支应设置为 PR-only，并至少要求：
+
+- required check：`CI PR / required`。
+- 至少一名 reviewer 批准；新提交使旧批准失效。
+- 分支必须与 `main` 同步。
+- 管理员同样受保护规则约束，不直接 push。
+- 启用 merge queue 时，`merge_group` 运行同一套 required gate。
+
+`ci-pr.yml` 的 workflow name 固定为 `CI PR`，聚合 job 名固定为 `required`；因此 check 名为 `CI PR / required`。`ci-main.yml` 的 workflow name 固定为 `CI Main`，主验证 job 名为 `verify`。`CI PR / required` 是一个聚合 job，只有所有适用上游 job 成功才成功。workflow 或 job 名称在 YAML 落地后必须与 GitHub 分支保护中的 check 名逐字核对；在未核对前，文档只记录设计，不宣称已经 enforce。
+
+`CI Main / verify` 用于 mainline 健康检查，不替代 PR required check。release workflow 不是 PR 门禁，但它的 `verify-tag` 与 `test` 必须在发布物构建前成功。
+
+## 9. 失败、重跑与回滚
+
+- PR gate 失败时修复代码或测试；不使用 `continue-on-error`、降低断言、删除 required check 或扩大 waiver 来变绿。
+- 只有已确认的瞬态网络故障可以重试；flaky 测试、锁竞争和超时按缺陷处理。
+- release 在 `publish` 前失败时，tag 可以保留，但不得创建公开 release；修复后对同一 tag 重跑。
+- `publish` 先创建 draft；全部资产和 attestation 验证通过后才公开。公开后 `verify-published` 失败时，立即标记 release 无效并通知维护者。
+- 回滚使用上一版本 release 或重新构建同一 tag 的修正版本；不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
+
+## 10. 实施顺序
+
+1. M0：建立 `ci-reusable.yml`、`ci-pr.yml` 和 `ci-main.yml` 的最小骨架，先跑 fmt、lint、单元测试和契约校验。
+2. M1：加入 SQLite、API、生命周期与 Xray fixture 集成；把 `CI PR / required` 配置为真实 required check。
+3. M2：加入 Docker e2e smoke、内核下载校验和代理矩阵 fixture。
+4. M3：加入 macOS 打包 smoke、AdHoc 签名验证、SBOM 与 Trivy。
+5. M4：启用 `release` environment、tag 保护、release workflow、attestation、更新清单和发布后验证。
+
+## 11. 参考
+
+- [`RELEASE.md`](RELEASE.md)
+- [`TEST-PLAN.md`](TEST-PLAN.md)
+- [`SECURITY.md`](SECURITY.md)
+- [`TECH-STACK.md`](TECH-STACK.md)
+- [`adr/0010-adhoc-macos-distribution.md`](adr/0010-adhoc-macos-distribution.md)
+- [`contracts/`](contracts/)

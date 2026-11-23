@@ -66,8 +66,8 @@
 | 虚拟显示 | Xvfb + openbox | 固定主版本 | 无桌面环境的有头运行 |
 | 远程查看 | x11vnc + noVNC/websockify | 固定主版本 | 可选、一次性令牌、默认关闭 |
 | 任务编排 | cargo xtask | 固定 | 仓库内构建、校验、打包任务 |
-| CI | GitHub Actions macOS ARM64 + linux/amd64 | 固定 | 原生平台构建、签名、镜像与扫描 |
-| 制品安全 | cargo-deny、cargo-audit、Trivy、Syft、cosign | 固定主版本 | 许可、漏洞、SBOM 与签名 |
+| CI | GitHub Actions macOS ARM64 + linux/amd64 | 固定 | 原生平台构建、AdHoc 打包、镜像与扫描 |
+| 制品安全 | cargo-deny、cargo-audit、Trivy、Syft、cosign、GitHub artifact attestation（计划支持时） | 固定主版本 | 许可、漏洞、SBOM、镜像签名与制品证明 |
 
 ## 4. 关键选型对比
 
@@ -172,9 +172,10 @@
 - 本地检查：`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo nextest run`、`biome check`、`tsc --noEmit`、`vitest run`。
 - 合约检查：OpenAPI 生成差异、JSON Schema 编译、事件 schema、导入导出 fixture。
 - 端到端：Playwright 连接 CDP；Docker 有头/无头；受控协议节点；DNS canary。
-- macOS：`aarch64-apple-darwin` 构建，嵌套内核与 Xray-core 签名，公证与 stapler 验证。
+- macOS：`aarch64-apple-darwin` 构建，嵌套内核与 Xray-core 做 AdHoc 签名；不公证、不 stapler；用 `codesign --verify`、SHA-256 和（支持时）artifact attestation 建立完整性。
 - Docker：`buildx` 构建 `linux/amd64`，非 root、只读根、`/data` 卷、健康检查、SBOM、Trivy、cosign。
 - 内核与引擎：构建时下载、SHA-256 校验、写入能力清单；不提交二进制。
+- GitHub Actions 的 PR/main/release 拓扑、权限与门禁见 [`CI.md`](CI.md)。
 
 ## 7. 测试工具链
 

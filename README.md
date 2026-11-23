@@ -25,7 +25,7 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 ## 当前状态
 
-仓库处于设计与契约阶段，尚未包含实现代码。产品上下文、Deep Current 视觉系统与 Profiles 首屏 comp 已锁定；可执行 API/事件/错误/数据库/Xray 映射契约与 M0 计划已补齐。
+仓库处于设计与契约阶段，尚未包含实现代码。产品上下文、Deep Current 视觉系统与 Profiles 首屏 comp 已锁定；可执行 API/事件/错误/数据库/Xray 映射契约、CI/发布设计与 M0 计划已补齐。
 
 ## 文档地图
 
@@ -55,7 +55,8 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 | [`docs/TEST-FIXTURES.md`](docs/TEST-FIXTURES.md) | 内核、代理、网络、Xray、模式、API 与数据库 fixture |
 | [`docs/DELIVERY-PLAN.md`](docs/DELIVERY-PLAN.md) | M0 spike、第一个纵向切片和开工检查表 |
 | [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md) | 第三方组件、许可义务与当前合规缺口 |
-| [`docs/RELEASE.md`](docs/RELEASE.md) | macOS/Docker 发布、签名、SBOM、门禁与回滚 |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | macOS/Docker 发布、AdHoc 签名、SBOM、门禁与回滚 |
+| [`docs/CI.md`](docs/CI.md) | GitHub Actions PR/main/release 拓扑、AdHoc 打包、门禁与发布环境 |
 | [`docs/contracts/manifests/`](docs/contracts/manifests/) | 148 内核与 Xray v26.11.9 候选能力清单 |
 
 ## 主题规格
