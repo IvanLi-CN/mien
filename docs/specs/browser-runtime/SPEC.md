@@ -5,7 +5,7 @@
 ## Context and Scope
 
 - Context: 产品必须可靠地启动、监督和停止 fingerprint-chromium 进程，并在 macOS 宿主桌面与 Docker 无桌面环境中提供有头、无头和“伪有头”三种运行方式。
-- In scope: 运行时状态机、启动/停止、进程组、崩溃处理、控制面重启对账、并发准入、内核校验、沙箱检查、CDP 暴露、日志、Xvfb/openbox/noVNC 生命周期。
+- In scope: 运行时状态机、启动/停止、进程组、崩溃处理、控制面重启对账、并发准入、内核校验、沙箱检查与隔离结论、CDP 暴露、日志、Xvfb/openbox/noVNC 生命周期。
 - Out of scope: 指纹字段与 argv 语义（由 `fingerprint-engine` 负责）、代理协议与 DNS（由 `proxy-gateway` 负责）、档案元数据（由 `profile-management` 负责）。
 
 ## Terms and Interfaces
@@ -13,10 +13,12 @@
 - `runtime`: 一个受监督的内核进程实例及其运行档案回环 HTTP 入站、路由规则、调试端口、日志和显示环境；共享 Xray 引擎由代理网关单独监督。
 - `runtime state`: `stopped`、`starting`、`running`、`stopping`、`crashed`、`failed`。
 - `process group`: 内核及其子进程组成的进程组，用于可靠终止和孤儿清理。
+- `isolation`: 运行时隔离结论，取值 `enforced`、`unsandboxed` 或 `unknown`；持久化在 `runtimes.isolation`，并随档案与运行时响应返回，驱动四项 proof 的 isolation 段。
+- `reduced assurance`: 降级保证标记，由运行模式与 `isolation` 共同决定；`headless`、`pseudo_headful` 以及 `isolation != enforced` 的运行时保留该标记，已停止档案保留最后一次结论。
 - `headful`: 内核创建可见窗口；macOS 使用宿主桌面，Docker 使用 Xvfb。
 - `headless`: 内核不创建可见窗口；标记为降低保证。
 - `pseudo_headful`: 无头模式，依赖 fingerprint-chromium 的 `HeadlessChrome` → `Chrome` UA 补丁；其他 Headless 特征保留；标记为降低保证。`headless` 不承诺 UA 结果；在 pinned 148 上 UA 补丁可能是编译期默认，`pseudo_headful` 通过能力清单把该行为变成显式契约。
-- Interface: `/api/v1/profiles/{id}/start`、`/stop`、`/runtime`；运行时事件 `runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`；`runtimes` 表。
+- Interface: `/api/v1/profiles/{id}/start`、`/stop`、`/runtime`、`/logs`；运行时事件 `runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`；`runtimes` 表。
 
 ## Requirements
 
@@ -31,6 +33,7 @@
 - The system MUST enforce the runtime state machine and MUST emit a state event for every transition.
 - Inputs: 启动、停止、内核退出、超时、控制面重启。
 - Outputs: 合法转移序列；非法转移必须被拒绝并记录；外部观察者可以通过事件流重建状态。
+- Transitions: `stopped -> starting`（start）、`starting -> running`（CDP 就绪，或“进程存活 + 代理入站就绪 + 有界宽限”）、`starting -> crashed`（就绪前内核退出）、`starting -> failed`（校验、生成、沙箱、spawn 或超时失败）、`running -> stopping`（stop）、`running -> crashed`（内核退出）、`running -> failed`（共享引擎故障或重建失败，且在 teardown 完成后）、`stopping -> stopped`（正常退出或超时强制终止）、`crashed -> starting`（退避重试）、`crashed -> stopped` 与 `failed -> stopped`（清理或停止）。
 
 ### REQ-RUNTIME-003
 
@@ -40,9 +43,10 @@
 
 ### REQ-RUNTIME-004
 
-- The system MUST verify the kernel file exists and its SHA-256 matches the installed manifest before first launch, and MUST refuse to start on mismatch.
-- Inputs: 内核版本、平台、期望校验和、实际文件。
-- Outputs: 校验通过或稳定错误 `KERNEL_CHECKSUM_MISMATCH`；不启动协议引擎、不启动进程。
+- The system MUST verify the selected kernel's installed executable before first launch, using the install record rather than the release manifest asset digest.
+- Inputs: 档案 `kernel_version`、平台、`kernel_installs.binary_sha256`、实际可执行文件。
+- Outputs: 校验通过并返回可执行路径；文件缺失返回 `KERNEL_NOT_FOUND`；可执行文件摘要与 `binary_sha256` 不符返回 `KERNEL_CHECKSUM_MISMATCH`；两种情况都 MUST 拒绝启动，且不得创建代理入站、路由规则、共享出站引用或子进程。
+- Semantics: 清单 `sha256` 只是发布资产摘要，用于下载与安装校验；运行时只比对解包后的 `binary_sha256`。
 
 ### REQ-RUNTIME-005
 
@@ -84,13 +88,14 @@
 
 - The system MUST stop a runtime by requesting graceful shutdown, waiting for a bounded timeout, then terminating the whole process group; it MUST remove the runtime's route rule and inbound and release its shared-outbound reference, while leaving the shared engine running for other profiles.
 - Inputs: 停止请求、进程状态、超时配置。
-- Outputs: 正常退出或强制终止后状态 `stopped`；运行档案入站与路由被删除；共享出站引用释放；锁释放；强制终止记录为审计事件。
+- Outputs: 正常退出或强制终止后状态 `stopped`；清理顺序固定为终止进程组 → 按 `ruleTag` 删除路由规则 → 删除入站 → 清空 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port` → 递减非终态共享出站引用 → 释放锁；强制终止记录为审计事件。
+- Invariant: `proxy_outbounds.ref_count` 只统计非终态运行时；`stopped`、`crashed`、`failed` 运行时不得保留 `proxy_*` 字段或仍计数的出站引用。
 
 ### REQ-RUNTIME-012
 
 - The system MUST reconcile non-terminal runtime records after a control-plane or container restart using PID, process start time, and command line, without killing processes it cannot safely attribute.
 - Inputs: `runtimes` 记录、进程表、档案锁、数据目录。
-- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时。
+- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时；对 `starting`/`stopping` 中断行，终止可归属内核进程组、删除该档案的入站与规则、清空 `proxy_*`、递减非终态引用后写 `stopped`，只有 teardown 本身失败才写 `failed`；恢复完成后不保留中间态。
 
 ### REQ-RUNTIME-013
 
@@ -100,15 +105,15 @@
 
 ### REQ-RUNTIME-014
 
-- The system MUST verify the effective Chromium sandbox state before serving traffic in Docker, and MUST refuse unsandboxed launch unless an explicit unsafe opt-in is set and audited.
-- Inputs: 容器配置、内核启动参数、沙箱探测结果。
-- Outputs: 沙箱生效时正常启动；无法确认时返回 `SANDBOX_UNAVAILABLE`；`ALLOW_UNSANDBOXED=1` 时允许并写入审计事件和启动警告。
+- The system MUST verify the effective Chromium sandbox state before creating any proxy resource or spawning the kernel, derive the runtime `isolation` verdict, and MUST refuse an unconfirmed sandbox in Docker unless an explicit unsafe opt-in is set and audited.
+- Inputs: 容器配置、内核清单 `sandbox_kind`、seccomp 配置、内核启动参数、沙箱探测结果、`ALLOW_UNSANDBOXED`。
+- Outputs: 校验通过后在启动事务中写入 `runtimes.isolation`；Docker 中无法确认沙箱时返回 `SANDBOX_UNAVAILABLE`，且不创建出站、入站、路由规则或子进程；`ALLOW_UNSANDBOXED=1` 时继续启动，写 `isolation=unsandboxed` 并记录审计事件与启动警告；宿主桌面无法确认沙箱时保留 `isolation=unsandboxed` 或 `unknown`，不得阻止启动。
 
 ### REQ-RUNTIME-015
 
 - The system MUST write structured, rotated, redacted logs per runtime and MUST retain enough information to diagnose startup and crash failures.
 - Inputs: 内核 stdout/stderr、运行时事件、错误码。
-- Outputs: JSON Lines 日志；单文件上限 10 MB，最多 5 个文件；密码、Token、Cookie 和完整代理 URL 不出现。
+- Outputs: JSON Lines 日志；单文件上限 10 MB，最多 5 个文件；密码、Token、Cookie 和完整代理 URL 不出现；`GET /api/v1/profiles/{id}/logs?limit=` 从运行时日志环或轮转文件读取有界、脱敏的尾部，超出上限的 `limit` 被拒绝，响应不含凭据、Cookie、授权头或完整 URL；桌面宿主提供等价 IPC/本地日志路径回退。
 
 ### REQ-RUNTIME-016
 
@@ -122,6 +127,19 @@
 - Inputs: `pseudo_headful` 偏好、内核能力清单、启动请求。
 - Outputs: 参数包含 `--headless=new`；响应包含 `mode=pseudo_headful`、`reduced_assurance=true`、`ua_scope=chrome` 和“其他 Headless 特征保留”的限制说明；能力缺失时拒绝启动，不得静默降级为 `headless` 或 `headful`。
 
+### REQ-RUNTIME-018
+
+- The system MUST persist and expose the isolation verdict as `isolation` with values `enforced`, `unsandboxed`, or `unknown`, and MUST derive the isolation proof and reduced-assurance markers from it.
+- Inputs: 沙箱校验结果、运行模式、`runtimes` 记录、档案详情。
+- Outputs: `runtimes.isolation` 持久化；运行时与档案响应包含 `isolation` 和 `reduced_assurance`；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation`，并显示 `unsandboxed` 或 `unknown` 提示。
+- UI semantics: proof strip 的 isolation 段由该字段驱动；`unknown` 使用虚线轮廓与 `?` 文本说明，`stopped` 使用中性低透明度，两者不得呈现为相同状态。
+
+### REQ-RUNTIME-019
+
+- The system MUST tear down a runtime before writing any terminal state when the shared proxy engine fails or must be rebuilt.
+- Inputs: 共享引擎故障或重建失败事件、运行时记录、进程与代理资源状态。
+- Outputs: 依次终止内核进程组、删除该档案的入站与路由、清空 `proxy_*`、递减非终态出站引用、释放档案锁与配额，然后写 `failed` 并发出 `runtime.failed` 事件；`crashed`、`failed`、`stopped` 之后不得存在仍在运行的内核或仍计数的代理资源；引擎恢复后由用户显式重试启动，不自动把运行时改回 `running`。
+
 ## Verification
 
 ### VER-RUNTIME-001
@@ -132,9 +150,9 @@
 
 ### VER-RUNTIME-002
 
-- Method: 驱动启动、成功、停止、崩溃和超时路径，收集事件流。
+- Method: 驱动启动、成功、停止、崩溃、超时、就绪前退出、共享引擎故障和控制面重启路径，收集事件流。
 - covers: `REQ-RUNTIME-002`
-- Pass condition: 事件序列符合状态机；非法转移被拒绝；最终状态与数据库一致。
+- Pass condition: 事件序列符合状态机，包括 `starting -> crashed` 与 `running -> failed`；非法转移被拒绝；终态无残留内核或代理资源；最终状态与数据库一致。
 
 ### VER-RUNTIME-003
 
@@ -144,9 +162,9 @@
 
 ### VER-RUNTIME-004
 
-- Method: 篡改内核文件、删除内核、替换清单校验和。
+- Method: 删除已安装内核文件、篡改解包后的可执行文件、只把发布资产摘要换成另一个值。
 - covers: `REQ-RUNTIME-004`
-- Pass condition: 所有不匹配均拒绝启动，返回 `KERNEL_CHECKSUM_MISMATCH`，且无协议引擎或子进程残留。
+- Pass condition: 文件缺失返回 `KERNEL_NOT_FOUND`；可执行文件摘要与安装记录 `binary_sha256` 不符返回 `KERNEL_CHECKSUM_MISMATCH`，即使发布资产摘要匹配；两种失败都没有子进程、入站、路由或出站引用残留，且不留中间态。
 
 ### VER-RUNTIME-005
 
@@ -188,13 +206,13 @@
 
 - Method: 在页面加载、下载和大内存占用时停止档案，并在超时场景强制终止。
 - covers: `REQ-RUNTIME-011`
-- Pass condition: 优先正常退出；超时后进程组全部终止；运行档案入站与路由删除、共享出站引用释放；共享引擎继续运行；审计事件记录强制终止。
+- Pass condition: 优先正常退出；超时后进程组全部终止；入站、路由按 `ruleTag` 删除，`proxy_*` 字段清空后非终态引用递减；`proxy_outbounds.ref_count` 不因终态行残留而漂移；共享引擎继续运行；审计事件记录强制终止。
 
 ### VER-RUNTIME-012
 
-- Method: 启动档案后强杀控制面并重启，检查进程归属与数据库状态。
+- Method: 在 `starting` 与 `stopping` 中间态强杀控制面并重启，检查进程归属、代理资源与数据库状态。
 - covers: `REQ-RUNTIME-012`
-- Pass condition: 可归属进程被接管或安全停止；不可归属进程不被误杀；不产生第二个内核；状态最终一致。
+- Pass condition: 可归属进程被接管或安全停止；不可归属进程不被误杀；中断的 `starting`/`stopping` 行在 teardown 后写 `stopped`，仅 teardown 失败写 `failed`；不产生第二个内核，不留中间态或未计数的出站引用。
 
 ### VER-RUNTIME-013
 
@@ -204,15 +222,15 @@
 
 ### VER-RUNTIME-014
 
-- Method: 在启用命名空间沙箱、无法启用沙箱和显式无沙箱三种容器配置下启动。
+- Method: 在启用命名空间沙箱、无法启用沙箱和显式无沙箱（`ALLOW_UNSANDBOXED=1`）三种容器配置下启动，检查启动顺序、代理资源与 `isolation`。
 - covers: `REQ-RUNTIME-014`
-- Pass condition: 沙箱生效时成功；无法确认时拒绝；显式无沙箱时启动并记录审计与警告。
+- Pass condition: 沙箱校验发生在创建代理资源和启动内核之前；生效时成功并写 `isolation=enforced`；无法确认时返回 `SANDBOX_UNAVAILABLE` 且未创建出站、入站、路由或内核进程；显式无沙箱时启动、写 `isolation=unsandboxed` 并记录审计与警告。
 
 ### VER-RUNTIME-015
 
-- Method: 触发启动失败、崩溃和长时间运行，检查日志内容、轮转和脱敏。
+- Method: 触发启动失败、崩溃和长时间运行，检查日志内容、轮转和脱敏，并通过 `GET /api/v1/profiles/{id}/logs?limit=` 读取尾部，包括超出上限的 `limit`。
 - covers: `REQ-RUNTIME-015`
-- Pass condition: 日志为 JSON Lines；轮转符合上限；敏感值不出现；诊断信息足够定位错误码。
+- Pass condition: 日志为 JSON Lines；轮转符合单文件与文件数上限；敏感值、Cookie、授权头与完整 URL 不出现；日志尾部有界且按时间顺序；超限 `limit` 被拒绝；桌面回退提供等价尾部。
 
 ### VER-RUNTIME-016
 
@@ -225,6 +243,18 @@
 - Method: 在内核能力清单声明和未声明 `headless_chrome_ua_patch` 的两种情况下启动 `pseudo_headful`，检查 argv、UA、响应标记和其他 Headless 特征。
 - covers: `REQ-RUNTIME-017`
 - Pass condition: 声明时启动成功并返回 `ua_scope=chrome`；未声明时拒绝并返回稳定错误；不静默降级；UI/API 显示降低保证和其他 Headless 特征仍保留。
+
+### VER-RUNTIME-018
+
+- Method: 分别产生 `enforced`、`unsandboxed` 与 `unknown` 的运行时，并检查已停止档案的档案详情与 proof strip。
+- covers: `REQ-RUNTIME-018`
+- Pass condition: `runtimes.isolation` 持久化并在重启后仍以数据库为准；运行时与档案响应包含 `isolation` 及按模式推导的 `reduced_assurance`；已停止档案仍显示最后一次隔离结论与降低保证提示；`unknown` 的虚线与 `?` 文本和 `stopped` 的中性低透明度可区分。
+
+### VER-RUNTIME-019
+
+- Method: 在运行中注入共享引擎故障与重建失败，检查内核、代理资源与终态。
+- covers: `REQ-RUNTIME-019`
+- Pass condition: 每个受影响运行时都先完成 teardown 再写 `failed`；内核进程组、入站、路由、出站引用、锁与配额均被释放；`runtime.failed` 事件可观察；引擎恢复后需显式重试且不自动恢复 `running`。
 
 ## Related ADRs
 

@@ -137,7 +137,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 **The Asymmetry Rule.** 首屏的 Space rail、Live slab 与 profile field 共同形成不对称空间；禁止把三者都做成等宽卡片。
 
-**The Proof Rule.** 四段 proof 固定对应 fingerprint、proxy、runtime、isolation；未知与未运行是不同状态，不能都用灰色蒙混。
+**The Proof Rule.** 四段 proof 固定对应 fingerprint、proxy、runtime、isolation；`isolation` 段直接由运行时的 `isolation` 字段派生（`enforced` 已验证、`unsandboxed` 降级、`unknown` 未知），不根据进程是否存在推断。未知与已停止是不同状态：未知用 `--faint` 虚线描边加 `?`，已停止用低透明中性实心块，二者不得共用同一种灰。
 
 ### Responsive
 
@@ -181,7 +181,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 **Seed aura.** 每个 profile 根据种子与 Space 生成确定性的 orb 与角部 aura。Aura 让档案可辨认，不表示运行状态；同一档案的 aura 必须跨列表、详情与重开应用保持一致。
 
-**Proof strip.** 四段小条对应 fingerprint、proxy、runtime、isolation，并始终显示 `FP`/`PX`/`RT`/`IS` 标签或同等持久图例。已验证为 `--verified`，降级为 `--warning`，失败为 `--failed`，未运行或未知使用低透明中性色；标签必须可读，不能只靠位置或颜色区分。
+**Proof strip.** 四段小条对应 fingerprint、proxy、runtime、isolation，并始终显示 `FP`/`PX`/`RT`/`IS` 标签或同等持久图例。已验证为 `--verified`，降级为 `--warning`，失败为 `--failed`。未运行（`stopped`）使用低透明中性实心块与 `--stopped` 文字；未知（无探测结果、尚未启动过或数据缺失）使用 `--faint` 虚线描边、`?` 与 “unknown” 文案。`IS` 段读取运行时 `isolation`：`unsandboxed` 恒为 `--warning`，即使档案已停止也保留降级标记与 reduced-assurance 文案，不得因停止而退化为中性。标签必须可读，不能只靠位置或颜色区分。
 
 **Live slab.** 大尺寸会话卡把“正在发生什么”放在第一层：名称、线路、延迟、运行时长、fingerprint、route、uptime、sparkline 与 fail-closed 文案。
 
@@ -195,6 +195,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 - 用不等宽 profile 字段建立扫描层级；宽卡承载更长的名称或更多证据。
 - 给每个档案一个确定性身份 orb 与 aura，并在所有表面保持一致。
 - 使用四段 proof 与可读标签表达验证状态。
+- 在 proof 中区分 “未知” 与 “已停止”，并在停止档案上保留 `unsandboxed` 的降级标记。
 - 让 host-bound 限制、无头降级和 fail-closed 在界面中直接可见。
 - 保持标准控件：按钮、输入、下拉、对话框、键盘焦点。
 
@@ -206,6 +207,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 - 不要使用玻璃、霓虹、彩虹渐变文字、发光文字或大面积纯黑纯白。
 - 不要用装饰性插画、纸张纹理或印刷家具填充空白。
 - 不要把关键信息藏在 hover、右键菜单或详情页后面。
+- 不要把未知和已停止都画成同一种灰色实心 proof 块。
 - 不要伪造客户、截图、跑分或“不可检测”的承诺。
 
 ## Accessibility

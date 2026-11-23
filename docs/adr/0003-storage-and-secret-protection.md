@@ -14,9 +14,12 @@
 - 主密钥来源：
   - macOS 桌面：32 字节主密钥存入系统登录钥匙串，应用启动时读取，不写入磁盘。
   - Docker：优先读取 `MIEN_MASTER_KEY`；仅在空数据库且不存在任何加密记录时，首次启动生成 `/data/secrets/master.key`，权限 0600，运行用户独占。已有加密数据但密钥缺失时进入“密钥不可用”，绝不生成新密钥。
-- API Token 使用高熵随机值，数据库只保存带服务端 pepper 的哈希；登录密码使用 Argon2id。
-- Token pepper 从主密钥通过带域分离的 HKDF 派生，不单独落盘；pepper 丢失会使全部 API Token 失效并要求重新签发。
-- 加密导出使用用户口令和 Argon2id 派生密钥，导出文件使用认证加密；口令不持久化。
+- API Token 使用高熵随机值，数据库只保存带服务端 pepper 的不可逆哈希；绝不使用 AES-GCM 或任何可解密形式存储 Token。明文只在签发响应中返回一次，不写入数据库、日志或审计元数据，也不能重放。
+- Token pepper 从主密钥通过带域分离的 HKDF 派生，不单独落盘。主密钥轮换会改变 pepper，使全部 API Token 失效并要求重新签发；不存在保留旧 Token 明文的迁移路径。
+- 管理员凭据存入独立的 `admin_credentials` 表，只保存 Argon2id 哈希；首次引导通过 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 提供，首次登录强制修改密码，修改成功后删除引导密钥（环境变量/文件）并写入审计事件。
+- 导出分为 `plain` 与 `encrypted` 两种格式。`encrypted` 必须提供口令，用 Argon2id 派生密钥并采用带版本号的认证加密封装；`plain` 禁止提供口令。口令只存在于请求内存中，不写入磁盘、URL、日志或错误响应。明文载荷遵循 `profile-export.schema.json` 语义，两种格式都不导出代理凭据：只保留 `credential_fields` 名称与非敏感选项，并标记 `credentials_removed=true`；导出不包含顶层 `window`，窗口尺寸属于指纹规格。
+- 导入先 dry-run 校验再提交：校验请求逐项返回草稿、错误与冲突且不写数据库；提交的冲突策略为 `new_id|abort`，`abort` 必须在任何写入前返回冲突错误。加密导入必须提供口令，明文导入禁止口令；导入同样不包含代理凭据，凭据需重新提供。
+- 数据库 schema 随契约演进：内核与协议引擎安装记录同时保存 `asset_sha256` 与 `binary_sha256`；`profiles` 增加 `deletion_error`，永久删除失败时保留 `deleted` 状态供重试；新增 `idx_profile_tags_tag`；`runtimes.isolation` 持久化 `enforced|unsandboxed|unknown`。
 - 浏览器档案目录不进行应用层加密。部署文档要求 macOS 全盘加密、Docker 数据卷所在磁盘加密，并限制数据目录权限为 0700。
 - 主密钥丢失时不自动清空数据库；系统进入“密钥不可用”状态，要求恢复密钥或执行显式重置流程。
 
@@ -32,7 +35,8 @@
 ## 后果
 
 - 数据库泄露时代理凭据与 Token 不直接可用，但档案元数据、Cookie 目录和运行日志仍可能泄露。
-- 主密钥轮换需要重新加密敏感字段，并重新计算 `credential_fingerprint`/`outbound_key`、迁移 `proxy_outbounds` 引用计数和重建运行中出站；必须提供显式迁移与备份步骤。
+- 主密钥轮换需要重新加密敏感字段，并重新计算 `credential_fingerprint`/`outbound_key`、迁移 `proxy_outbounds` 引用计数和重建运行中出站；由于 pepper 随主密钥变化，全部 API Token 同时失效，必须重新签发。必须提供显式迁移与备份步骤。
+- 明文与加密导出都不携带代理凭据，导入后需要用户重新提供密码、UUID 或私钥；这避免导出文件成为第二个凭据存储点，但也意味着导入不是“完整备份”。
 - 服务端以环境变量提供密钥时，密钥可能出现在容器检查或编排配置中；文档要求使用 Secret 管理并限制读取权限。
 - 日志、错误响应和审计元数据必须统一脱敏，避免在应用层重新泄露敏感值。
 - 备份必须同时覆盖数据库、档案目录和主密钥；缺少主密钥的备份只能恢复非敏感元数据。

@@ -5,18 +5,20 @@
 ## Context and Scope
 
 - Context: 产品需要在同一台机器或同一个服务端上维护多个彼此隔离的浏览器环境，并为每个环境保存可复现的指纹规格、代理配置和运行偏好。
-- In scope: 档案标识、增删改查、复制、归档、分组、标签、搜索、导入导出、数据目录隔离、路径安全、事务与迁移、敏感字段脱敏。
+- In scope: 档案标识、增删改查、复制、归档、回收站与永久删除、分组、标签、搜索、导入导出、数据目录与下载隔离、路径安全、事务与迁移、敏感字段脱敏。
 - Out of scope: 指纹字段语义与校验规则（由 `fingerprint-engine` 主题负责）、运行时启动与进程监督（由 `browser-runtime` 负责）、代理连接行为（由 `proxy-gateway` 负责）。
 
 ## Terms and Interfaces
 
-- `profile`: 一个可独立启动的浏览器环境，拥有唯一 ULID、独立数据目录、指纹规格、可选代理和运行偏好。
-- `archive`: 软删除状态；档案不再出现在默认列表，但数据在保留窗口内可恢复。
+- `profile`: 一个可独立启动的浏览器环境，拥有唯一 ULID、独立数据目录（`chrome`、`downloads`、`logs`）、指纹规格、可选代理和运行偏好。
+- `archive`: 软删除状态；档案不再出现在默认列表，数据目录原地保留，可通过 restore 回到 `active`。
+- `deleted`: 回收站状态；数据目录移动到 `<data-root>/trash/<profile-id>` 并写入 `deleted_at`；档案不可启动，只能 restore 或 purge。
+- `purge`: `DELETE` 携带 `permanent=true` 的永久删除；先删除数据目录再删除数据库记录，失败时保留 `deleted` 状态并写入 `deletion_error` 供重试。
 - `profile status`: `active`、`archived` 或 `deleted`；与运行时 `state` 分离。
-- `hard delete`: 永久删除元数据和浏览器数据目录；不可恢复。
 - `data root`: macOS 的 `~/Library/Application Support/Mien` 或 Docker 的 `/data`。
-- Interface: 控制面 `/api/v1/profiles`、`/api/v1/groups`、`/api/v1/tags` 系列端点，以及 `/api/v1/profiles/import` 和 `/api/v1/profiles/{id}/export`；SQLite `profiles`、`groups`、`tags`、`profile_tags` 表；导入导出 JSON schema。
-- 导入导出 schema 版本独立于应用版本，至少包含 `schema_version`、`profiles`、`groups`、`tags`。
+- `isolation`: 运行时隔离结论，取值 `enforced`、`unsandboxed` 或 `unknown`；持久化于运行时记录并随档案与运行时响应返回。
+- Interface: 控制面 `/api/v1/profiles`、`/api/v1/groups`、`/api/v1/tags` 系列端点，以及 `POST /api/v1/profiles/import/validate`、`POST /api/v1/profiles/import` 和 `POST /api/v1/profiles/{id}/export`；SQLite `profiles`、`groups`、`tags`、`profile_tags` 表；导入导出 JSON schema。
+- 导入导出 schema：明文导出结构由 [`profile-export.schema.json`](../../contracts/profile-export.schema.json) 定义，版本独立于应用版本，至少包含 `schema_version`、`profiles`、`groups`、`tags`。
 
 ## Requirements
 
@@ -41,21 +43,23 @@
 ### REQ-PROFILE-004
 
 - The system MUST treat duplicate as a new profile. Unless explicitly requested, duplication MUST generate a new fingerprint seed and a new browser data directory.
-- Inputs: 源档案标识、可选的配置复制选项。
-- Outputs: 新档案标识；不得共享运行时、数据目录、种子或 Cookie。
-- Defaults: `copy_fingerprint=false`；显式请求复制指纹时仍必须检查种子冲突并返回 `FINGERPRINT_SEED_CONFLICT`。
+- Inputs: 源档案标识、可选的配置复制选项 `copy_fingerprint` 与 `copy_proxy`。
+- Outputs: 新档案标识；不得共享运行时、数据目录、下载目录、种子或 Cookie。
+- Defaults: `copy_fingerprint=false`。
+- Copy semantics: `copy_fingerprint=true` 时复制指纹规格的显式字段（`platform`、`platform_version`、`brand`、`brand_version`、`hardware_concurrency`、`languages`、`timezone`、`window`、`spoof`、`webrtc`、`network`），但 MUST 始终生成新的 `seed`；不得复用源档案种子，也不存在种子冲突分支。
 
 ### REQ-PROFILE-005
 
 - The system MUST isolate every profile in its own browser data directory and MUST NOT reuse a directory for another profile.
 - Inputs: 档案标识与数据根路径。
-- Outputs: `<data-root>/profiles/<profile-id>/chrome` 及独立日志目录；不同档案不得共享 Cookie、缓存、LocalStorage、IndexedDB 或 Service Worker。
+- Outputs: `<data-root>/profiles/<profile-id>/chrome`、`<data-root>/profiles/<profile-id>/downloads` 及独立日志目录；`downloads` MUST 作为该档案 Chromium 的默认下载目录；路径必须保持在档案目录内，子目录权限为 0700；不同档案不得共享 Cookie、缓存、LocalStorage、IndexedDB、Service Worker 或已下载文件。
 
 ### REQ-PROFILE-006
 
-- The system MUST resolve archive, restore, and permanent delete without allowing a deleted profile to be started.
-- Inputs: 档案标识、删除模式、确认令牌。
-- Outputs: 归档档案从默认列表隐藏；恢复后重新可见；永久删除在确认后移除数据库记录和数据目录；删除失败必须回滚状态或标记可重试错误。
+- The system MUST implement the profile lifecycle as `active <-> archived`、`active|archived -> deleted`、`deleted -> active` 与 `deleted -> purge`，并 MUST 拒绝启动 `deleted` 档案。
+- Transitions: `POST /api/v1/profiles/{id}/archive` 把 `active` 转为 `archived` 并写 `archived_at`；`POST /api/v1/profiles/{id}/restore` 把 `archived` 或 `deleted` 转为 `active` 并清空 `archived_at`；`DELETE /api/v1/profiles/{id}?permanent=false` 把 `active|archived` 转为 `deleted`，把数据目录移动到 `<data-root>/trash/<profile-id>` 并写 `deleted_at`；`DELETE /api/v1/profiles/{id}?permanent=true` 对 `deleted` 档案先删除数据目录、再删除数据库记录。
+- Inputs: 档案标识、`permanent` 删除模式、确认令牌。
+- Outputs: 状态与目录移动同步；从回收站恢复时目录移回 `<data-root>/profiles/<profile-id>`；`deleted` 档案的任何启动请求返回 `PROFILE_DELETED`（409）且不得隐式恢复；purge 目录删除失败时保留 `deleted` 状态、不删除记录、写入并返回 `deletion_error`，修复后可重试 purge。
 
 ### REQ-PROFILE-007
 
@@ -72,17 +76,20 @@
 
 ### REQ-PROFILE-009
 
-- The system MUST validate import files against the declared schema, including field types, size limits, proxy configuration shape, share-link fields, and path fields.
-- Inputs: JSON 导入文件、可选口令。
-- Outputs: 通过校验的档案草稿或逐项错误；非法 schema、超大文件、未知版本、路径穿越和符号链接必须被拒绝。
-- Transport: Docker Web UI 使用 `POST /api/v1/profiles/import`；冲突项在用户确认后分配新 ID，否则返回 `PROFILE_IMPORT_CONFLICT`。
+- The system MUST validate import input against the declared export schema before writing anything, and MUST expose a dry-run that creates no rows or directories.
+- Inputs: `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy}`；`format` 为 `plain|encrypted`；`payload` 为明文导出对象或不透明加密容器；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；`conflict_strategy` 为 `new_id|abort`，默认 `new_id`。
+- Outputs: `POST /api/v1/profiles/import/validate` 返回逐项草稿、逐项 `errors` 与冲突项，且不写数据库、不建目录；`POST /api/v1/profiles/import` 返回 `ProfileImportResult`，其 `items[]` 每项包含 `profile`、`status` 和 `errors`。
+- Conflict semantics: `new_id` 为冲突项分配新 ULID 并保留配置；`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`，不产生任何档案、目录、分组或标签。
+- Validation: 非法 schema、未知 `schema_version`、超大文件、字段超限、代理配置形状、分享链接字段、`../` 与绝对路径、符号链接必须被拒绝；加密导出未提供口令或口令错误时返回字段级错误且不回显口令。
+- Transport: Docker Web UI 先调用 validate，再调用 import 提交；桌面宿主使用同语义的 IPC 命令。
 
 ### REQ-PROFILE-010
 
 - The system MUST exclude proxy credentials, API tokens, cookies, and browser data from default exports, and MUST support passphrase-encrypted exports using authenticated encryption.
-- Inputs: 档案集合、导出模式、可选口令。
-- Outputs: 带 schema 版本的导出文件；默认导出不含秘密；加密导出只包含口令派生密钥可解开的密文。
-- Transport: Docker Web UI 使用 `GET /api/v1/profiles/{id}/export?format=plain|encrypted`；加密 payload 是不透明容器。
+- Inputs: `POST /api/v1/profiles/{id}/export` 的请求体 `ProfileExportRequest` = `{format, passphrase?}`；`format` 为 `plain|encrypted`；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；口令只允许出现在请求体，禁止出现在 URL、查询串、日志、审计和错误消息中。
+- Outputs: `ProfileExportEnvelope`；明文 `payload` 遵循 [`profile-export.schema.json`](../../contracts/profile-export.schema.json) 的结构；加密 `payload` 是带版本号的不透明字符串容器，使用 Argon2id 派生密钥与认证加密，envelope 版本参与 AAD，错误口令返回字段级错误。
+- Redaction: 导出中的代理只保留 `kind`、`server`、`port`、非秘密 `options` 和 `credential_fields` 名称列表，并固定 `credentials_removed=true`；`options` MUST 拒绝密码、UUID、私钥、Token、Cookie 等秘密键。
+- Canonical fields: 窗口尺寸只存在于指纹规格中；导出不含顶层 `runtime.window`，也不含 `window_json`。
 
 ### REQ-PROFILE-011
 
@@ -104,9 +111,16 @@
 
 ### REQ-PROFILE-014
 
-- The system MUST define startup preferences per profile, including start URL, headful/headless/pseudo_headful mode, window size, and whether the automation API is exposed.
+- The system MUST define startup preferences per profile, including start URL, headful/headless/pseudo_headful mode, and whether the automation API is exposed; window size MUST NOT be duplicated at profile level.
 - Inputs: 用户偏好与能力清单。
-- Outputs: 持久化偏好；不支持的显示或运行模式在保存时拒绝或在启动时给出明确错误。
+- Outputs: 持久化偏好；`ProfileInput`、`ProfilePatch` 与 `Profile` 不含顶层 `window`，窗口尺寸只从 `fingerprint.window` 读取；不支持的显示或运行模式在保存时拒绝或在启动时给出明确错误。
+
+### REQ-PROFILE-015
+
+- The system MUST let each profile bind an installed kernel version and MUST implement kernel migration as an explicit, audited, reversible operation.
+- Inputs: 目标 `kernel_version`、当前 `kernel_version`、已安装内核记录（含 `asset_sha256` 与 `binary_sha256`）、指纹规格、沙箱能力。
+- Outputs: 预检平台、能力清单（含 `window-size` 与 `per_platform_values`）、指纹规格一致性和沙箱可用性；运行中的档案 MUST 先停止；预检通过后写入新 `kernel_version`，并记录前后版本、预检结果和执行者的审计事件。
+- Failure semantics: 预检或迁移失败时保留原内核绑定，不产生部分迁移的档案；迁移后重新校验指纹规格并提示派生特征变化；保留上一版本用于回滚，回滚同样写审计事件。
 
 ## Verification
 
@@ -130,21 +144,21 @@
 
 ### VER-PROFILE-004
 
-- Method: 复制含种子、代理和运行偏好的档案，比较新档案与源档案。
+- Method: 复制含种子、代理、运行偏好和指纹规格的档案，分别以 `copy_fingerprint=false` 与 `copy_fingerprint=true` 比较新旧档案。
 - covers: `REQ-PROFILE-004`
-- Pass condition: 新档案标识、种子和数据目录均不同；配置按选项复制；源档案运行状态不受影响。
+- Pass condition: 新档案标识与数据目录不同；`copy_fingerprint=false` 时不复制指纹；`copy_fingerprint=true` 时显式字段一致但 `seed` 必然不同，且不返回种子冲突；源档案运行状态与数据目录不受影响。
 
 ### VER-PROFILE-005
 
-- Method: 创建两个档案并启动，检查各自数据目录中的 Cookie、缓存和 LocalStorage 文件。
+- Method: 创建两个档案并启动，在各自页面触发下载，检查 Cookie、缓存、LocalStorage 与下载文件。
 - covers: `REQ-PROFILE-005`
-- Pass condition: 两个目录互不包含对方数据；路径分别指向各自的 `<profile-id>/chrome`。
+- Pass condition: 两个目录互不包含对方数据或下载文件；Chromium 默认下载目录分别为各自的 `<profile-id>/downloads`；数据目录与下载目录权限为 0700。
 
 ### VER-PROFILE-006
 
-- Method: 归档、恢复、永久删除，并在每个阶段尝试启动。
+- Method: 依次执行归档、恢复、删除到回收站、从回收站恢复、彻底删除，并在每个阶段尝试启动；单独模拟目录删除失败后重试。
 - covers: `REQ-PROFILE-006`
-- Pass condition: 归档档案启动被拒绝；恢复后可启动；永久删除后记录与目录消失；模拟删除失败时状态可重试。
+- Pass condition: 归档与 `deleted` 档案启动均被拒绝且不隐式恢复，`deleted` 档案返回 `PROFILE_DELETED`；`permanent=false` 后目录位于 `<data-root>/trash/<id>` 且 `deleted_at` 已写；恢复后目录回位、`archived_at` 清空且可启动；`permanent=true` 后记录与目录消失；模拟目录删除失败时档案保持 `deleted`、响应包含 `deletion_error`，修复后重试成功。
 
 ### VER-PROFILE-007
 
@@ -160,15 +174,15 @@
 
 ### VER-PROFILE-009
 
-- Method: 使用合法、错误 schema、超长字段、`../` 路径、绝对路径和符号链接导入文件。
+- Method: 分别调用 `POST /api/v1/profiles/import/validate` 与 `POST /api/v1/profiles/import`，使用合法、错误 schema、未知版本、超长字段、`../` 路径、绝对路径、符号链接、加密导出未提供口令和冲突档案。
 - covers: `REQ-PROFILE-009`
-- Pass condition: 合法文件导入成功；其余输入被拒绝并返回具体字段错误；不产生越界文件。
+- Pass condition: validate 返回逐项草稿、错误与冲突且数据库和目录零写入；合法提交成功并返回逐项 `status`；`conflict_strategy=abort` 遇冲突返回 `PROFILE_IMPORT_CONFLICT` 且无任何写入；`new_id` 为冲突项分配新 ID；其余非法输入返回字段级错误且不产生越界文件。
 
 ### VER-PROFILE-010
 
-- Method: 执行默认导出与加密导出，检查文件内容和解密结果。
+- Method: 调用 `POST /api/v1/profiles/{id}/export`，分别导出 `plain` 与 `encrypted`，检查请求体、响应、日志、审计与解密结果。
 - covers: `REQ-PROFILE-010`
-- Pass condition: 默认导出不含代理凭据、Token、Cookie；加密导出无法在无口令时读取，正确口令可还原配置。
+- Pass condition: 明文 `payload` 通过 `profile-export.schema.json` 校验且不含代理凭据、Token、Cookie 或 `runtime.window`；加密 payload 在无口令时不可读、正确口令可还原、错误口令返回字段级错误；`passphrase` 不出现在 URL、日志、审计或错误消息；代理仅含 `credential_fields` 名称与非秘密 `options`，`credentials_removed=true`，秘密键被拒绝。
 
 ### VER-PROFILE-011
 
@@ -178,9 +192,9 @@
 
 ### VER-PROFILE-012
 
-- Method: 使用路径穿越、绝对路径和符号链接构造档案目录与导入路径。
+- Method: 使用路径穿越、绝对路径和符号链接构造档案目录、下载目录与导入路径。
 - covers: `REQ-PROFILE-012`
-- Pass condition: 所有越界路径被拒绝；正常目录权限为 0700；不跟随符号链接写入。
+- Pass condition: 所有越界路径被拒绝；档案目录、`downloads`、日志目录与导入路径均限制在数据根内，正常目录权限为 0700；不跟随符号链接写入。
 
 ### VER-PROFILE-013
 
@@ -190,13 +204,20 @@
 
 ### VER-PROFILE-014
 
-- Method: 保存有头/无头/伪有头、窗口尺寸、启动地址和自动化开关，并与能力清单比较。
+- Method: 保存有头/无头/伪有头、启动地址和自动化开关，检查档案响应、导出与启动 argv 中窗口尺寸的来源，并与能力清单比较。
 - covers: `REQ-PROFILE-014`
-- Pass condition: 支持的偏好被持久化；不支持的模式在保存或启动时被明确拒绝，不静默降级。
+- Pass condition: 支持的偏好被持久化；`ProfileInput`、`ProfilePatch` 与 `Profile` 拒绝顶层 `window`；窗口尺寸只从 `fingerprint.window` 读取并在启动 argv 中生效；不支持的模式在保存或启动时被明确拒绝，不静默降级。
+
+### VER-PROFILE-015
+
+- Method: 为运行中与已停止的档案请求内核迁移，并注入能力清单缺失、指纹不一致、沙箱不可用和写入失败。
+- covers: `REQ-PROFILE-015`
+- Pass condition: 运行中档案被拒绝且绑定不变；预检失败保留原版本且无部分迁移；成功迁移写入含前后版本、预检结果和执行者的审计事件，并重新校验指纹规格；回滚恢复原版本并写审计。
 
 ## Related ADRs
 
 - [ADR-0001：共享 Rust 核心与双宿主](../../adr/0001-shared-core-two-hosts.md)
+- [ADR-0002：固定 fingerprint-chromium 148 并建立内核准入](../../adr/0002-pin-kernel-148.md)
 - [ADR-0003：SQLite 存储与字段级密钥保护](../../adr/0003-storage-and-secret-protection.md)
 - [ADR-0006：显式指纹规格与种子派生模型](../../adr/0006-fingerprint-spec-model.md)
 

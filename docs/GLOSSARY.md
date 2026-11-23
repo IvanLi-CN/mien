@@ -20,7 +20,8 @@
 | 窗口管理器 | openbox | Docker 有头模式下的轻量窗口管理器，用于让 Chromium 窗口获得正常的焦点、尺寸和状态行为。 |
 | 远程查看 | noVNC | 通过 WebSocket 在浏览器中查看 Xvfb 画面的可选组件；不是运行内核的必需依赖。 |
 | 代理网关 | proxy gateway | 核心库中的监督组件，负责代理配置校验、Xray 管理 API 调用、共享出站引用计数、入站/路由生命周期、就绪探测和失败事件；不转发字节流。 |
-| 协议引擎 | protocol engine | 产品固定并校验的 Xray-core 可执行文件，每宿主一个共享进程，负责 VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议、认证、传输与出站 DNS。 |
+| 协议引擎 | protocol engine | 产品固定并校验的 Xray-core 可执行文件，每宿主一个共享进程，负责 VLESS、VMess、Shadowsocks、Trojan（Tier A）与按能力清单提供的 Hysteria2、WireGuard（Tier B）等协议、认证、传输与出站 DNS。 |
+| 协议分级 | protocol tier | Tier A 为首发必过矩阵（VLESS、VMess、Shadowsocks、Trojan），Tier B 为按能力清单提供并显式标注的协议（Hysteria2、WireGuard），基础级为 HTTP/HTTPS/SOCKS5；Tier B 失败必须记录为已知限制，不得静默降级或回退直连。 |
 | 运行档案入站 | runtime inbound | Xray 在回环地址上为单个运行档案创建的 HTTP 入口；Chromium 只连接该入口。 |
 | 共享出站 | shared outbound | 由节点、凭据、传输、TLS/REALITY 与 mux 设置确定的 Xray 出站；相同 key 的运行档案共享其连接池。 |
 | 正向代理 | forward proxy | 客户端侧代理，浏览器把请求交给本地代理，再由代理节点访问目标站点。 |
@@ -28,7 +29,7 @@
 | 分享链接 | share link | `vless://`、`vmess://`、`ss://`、`trojan://`、`hysteria2://` 形式的单节点配置文本。 |
 | 远程 DNS | remote DNS | 目标域名由代理节点解析或随协议发送，避免本机 DNS 查询泄漏目标域名；节点主机名可本地 bootstrap 解析。 |
 | 失败关闭 | fail-closed | 协议引擎不可用或出站失败时浏览器直接失去网络，而不是回退到直连或其他代理。 |
-| 控制面 | control plane | 产品自身的 HTTP/WebSocket API 与 Web UI，用于管理档案和运行时。 |
+| 控制面 | control plane | 产品自身的管理接口与界面：桌面宿主通过 Tauri IPC 提供进程内管理调用，服务端宿主通过 HTTP/WebSocket 提供同一套领域操作的远程入口；两者共用同一套 DTO、错误契约与权限语义，Web UI 经 `ControlTransport` 选择传输。 |
 | 服务端宿主 | server host | 运行控制面、内核、共享协议引擎与显示环境的 Docker 容器进程。 |
 | 桌面宿主 | desktop host | macOS 上的 Tauri 应用进程，承载 Web UI 并调用共享核心库。 |
 | Tauri IPC | Tauri IPC | 桌面 WebView 与 Rust 宿主之间的进程内调用通道；前端用 `invoke`，Rust 用 `#[tauri::command]`。 |
@@ -47,10 +48,10 @@
 | AdHoc 签名 | ad-hoc signing | macOS 的 `codesign --sign -` 签名方式；提供包完整性信号，不提供可验证的发布者身份，也不构成公证。 |
 | Gatekeeper | Gatekeeper | macOS 对下载应用的启动检查；AdHoc 且未公证的应用会被阻止首次启动。 |
 | 发布环境 | release environment | GitHub Actions 中受保护的 environment，要求人工批准并限制 release secrets 的使用。 |
-| 制品证明 | artifact attestation | 由构建平台生成的制品来源与完整性证明，用于补充 SHA-256 和 GitHub Release 的信任链。 |
+| 制品证明 | artifact attestation | 由构建平台生成的制品来源与完整性证明，用于补充 SHA-256 和 GitHub Release 的信任链；属必选发布门禁，不因仓库计划或环境决策跳过。 |
 | 发布目标 | release target | 维护者提供的单个输入，可为 `patch`、`minor`、`major` 或 explicit `X.Y.Z`；由 workflow 解析为 canonical version。 |
-| 可信基线 | trusted baseline | 最新公开、非 draft、非 prerelease 的 GitHub Release 版本，用于版本单调性判断。 |
-| 发布预留 | release reservation | 构建前创建的 durable claim，绑定 canonical version、source SHA、policy 和 reservation ID；本项目使用 draft GitHub Release。 |
+| 可信基线 | trusted baseline | 所有 `vX.Y.Z` tag 与 GitHub Release（含 prerelease 与已作废版本）中的最大 SemVer，用于版本单调性判断；已作废版本仍占用其版本号，若任何已有 tag 或 release 大于等于目标版本，则发布失败关闭。 |
+| 发布预留 | release reservation | 构建前创建的 durable claim，绑定 canonical version、source SHA、policy 和 reservation ID；本项目使用 draft GitHub Release；重跑以预留的 `source_sha` 为准。 |
 | 发布标识 | release identity | canonical version、source SHA、policy、reservation、artifact digest 和 publication target 的组合。 |
 | VLESS | VLESS | 基于用户 ID 的轻量代理协议，常与 TLS、REALITY、WebSocket 或 gRPC 组合。 |
 | VMess | VMess | 基于用户 ID 与加密选型的代理协议，支持多种传输。 |

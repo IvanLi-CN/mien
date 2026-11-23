@@ -27,7 +27,8 @@
     },
     "sha256": {
       "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the published release asset (the downloaded archive), never the extracted engine binary digest. Install records carry asset_sha256 and binary_sha256 separately; engine verification uses binary_sha256."
     },
     "license": {
       "enum": ["MPL-2.0"]
@@ -57,7 +58,8 @@
       "required": ["tier"],
       "properties": {
         "tier": {
-          "enum": ["A", "B", "C"]
+          "enum": ["A", "B", "basic"],
+          "description": "A = VLESS/VMess/Shadowsocks/Trojan release gate; B = Hysteria2/WireGuard declared support with explicit failure reporting; basic = HTTP/HTTPS/SOCKS5 base forward-proxy capability outside the A/B gates."
         },
         "transports": {
           "type": "array",

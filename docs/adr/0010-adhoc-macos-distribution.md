@@ -12,7 +12,7 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 
 ## 决策
 
-- macOS 应用、嵌套的 fingerprint-chromium、Xray-core 和 frameworks 使用 AdHoc 签名：`codesign --force --sign - --timestamp=none --options runtime`。
+- macOS 应用、嵌套的 fingerprint-chromium、Xray-core 和 frameworks 使用 AdHoc 签名：`codesign --force --sign - --timestamp=none --options runtime --entitlements mien-desktop/entitlements.plist`。`--options runtime` 启用 hardened runtime，重签时必须保留 Chromium 的 JIT 权限。
 - 先逐个签嵌套二进制，再签应用；用 `codesign --verify --deep --strict --verbose=2` 验证结构完整性，用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`。
 - 不执行 `notarytool`、`stapler` 或 Gatekeeper 成功验证。`spctl --assess` 对 AdHoc 应用预期失败，CI 只记录这个预期结果。
 - 发布物提供 `SHA256SUMS`、SBOM、许可证、已知限制和 Tauri 更新清单。仓库计划支持时，再为 DMG 和容器 digest 生成 GitHub artifact attestation。
@@ -38,11 +38,13 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 - 自动更新仍可工作，但信任来自 Tauri 更新签名，而不是 Apple 签名；更新密钥成为关键发布资产。
 - GitHub Actions 的 `release` environment、tag 保护、artifact attestation 和发布后校验成为主要发布控制。
 - 发布说明必须包含 Gatekeeper 处理步骤，禁止建议全局关闭 Gatekeeper。
+- 签名命令必须传入 JIT entitlements；遗漏时 `codesign --verify` 仍会通过，但 hardened runtime 下内核启动失败，因此 entitlements 断言独立于结构校验。
 
 ## 验证
 
 - `codesign --verify --deep --strict --verbose=2` 对应用、内核和 Xray 通过。
 - `codesign -dv --verbose=4` 显示 `Signature=adhoc`，且不存在 Developer ID TeamIdentifier。
+- `codesign -d --entitlements :-` 只显示 `com.apple.security.cs.allow-jit` 与 `com.apple.security.cs.allow-unsigned-executable-memory`，签名后的内核可在干净机器启动。
 - `spctl --assess --type execute` 预期拒绝；CI 记录结果但不把拒绝当作失败。
 - `SHA256SUMS` 可校验所有发布资产；Tauri 更新清单签名可验证，并拒绝降级。
 - 在干净 macOS 13+ 机器按发布说明完成首次启动和更新测试。

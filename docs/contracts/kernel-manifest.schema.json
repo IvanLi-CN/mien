@@ -12,7 +12,7 @@
     "flags",
     "seed_derived",
     "known_issues",
-    "sandbox",
+    "sandbox_kind",
     "network_controls",
     "headless_chrome_ua_patch"
   ],
@@ -26,10 +26,12 @@
     },
     "sha256": {
       "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the published release asset (the downloaded DMG/TAR.XZ/ZIP), never the extracted executable digest. Install records carry asset_sha256 and binary_sha256 separately; runtime verification uses binary_sha256."
     },
     "flags": {
       "type": "object",
+      "required": ["window-size"],
       "additionalProperties": {
         "$ref": "#/$defs/flagSpec"
       }
@@ -50,21 +52,17 @@
     "headless_chrome_ua_patch": {
       "type": "boolean"
     },
-    "sandbox": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["requires_namespace_sandbox"],
-      "properties": {
-        "requires_namespace_sandbox": {"type": "boolean"}
-      }
+    "sandbox_kind": {
+      "enum": ["namespace", "seatbelt", "appcontainer", "none"],
+      "description": "Sandbox mechanism this artifact depends on: namespace on Linux (with a mandatory seccomp profile), seatbelt on macOS, appcontainer on Windows, none when the artifact cannot sandbox. Declaring a kind does not replace verifying the effective sandbox before serving traffic."
     },
     "network_controls": {
       "type": "object",
       "additionalProperties": false,
       "required": ["doh_mode", "ipv6_mode"],
       "properties": {
-        "doh_mode": {"enum": ["disabled"]},
-        "ipv6_mode": {"enum": ["block"]}
+        "doh_mode": {"enum": ["disabled", "unsupported"]},
+        "ipv6_mode": {"enum": ["block", "unsupported"]}
       }
     }
   },
@@ -78,7 +76,18 @@
         },
         "values": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {"type": ["string", "integer"]},
+          "description": "Allowed values for flags without platform-specific restrictions. Reject values outside this set; never drop them silently."
+        },
+        "per_platform_values": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "array",
+            "items": {"type": ["string", "integer"]}
+          },
+          "propertyNames": {"enum": ["windows", "macos", "linux"]},
+          "description": "Allowed values per persona platform (windows, macos, linux), e.g. realistic CPU core counts. When present it is authoritative for that flag and supersedes values; consumers must not widen the set by merging the two sources."
         },
         "description": {
           "type": "string"

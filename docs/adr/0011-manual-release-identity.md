@@ -17,13 +17,13 @@ Mien 同时发布 macOS DMG 和 Docker 镜像，未来还需要让多个消费�
 ## 决策
 
 - 发布只由 `workflow_dispatch` 的单个 `release_target` 输入触发；支持 `patch`、`minor`、`major` 和 explicit `X.Y.Z`。不提供默认值，不从 PR label、合并顺序或兼容性分类推导 target。
-- `Version Policy` 为 `mien-semver-v1`：SemVer stable，trusted baseline 来自最新公开、非 draft、非 prerelease GitHub Release；首个 release 只允许 explicit `0.1.0`。
+- `Version Policy` 为 `mien-semver-v1`：SemVer stable，trusted baseline 是所有已存在 `vX.Y.Z` Git tag 与 GitHub Release 的 SemVer 最大值，不论 draft、prerelease、invalidated 或公开状态；已存在版本永远占用序号，任何新 target 必须严格大于它们；首个版本只允许 explicit `0.1.0`。
 - workflow 在 reservation 前解析 canonical version，并绑定 `policy_id`、`release_target`、`canonical_version`、`source_sha`、`reservation_id`、artifact digest 和 publication target。
 - 在构建前创建 GitHub Release draft 作为 durable reservation；draft 使用 `vX.Y.Z` 作为 tag name，但不创建公开 tag。同 version、同 source 复用；同 version、不同 source 冲突。
 - 产生目标 `main` SHA 的 merged PR 必须通过 `CI PR / required`，目标 SHA 本身必须通过 `CI Main / verify`；release source 必须是 `main` 上的正常 PR 合并结果。release workflow 不直接写 `main`。
 - Release 是独立阶段：draft 只接收已验证产物；所有 digest、checksum、SBOM、AdHoc 签名和更新清单通过后，才创建或验证 tag 并公开 GitHub Release。
 - tag 只在 Release 阶段创建或验证；已存在 tag 时必须验证 peeled commit，指向不同 source 则停止，不改写。
-- 失败重跑使用相同 `release_target` 和相同 `source_sha`，读取已有 reservation，补齐缺失步骤；不重新计算 baseline，不创建 successor，不改变版本或 channel。
+- 失败重跑使用相同 `release_target`，先读取 reservation/identity 并 checkout 其中绑定的 `source_sha`；即使 `main` 已前进也恢复原 SHA。若原 SHA 不可取则停止，不重建旧 identity、不分配 successor；只补齐缺失步骤。
 - 本仓库的 Release 后不再自动 Deploy；后续部署消费者必须复用 `release-identity.json` 的 digest，不能按分支或 `latest` 重新构建。
 - 每次发布至少构建一次 macOS DMG 和 Docker 镜像；两者可以共享 canonical version，但各自验证 digest。
 
@@ -47,11 +47,11 @@ Mien 同时发布 macOS DMG 和 Docker 镜像，未来还需要让多个消费�
 
 ## 验证
 
-- `release_target` 缺失或非法时 workflow 拒绝。
+- `release_target` 缺失或非法时 workflow 拒绝；任一已有 tag/release 版本大于或等于新 target 时拒绝，失效/prerelease 版本仍占用序号。
 - 无 baseline 时只有 explicit `0.1.0` 通过；symbolic target 失败。
 - 同 version、不同 source 的 reservation 冲突。
 - 已存在 tag 指向不同 source 时停止。
-- 失败重跑使用同 target/source 时返回同 canonical version 和同 digest。
+- `main` 前进后以同 target 重跑仍从 reservation checkout 原 `source_sha`，复用同 canonical version/digest；已记录 digest 的构建跳过，重建不同 digest 被拒绝。
 - `CI Main / verify` 缺失时 release 不开始构建。
 - 公开 release 的 `verify-release` 失败时标记无效，不静默成功。
 

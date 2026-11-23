@@ -24,7 +24,7 @@
 ### 区块
 
 1. 基本身份：名称、Space/分组、标签、备注。
-2. 指纹：平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、种子。
+2. 指纹：平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、种子。窗口尺寸只属于指纹规格，不作为档案顶层字段；插件面、字体与屏幕字段为 host-bound，只显示当前宿主值。
 3. 代理：选择已有代理或新建；脱敏显示节点与 `credential_set`。
 4. 运行：启动地址、运行模式、CDP 自动化开关。
 5. 风险：跨系统画像、无头/伪有头、无沙箱、直连代理等限制。
@@ -55,20 +55,23 @@
 - 创建/保存中：按钮 loading，禁止重复提交。
 - 校验失败：定位到字段；顶部显示稳定错误码与可复制诊断信息。
 - 未保存离开：二次确认。
-- 代理不可用：允许保存但启动前显示警告；选择“检查失败禁止启动”时阻断启动。
+- 代理不可用：允许保存，启动前显示警告与该代理的 `ProxyCheck.error_code`；检查失败只影响 proof 与警告，不提供“检查失败禁止启动”开关，也不阻断启动。
+- 重复提交：同档案 start 只复用进行中的运行时并显示 `starting`，不得再次拉起内核；`starting` 中的 stop 作为取消并回到 `stopped`。
 - 内核能力缺失：显示具体字段和缺失能力，禁止保存或启动。
 
 ## 3. 档案详情
 
 必须显示：
 
-- 运行状态、模式、`reduced_assurance`、`ua_scope`。
-- 四段 proof：fingerprint、proxy、runtime、isolation。
-- 代理线路、节点地区、延迟、最近检查时间。
+- 运行状态（六态）、模式、`reduced_assurance`、`ua_scope`。
+- 四段 proof：fingerprint、proxy、runtime、isolation。`isolation` 取值为 `enforced`/`unsandboxed`/`unknown`，以 `runtimes.isolation`（最近一次运行）为唯一数据源派生，Profile payload 暴露同一派生值。
+- `isolation` 呈现：`enforced` 显示“沙箱已生效”；`unsandboxed` 持续显示“无沙箱”与降低保证；`unknown` 用虚线描边加 `?` 与文本“未确认”；`stopped` 用低透明度中性，`unknown` 与 `stopped` 不得共用同一呈现。
+- 停止的档案仍显示最近一次运行的 `unsandboxed` 与降低保证；从未启动且无运行记录时显示 `unknown`，不得因此省略 proof。
+- 代理线路、节点地区、延迟、最近检查时间、`ProxyCheck.error_code`。
 - 指纹种子、内核版本、代理 ID；不显示凭据。
-- 启动/停止、编辑、复制、归档。
+- 启动/停止、编辑、复制、归档/恢复、删除到回收站/恢复/彻底删除。
 - 日志尾部、稳定错误码和复制诊断。
-- 限制说明：宿主绑定显示/字体、无头或伪有头、跨系统画像、共享引擎故障域。
+- 限制说明：宿主绑定显示/字体/插件面、无头或伪有头、跨系统画像、共享引擎故障域。proof 不引用第三方指纹站点结果作为判定。
 
 状态行为：
 
@@ -84,7 +87,7 @@
 - 创建/编辑使用类型化字段；只展示当前 Xray 能力清单支持的协议和传输。
 - TUIC 不显示；如果导入 TUIC 链接，明确拒绝 `TUIC_NOT_SUPPORTED`。
 - 分享链接导入只生成草稿，不自动保存或启动。
-- 检查动作通过共享引擎临时资源执行；结果包含延迟、出口 IP（如配置）和错误类。
+- 检查动作通过共享引擎临时资源执行；结果包含延迟、出口 IP（如配置）和错误类。网络失败以 HTTP 200 的 `ProxyCheck.error_code` 呈现，同时写入事件；检查结果只作警告，不阻断保存或启动。
 - 凭据编辑只显示“已设置”；不能读回旧值；替换后保存。
 - 代理被运行档案引用时禁止删除，返回 `RESOURCE_IN_USE`。
 
@@ -102,7 +105,8 @@
 - 代理事件：`proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
 - 配置事件：`profile.*`、`kernel.*`、`engine.*`、`token.*`；代理配置变更只通过审计事件展示，不伪造不存在的 `proxy.created/updated` 事件。
 - 审计事件只显示非敏感元数据；不显示 Cookie、Token、UUID、私钥或完整分享链接。
-- 支持按 `profile_id`、事件 `type` 和 `from`/`to` 时间筛选；空状态说明没有事件，而不是显示空白列表。
+- 支持按 `event_type`、`profile_id`、`action` 和 `from`/`to` 时间筛选，字段名与审计契约一致（`action` 为兼容字段）；组合筛选与游标分页无重复遗漏；空状态说明没有事件，而不是显示空白列表。
+- 日志尾部入口按有界端点 `GET /api/v1/profiles/{id}/logs?limit=` 读取，不在活动页直接读本地文件。
 
 ## 7. 响应式与可访问性
 
@@ -110,12 +114,44 @@
 - 1024 使用图标侧轨；768 使用横向 Space 切换；390 单列、操作固定底部。
 - 所有主要操作可键盘完成；焦点环可见；模式选择器使用原生 radio/select 语义。
 - 错误、加载、空状态和禁用原因必须可读；状态不能只依赖颜色。
-- 视觉证据在每个 surface 实现后补齐；当前只有 Profiles 首屏有已批准 comp。
+- 每个 surface 必须执行 axe 或等价扫描并归档报告，覆盖对比度阈值、角色/名称、200% zoom、焦点顺序、禁用原因和 `prefers-reduced-motion`；缺少扫描报告或断言失败即视为该 surface 未完成。
+- 视觉证据在每个 surface 实现后补齐；当前只有 Profiles 首屏有已批准 comp。可访问性证据与视觉证据分开归档，均不提交到代码仓库。
 
-## 8. 与契约的关系
+## 8. 编辑、设置与列表状态
+
+`/profiles/:id/edit`：
+
+- 加载态使用骨架；保存中禁用重复提交并保留已填值。
+- 字段错误定位到字段；未保存离开二次确认。
+- 凭据只显示“已设置”，不读回旧值；替换后保存。
+- 指纹种子不可编辑；平台、语言或时区变更时提示降低保证与需要重启。
+- 代理检查结果只显示警告与 `ProxyCheck.error_code`；界面不提供“检查失败禁止启动”控件。
+- 导入/导出入口与口令字段：口令为 write-only，明文与加密互斥，冲突策略可选；导出不包含顶层 `window`。
+- 生命周期动作：归档/恢复、删除到回收站、恢复、彻底删除；失败显示 `deletion_error` 与重试入口。
+- 保存后若档案正在运行，提示重启后生效，不静默替换运行中的配置。
+
+`/settings`：
+
+- 加载、空、错误与重试；提交后给出反馈与稳定错误码。
+- Token 只显示一次，列表显示前缀与 scope，撤销立即生效。
+- 查看器开关默认关闭；未启用时显示 `VIEWER_NOT_AVAILABLE` 与启用入口。
+- 服务端模式显示部署限制（只读根、`/data` 唯一持久卷、代理与证书来源）；桌面模式隐藏服务端专属项并注明无本地 HTTP 管理端口。
+- 首次登录改密：显示 `must_change_password=true`，未改密时禁用写操作并说明原因。
+
+列表状态（`/profiles`、`/proxies`、`/kernels`、`/activity`）：
+
+- 首屏加载使用骨架，不用空白表格。
+- 空结果区分“尚无数据”和“筛选无结果”，并提供清除筛选动作。
+- 加载失败显示稳定错误码、`request_id` 与重试入口。
+- 分页或滚动加载保留已加载项，不闪空；重复项按标识去重。
+- `deleted` 档案默认不出现在活跃列表，需显式筛选才可见，并标注不可启动与恢复入口。
+
+## 9. 与契约的关系
 
 - API 字段见 [`contracts/openapi.yaml`](contracts/openapi.yaml)。
 - 事件结构见 [`contracts/events.schema.json`](contracts/events.schema.json)。
 - 错误码见 [`ERROR-CODES.md`](ERROR-CODES.md)。
 - 运行模式见 [`specs/browser-runtime/SPEC.md`](specs/browser-runtime/SPEC.md)。
+- 运行状态机、`isolation` 与日志端点见 [`specs/browser-runtime/SPEC.md`](specs/browser-runtime/SPEC.md)，日志端点与审计筛选字段同时在 OpenAPI 中声明。
+- 档案生命周期（active/archived/deleted）、回收站目录与 `deletion_error` 见 [`specs/profile-management/SPEC.md`](specs/profile-management/SPEC.md) 与 [`DATABASE-SCHEMA.md`](DATABASE-SCHEMA.md)。
 - Profiles 首屏方向见 [`../.impeccable/surfaces/ui-src-pages-profiles.md`](../.impeccable/surfaces/ui-src-pages-profiles.md)。

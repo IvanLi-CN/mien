@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mien.local/contracts/profile-export.schema.json",
   "title": "Mien profile export",
-  "description": "Machine-readable companion to docs/specs/profile-management/SPEC.md. This schema covers redacted plaintext exports; encrypted exports are opaque containers. Redacted exports never contain proxy credentials, API tokens, cookies, or browser data.",
+  "description": "Machine-readable companion to docs/specs/profile-management/SPEC.md. This schema validates the `payload` of a plaintext (`format=plain`) export only. Encrypted exports (`format=encrypted`) wrap an opaque, versioned container instead and are not validated by this schema; their envelope carries the envelope version, Argon2id KDF parameters, salt and authenticated ciphertext, with the envelope version bound as AAD. A wrong passphrase fails decryption with a field-level error. The passphrase may only travel in the request body and must never appear in a URL, query string, log, audit record or error message. Redacted plaintext exports never contain proxy credentials, API tokens, cookies, browser data, or window size outside the fingerprint spec.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "exported_at", "profiles"],
@@ -64,7 +64,7 @@
           "proxy": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["kind", "server", "port", "options", "credentials_removed"],
+            "required": ["kind", "server", "port", "options", "credential_fields", "credentials_removed"],
             "properties": {
               "kind": {
                 "enum": [
@@ -79,11 +79,20 @@
                   "wireguard"
                 ]
               },
-              "server": {"type": "string", "minLength": 1, "maxLength": 255},
+              "server": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^@/\\s]+$", "description": "Host or IP literal only; userinfo and path segments are rejected so credentials cannot ride along inside the server string."},
               "port": {"type": "integer", "minimum": 1, "maximum": 65535},
               "options": {
                 "type": "object",
-                "description": "Non-secret protocol options such as TLS, transport, method and DNS mode."
+                "propertyNames": {"not": {"pattern": "(?:[Pp]assword|[Pp]assphrase|[Pp]wd|[Pp][Ss][Kk]|[Pp]rivate|[Ss]ecret|[Tt]oken|[Cc]redential|[Cc]ookie|[Uu][Uu][Ii][Dd]|[Bb]earer|[Aa][Pp][Ii][_-]?[Kk]ey)"}},
+                "additionalProperties": {"$ref": "#/$defs/optionValue"},
+                "description": "Non-secret protocol options only: TLS mode, SNI, transport, cipher method, DNS mode and similar. Secret-bearing keys are rejected at every nesting level; credential values never appear in options."
+              },
+              "credential_fields": {
+                "type": "array",
+                "uniqueItems": true,
+                "maxItems": 16,
+                "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+                "description": "Names of the credential fields that were removed, e.g. [\"username\", \"password\"] or [\"uuid\"]. Names only; values are never exported."
               },
               "credentials_removed": {"const": true}
             }
@@ -91,27 +100,31 @@
           "runtime": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["mode", "window"],
+            "required": ["mode"],
             "properties": {
               "start_url": {
                 "type": "string",
                 "pattern": "^(https?://|about:)"
               },
               "mode": {"enum": ["headful", "headless", "pseudo_headful"]},
-              "window": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["width", "height"],
-                "properties": {
-                  "width": {"type": "integer", "minimum": 320, "maximum": 7680},
-                  "height": {"type": "integer", "minimum": 240, "maximum": 4320}
-                }
-              },
               "automation_api": {"type": "boolean"}
             }
           }
         }
       }
+    }
+  },
+  "$defs": {
+    "optionValue": {
+      "oneOf": [
+        {"type": ["string", "number", "boolean", "null"]},
+        {"type": "array", "items": {"$ref": "#/$defs/optionValue"}},
+        {
+          "type": "object",
+          "propertyNames": {"not": {"pattern": "(?:[Pp]assword|[Pp]assphrase|[Pp]wd|[Pp][Ss][Kk]|[Pp]rivate|[Ss]ecret|[Tt]oken|[Cc]redential|[Cc]ookie|[Uu][Uu][Ii][Dd]|[Bb]earer|[Aa][Pp][Ii][_-]?[Kk]ey)"}},
+          "additionalProperties": {"$ref": "#/$defs/optionValue"}
+        }
+      ]
     }
   }
 }

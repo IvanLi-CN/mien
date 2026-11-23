@@ -34,15 +34,16 @@
 - `PRD-ACC-001` 至 `PRD-ACC-010` 有当前证据。
 - 产生目标 `main` SHA 的 merged PR 已通过 `CI PR / required`；目标 SHA 本身存在成功的 `CI Main / verify`。
 - `release_target` 合法，trusted baseline 可读取，canonical version 严格大于 baseline。
+- trusted baseline 是全部 `vX.Y.Z` tag 与 GitHub Release 的 SemVer 最大值，包含 prerelease 和被标记无效的版本；已失效版本仍占用其版本号。任一已有 tag/release 大于或等于 target 时 fail closed，不允许重发同版本。
 - draft reservation 的 version/source 与本次 target 一致；同 version 不同 source 必须冲突。
 - 内核准入 `KERNEL-001` 至 `KERNEL-010` 通过。
 - Xray 准入、协议矩阵、共享出站引用计数、连接复用、引擎崩溃重建通过。
 - 指纹、DNS、WebRTC、IPv6、DoH、失败关闭测试通过。
-- Docker 非 root、只读根、无 Docker socket、沙箱状态可确认。
+- Docker 非 root、只读根、无 Docker socket、沙箱状态可确认；镜像从同一 source 独立构建两次且 digest 完全相等，比对结果作为 ACC-010 可复现构建证据。
 - 管理 API、运行档案入站、CDP 和 noVNC 不暴露到非必要网络。
 - 错误码、事件 schema、OpenAPI、数据库迁移与导出 schema 校验通过。
-- macOS 应用、嵌套内核、Xray-core 和 frameworks 的 AdHoc 签名通过 `codesign --verify --deep --strict`；`--options runtime` 与 `Signature=adhoc` 已断言；不要求公证或 Gatekeeper 成功。
-- `SHA256SUMS`、SBOM、许可证、更新清单和 attestation（支持时）完整。
+- macOS 应用、嵌套内核、Xray-core 和 frameworks 的 AdHoc 签名通过 `codesign --verify --deep --strict`；`--options runtime` 与 `Signature=adhoc` 已断言；entitlements 只含 Chromium JIT 的 `com.apple.security.cs.allow-jit` 与 `com.apple.security.cs.allow-unsigned-executable-memory`；不要求公证或 Gatekeeper 成功。
+- `SHA256SUMS`、SBOM、许可证、更新清单和 artifact attestation 完整；attestation 是必选门禁，没有“仓库计划不支持则跳过”的例外。
 - Docker 镜像扫描无未接受的高危/严重漏洞；镜像 digest 固定并签名。
 - MPL-2.0、BSD-3-Clause 与容器内 GPL 组件许可复核通过。
 - 项目自身许可证已确定并写入仓库。
@@ -50,15 +51,16 @@
 
 ## 3. macOS 发布
 
-1. 在 macOS arm64 runner 构建 `aarch64-apple-darwin`，运行完整 CI。
+1. 在 reservation 的 `source_sha` 上于 macOS arm64 runner 构建 `aarch64-apple-darwin`，运行完整 CI。
 2. 下载并校验 fingerprint-chromium 148 DMG；解压内核；计算最终二进制 SHA-256。
 3. 下载并校验 Xray-core v26.11.9 macOS ARM64；计算最终二进制 SHA-256。
 4. 先对内核、Xray 和 frameworks 做 AdHoc 签名，再签应用：`codesign --force --sign - --timestamp=none --options runtime`；不使用 `--deep` 代替逐个签名。
-5. 运行 `codesign --verify --deep --strict --verbose=2`；用 `codesign -dv --verbose=4` 断言 `Signature=adhoc` 和 `--options runtime`。`spctl --assess` 预期拒绝，不作为失败条件。
-6. 生成 DMG、`SHA256SUMS`、SBOM、许可证、来源信息和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
-7. 在 `release` job 前，在干净 macOS 13+ 机器下载同一 run 的 DMG 与 `SHA256SUMS`，先校验 SHA-256，再按发布说明手动放行；测试首次启动和升级，结果写入 draft 正文，未通过不得公开。
-8. 不执行 `notarytool`、`stapler` 或开发者证书签名；不保存 Apple 证书、Apple ID、Team ID 或 App-Specific Password。
-9. 保留上一版本用于回滚。
+5. 签应用时传入 `mien-desktop/entitlements.plist`，只授予 Chromium V8 JIT 必需的 `com.apple.security.cs.allow-jit` 与 `com.apple.security.cs.allow-unsigned-executable-memory`。hardened runtime 下缺这两项会导致内核无法启动；不添加调试、网络、文件访问或其他放宽项。
+6. 运行 `codesign --verify --deep --strict --verbose=2`；用 `codesign -dv --verbose=4` 断言 `Signature=adhoc` 和 `--options runtime`；用 `codesign -d --entitlements :-` 断言 entitlements 只含上述两项。`spctl --assess` 预期拒绝，不作为失败条件。
+7. 生成 DMG、`SHA256SUMS`、SBOM、许可证、来源信息、`entitlements.plist` 和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
+8. 在 `release` job 前，在干净 macOS 13+ 机器下载同一 run 的 DMG 与 `SHA256SUMS`，先校验 SHA-256，再按发布说明手动放行；测试首次启动和升级，结果连同被测 DMG 的 SHA-256 写入 draft 正文，未通过不得公开。任何 macOS 重新构建都使已有手动测试结果作废。
+9. 不执行 `notarytool`、`stapler` 或开发者证书签名；不保存 Apple 证书、Apple ID、Team ID 或 App-Specific Password。
+10. 保留上一版本用于回滚。
 
 发布说明必须写明：
 
@@ -75,24 +77,27 @@
 3. 镜像内安装 Xvfb、openbox、x11vnc、noVNC、字体、fingerprint-chromium 与 Xray。
 4. 启动时校验内核与 Xray SHA-256；失败拒绝启动。
 5. 健康检查 `/healthz`；就绪检查 `/readyz`。
-6. 生成 SBOM、漏洞扫描、cosign keyless 签名或固定 digest。
-7. 在 x86_64 主机验证 Xvfb 有头、无头、伪有头、代理矩阵、容量和数据卷。
+6. 从同一 `source_sha` 独立构建两次（清空构建缓存、相同基础镜像 digest 与锁文件），比对两次镜像 digest；不相等即失败，不推送 staging tag。
+7. 生成 SBOM、漏洞扫描、cosign keyless 签名或固定 digest。
+8. 在 x86_64 主机验证 Xvfb 有头、无头、伪有头、代理矩阵、容量和数据卷。
 
 ## 5. GitHub Actions 发布流程
 
 发布 workflow 为 `.github/workflows/release.yml`，完整设计见 [`CI.md`](CI.md)，版本与 identity 见 [`RELEASE-POLICY.md`](RELEASE-POLICY.md)：
 
-1. `resolve-target` 读取 `release_target` 和 trusted baseline，解析 canonical version；校验 `main` source、`CI Main / verify` 和已有 reservation。
+所有 job 从 reservation 读取 `source_sha` 并 checkout 该 SHA，不使用 main HEAD。
+
+1. `resolve-target` 读取 `release_target` 和 trusted baseline（全部 `vX.Y.Z` tag 和 release 的 SemVer 最大值，包含 prerelease 与已失效版本），解析 canonical version；校验 `main` source、`CI Main / verify` 和已有 reservation；已有任何 tag/release 大于或等于 target 时 fail closed。
 2. `reserve` 创建或复用 draft GitHub Release，写入 policy、target、version、source SHA 和 run ID。
 3. `test` 调用共享 CI workflow，运行完整测试和 e2e；不接触 release secrets。
-4. `macos-arm64` 与 `docker-amd64` 并行构建，分别上传 DMG、SBOM、校验和与镜像 digest。
-5. `stage-release` 把产物写入 draft，校验 SHA-256/digest，写入 `release-identity.json`。
-6. `attest` 为 DMG 和容器 digest 生成 GitHub artifact attestation（计划支持时）。
-7. `release` 校验 identity 后创建或验证 tag，公开 release。
-8. `promote-docker` 把 staging digest 提升为 `vX.Y.Z` GHCR tag。
-9. `verify-release` 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity；失败时标记 release 无效。
+4. `macos-arm64` 与 `docker-amd64` 并行构建，分别上传 DMG、SBOM、校验和与镜像 digest；`docker-amd64` 必须双构建且 digest 相等。
+5. `stage-release` 把产物写入 draft，校验 SHA-256/digest，写入 `release-identity.json`；本次构建 digest 与 identity 已记录 digest 不一致时拒绝。
+6. `attest` 为 DMG 和容器 digest 生成 GitHub artifact attestation；没有降级或跳过分支。
+7. 阶段 7 `promote-docker` 把 staging digest 提升为 `vX.Y.Z` GHCR tag；绑定 `release` environment。
+8. 阶段 8 `release` 校验 identity 后创建或验证 tag，公开 release；绑定 `release` environment。
+9. `verify-release` 下载公开资产，校验 checksums、AdHoc 签名、entitlements、更新清单和 identity；失败时标记 release 无效。
 
-失败后用相同 `release_target` 和相同 `source_sha` 重跑，复用已绑定 canonical version、draft reservation 和已记录 digest；不重新分配版本，不创建 successor，不改写已有 tag。需要修正构建时选择新的 `release_target`，产生新 version；release 资产不可变，回滚使用上一版本 release，不覆盖已发布文件。
+失败后用相同 `release_target` 和相同 `source_sha` 重跑，checkout reservation 的 `source_sha`，复用已绑定 canonical version、draft reservation 和已记录 digest；identity 已记录 digest 的产物不再构建，不重新分配版本，不创建 successor，不改写已有 tag。重新构建 macOS 产物会使手动测试证据作废，必须重做。需要修正构建时选择新的 `release_target`，产生新 version；release 资产不可变，回滚使用上一版本 release，不覆盖已发布文件。
 
 ## 6. 回滚与安全响应
 
@@ -101,6 +106,7 @@
 - 发现高危内核或 Xray 缺陷时，先限制受影响版本/协议，再发布修复或回退包。
 - 回滚包必须保持 AdHoc 签名/校验和、数据库迁移兼容和导出 schema 兼容。
 - 已公开 release 的 `verify-release` 失败时，立即标记 release 无效并通知维护者。
+- 被标记无效的版本仍占用其版本号；修复不能重发同版本，必须选择新的 `release_target` 产生新版本。
 - 安全公告包含影响范围、缓解措施和已知限制，不包含利用细节。
 
 ## 7. 当前缺口

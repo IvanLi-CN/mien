@@ -7,7 +7,7 @@
 - CI 与 release 全部由 GitHub Actions 执行，不使用自托管 runner。
 - PR 只使用只读权限和测试 fixture，不接触 release secrets。
 - macOS 使用 AdHoc 签名（`codesign --sign -`），不公证，不做 `stapler`。AdHoc 只提供包完整性信号，不证明发布者身份。
-- macOS 分发的信任链是 GitHub Release、SHA-256SUMS、GitHub artifact attestation（仓库计划支持时）和 Tauri 更新签名，不是 Apple Gatekeeper。
+- macOS 分发的信任链是 GitHub Release、SHA-256SUMS、GitHub artifact attestation 和 Tauri 更新签名，不是 Apple Gatekeeper。artifact attestation 是必选发布门禁，不存在按仓库计划跳过 attestation 的分支；已记录的 environment 决策也不能削弱这一要求。
 - 发布由维护者手动触发 `release.yml`，输入单个 `release_target`；tag 只在 Release 阶段创建或验证，不作为触发入口。
 - release workflow 使用受保护的 `release` environment，发布前需要人工批准。
 - Docker 固定构建 `linux/amd64`；macOS 构建 Apple Silicon `aarch64-apple-darwin`。
@@ -21,7 +21,7 @@
 | `.github/workflows/ci-pr.yml` | `pull_request` 的 `opened`、`synchronize`、`reopened`、`ready_for_review`；`merge_group` | `ci-pr-${{ github.event.pull_request.number || github.ref }}`，取消过期 candidate | PR candidate gate；`CI PR / required` 是唯一 required check |
 | `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与打包 smoke |
 | `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、容器和已知漏洞复查 |
-| `.github/workflows/release.yml` | `workflow_dispatch`，输入 `release_target` | `release`，不取消 | target 解析、reservation、全量验证、macOS/Docker 构建、attestation、GitHub Release |
+| `.github/workflows/release.yml` | `workflow_dispatch`，输入 `release_target` | `release`，不取消 | target 解析、reservation、全量验证、macOS/Docker 构建（Docker 双构建比对）、attestation、镜像提升、tag 与 GitHub Release、发布后验证 |
 
 `ci-pr.yml` 不监听 `pull_request.edited`；只有代码或 review-ready 状态变化才重新评估 required gate。`ci-main.yml` 与 `release.yml` 使用独立并发 namespace，不能被 PR 的取消策略误伤。
 
@@ -65,14 +65,14 @@ flowchart TD
   Dispatch[workflow_dispatch: release_target] --> V[resolve-target]
   V --> R[reserve draft]
   R --> T[ci-reusable: release]
-  T --> M[macOS arm64 构建]
-  T --> Docker[Docker amd64 构建]
+  T --> M[macos-arm64 构建]
+  T --> Docker[docker-amd64 双构建]
   M --> S[stage-release]
   Docker --> S
   S --> A[attest]
-  A --> P[release: tag + 公开 GitHub Release]
-  P --> PD[promote-docker]
-  PD --> X[verify-release]
+  A --> PD[promote-docker: 阶段 7]
+  PD --> P[release: 阶段 8, tag + 公开 GitHub Release]
+  P --> X[verify-release]
 ```
 
 | Job | 内容 | 失败处理 |
@@ -88,7 +88,7 @@ flowchart TD
 | `promote-docker` | 把已验证 digest 提升为 `ghcr.io/<owner>/mien-server:vX.Y.Z` 并记录最终 digest | 不公开 release，或标记 release 无效 |
 | `verify-release` | 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity | 标记 release 无效；不得静默忽略 |
 
-tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑；先读取已有 reservation，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
+tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑：先读取已有 reservation 和 identity，checkout reservation 的 `source_sha`；identity 已记录某产物 digest 时对应构建 job 跳过，`stage-release` 遇到 digest 不一致即拒绝，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
 
 Deploy 不在本仓库自动执行；后续部署必须消费 `release-identity.json` 中的 digest，不按分支或 `latest` 重新构建。
 
@@ -99,9 +99,11 @@ macOS job 的顺序固定为：
 1. 下载 fingerprint-chromium 148 DMG 和 Xray-core v26.11.9 ARM64；校验 SHA-256，记录最终二进制的 SHA-256。
 2. 构建 `aarch64-apple-darwin` 应用，把内核和 Xray 放入应用资源目录。
 3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。
-4. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`。
-5. 生成 DMG、`SHA256SUMS`、SBOM、许可证和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
-6. 在 `release` job 之前，由维护者在干净的 macOS 13+ 机器下载同一 run 的 DMG 和 `SHA256SUMS`（Actions artifact），先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级；结果写入 draft 正文，未通过不得公开。
+4. 签名应用时传入仓库内 `mien-desktop/entitlements.plist`，只包含 Chromium V8 JIT 必需的两项：`com.apple.security.cs.allow-jit` 和 `com.apple.security.cs.allow-unsigned-executable-memory`。不授予调试、网络、文件访问或其他放宽权限；hardened runtime 下缺这两项会导致内核无法启动。
+5. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`；用 `codesign -d --entitlements :-` 断言 entitlements 只包含上述两项。
+6. 生成 DMG、`SHA256SUMS`、SBOM、许可证、`entitlements.plist` 和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
+7. 在 `release` job 之前，由维护者在干净的 macOS 13+ 机器下载同一 run 的 DMG 和 `SHA256SUMS`（Actions artifact），先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级；结果写入 draft 正文，未通过不得公开。
+8. 手动测试证据绑定具体的 DMG SHA-256。任何一次重新构建 macOS 产物（包括同 identity 重跑中 `macos-arm64` 重新执行）都使已有手动测试证据作废，必须对新 DMG 重做并重写 draft 正文；不得沿用旧结果。
 
 `spctl --assess` 在 AdHoc 应用上预期失败，不作为 release gate 的成功条件；CI 记录这个预期结果。禁止在应用、安装器或发布脚本中自动移除 `com.apple.quarantine`，也禁止建议用户关闭系统级 Gatekeeper。
 
@@ -133,17 +135,20 @@ PR workflow 默认 `permissions: contents: read`；release workflow 按 job 最�
 
 | Job | 权限 |
 | --- | --- |
-| `resolve-target`、`test` | `contents: read` |
+| `resolve-target` | `contents: read`、`checks: read`、`pull-requests: read`、`actions: read`；需要读取 baseline tag/release、`CI Main / verify` check run 与 merged PR |
+| `test` | `contents: read` |
 | `reserve` | `contents: write` |
 | `macos-arm64` | `contents: read`；使用 `release` environment 读取更新签名密钥 |
 | `docker-amd64` | `contents: read`、`packages: write`、`id-token: write` |
 | `stage-release` | `contents: write` |
 | `attest` | `contents: read`、`packages: write`、`attestations: write`、`id-token: write` |
 | `release` | `contents: write`；绑定 `release` environment |
-| `promote-docker` | `contents: read`、`packages: write`、`id-token: write` |
-| `verify-release` | `contents: write`、`issues: write` |
+| `promote-docker` | `contents: read`、`packages: write`、`id-token: write`；绑定 `release` environment |
+| `verify-release` | `contents: write`、`issues: write`、`packages: read`（读取 GHCR digest） |
 
-`release` environment 的人工批准在 `macos-arm64` 入口执行；`release` job 也绑定同一 `release` environment，确保单独 re-run 不能绕过批准。
+`release` environment 的人工批准在 `macos-arm64` 入口执行；阶段 7 `promote-docker` 与阶段 8 `release` 也绑定同一 `release` environment，确保单独 re-run 任一发布阶段不能绕过批准。
+
+`attest` 没有计划探测分支，也没有“仓库不支持时跳过”的路径：attestation 生成或验证失败时 workflow 停在 `attest`，不进入 `promote-docker`，也不公开 release。已记录的 environment 决策不能把它降级为可选。
 
 `verify-release` 失败时把 release 标记为 `prerelease` 并在正文追加 `RELEASE_INVALID`，同时创建维护者 issue；不得删除资产或静默成功。
 
@@ -174,8 +179,11 @@ fork PR 不获得任何 release secret；不使用 `pull_request_target` 执行�
 
 - PR gate 失败时修复代码或测试；不使用 `continue-on-error`、降低断言、删除 required check 或扩大 waiver 来变绿。
 - 只有已确认的瞬态网络故障可以重试；flaky 测试、锁竞争和超时按缺陷处理。
-- release 在 `release` job 前失败时，draft reservation 保留，不创建公开 release；用同一 target、同一 source SHA 重跑，复用已绑定 canonical version，不重新计算 successor。
-- `stage-release` 只写 draft；全部资产、identity 和 attestation 验证通过后，`release` 才创建或验证 tag 并公开。公开后 `verify-release` 失败时，立即标记 release 无效并通知维护者。
+- release 在 `release` job 前失败时，draft reservation 保留，不创建公开 release；用同一 target、同一 source SHA 重跑，checkout reservation 的 `source_sha`，复用已绑定 canonical version，不重新计算 successor。
+- 重跑时，identity 已记录 digest 的产物不再构建：`macos-arm64`、`docker-amd64` 直接复用已上传资产和 digest；`stage-release` 发现本次构建 digest 与已记录 digest 不一致时拒绝写入，不为迁就新构建而覆盖 identity。
+- 重新构建 macOS 产物使手动测试证据作废；必须对新 DMG 重做开箱/升级测试并重写 draft 正文后才能公开。
+- Docker digest 两次构建不相等时，不推送 staging tag、不进入 `stage-release`；按构建不可复现缺陷处理，不得以“只差一层元数据”为由接受。
+- `stage-release` 只写 draft；全部资产、identity 和 attestation 验证通过后，阶段 7 `promote-docker` 先提升镜像，阶段 8 `release` 再创建或验证 tag 并公开。公开后 `verify-release` 失败时，立即标记 release 无效并通知维护者。
 - 回滚只使用上一版本 release；需要修正构建时必须选择新的 `release_target`，产生新的 version 和 identity。不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
 
 ## 10. 实施顺序

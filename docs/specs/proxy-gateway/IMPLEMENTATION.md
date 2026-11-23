@@ -10,9 +10,9 @@
 
 ## Implementation Coverage
 
-- Requirement coverage: 计划由 `mien-core` 的 proxy 模块和固定 Xray-core 共享引擎覆盖 `REQ-PROXY-001` 至 `REQ-PROXY-023`；协议能力、连接复用和管理 API 由引擎清单驱动。
-- Verification commands: 尚未建立；实现后使用受控 VLESS/VMess/Shadowsocks/Trojan/Hysteria2 节点、DNS canary、引擎故障注入、分享链接 fixture 和凭据扫描。
-- Rollout facts: Tier A 为 VLESS、VMess、Shadowsocks、Trojan；Tier B 为 Hysteria2、WireGuard；TUIC 不进入 v1；订阅属于后续范围。
+- Requirement coverage: 计划由 `mien-core` 的 proxy 模块和固定 Xray-core 共享引擎覆盖 `REQ-PROXY-001` 至 `REQ-PROXY-025`；协议能力、连接复用和管理 API 由引擎清单驱动。
+- Verification commands: 尚未建立；实现后使用受控 VLESS/VMess/Shadowsocks/Trojan/Hysteria2/WireGuard 与 basic HTTP/HTTPS/SOCKS5 节点、`asset_sha256`/`binary_sha256` 篡改 fixture、路由 `ruleTag`/`shouldAppend` 断言、blackhole 首出站断言、非终态引用计数与 teardown 序列、`ProxyCheck` HTTP 200 `error_code`、直连服务端开关与审计、DNS canary、引擎故障注入、分享链接 fixture 和凭据扫描。
+- Rollout facts: Tier A 为 VLESS、VMess、Shadowsocks、Trojan；Tier B 为 Hysteria2、WireGuard；HTTP/HTTPS/SOCKS5 为 basic tier，不参与 A/B 门禁；TUIC 不进入 v1；订阅属于后续范围。
 
 ## Coverage / rollout summary
 
@@ -20,8 +20,8 @@
 
 ## Remaining Gaps
 
-- 类型化代理配置、共享引擎动态入站/出站/路由、引用计数、分享链接解析、远程 DNS、失败关闭与代理检查均未实现。
-- Xray 映射、候选清单与 MPL-2.0 记录已建立；仍需 M0 runtime spike 验证管理 API、连接复用、Hysteria2、目标容器 UDP 和故障重建后冻结协议矩阵。
+- 类型化代理配置、共享引擎动态入站/出站/路由（含稳定 `ruleTag` 与 `shouldAppend=true`）、非终态引用计数与 teardown、分享链接解析、远程 DNS、失败关闭、直连模式边界与代理检查均未实现。
+- Xray 映射、候选清单与 MPL-2.0 记录已建立；仍需 M0 runtime spike 验证管理 API、`AddRule` 增量语义、blackhole 首出站断言、`binary_sha256` 运行时校验、连接复用、Hysteria2/WireGuard、目标容器 UDP 和故障重建后冻结协议矩阵。
 
 ## Related Changes
 

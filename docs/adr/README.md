@@ -7,7 +7,7 @@
 | [ADR-0001](0001-shared-core-two-hosts.md) | 共享 Rust 核心与双宿主：Tauri 桌面 + HTTP 服务端 | 已接受 |
 | [ADR-0002](0002-pin-kernel-148.md) | 固定 fingerprint-chromium 148 并建立内核准入 | 已接受 |
 | [ADR-0003](0003-storage-and-secret-protection.md) | SQLite 存储与字段级密钥保护 | 已接受 |
-| [ADR-0004](0004-local-proxy-relay.md) | 每档案本地代理中继 | 已被 ADR-0007 取代 |
+| [ADR-0004](0004-local-proxy-relay.md) | 每档案本地代理中继 | 已被 ADR-0007 与 ADR-0009 依次取代 |
 | [ADR-0005](0005-headful-first-display.md) | 有头优先的显示策略 | 已接受 |
 | [ADR-0006](0006-fingerprint-spec-model.md) | 显式指纹规格与种子派生模型 | 已接受 |
 | [ADR-0007](0007-protocol-engine-forward-proxy.md) | 每档案独立协议引擎承载正向代理 | 已被 ADR-0009 取代 |
@@ -26,3 +26,7 @@
 6. [`ADR-0011`](0011-manual-release-identity.md) 规定手动 target、trusted baseline、draft reservation 与同 identity recovery。
 
 新的 ADR 使用四位编号和 kebab-case 文件名；语义变更通过后继 ADR 取代旧决策，不直接改写已接受决策的理由。
+
+## 取代链
+
+- 代理数据面：[`ADR-0004`](0004-local-proxy-relay.md) → [`ADR-0007`](0007-protocol-engine-forward-proxy.md) → [`ADR-0009`](0009-shared-xray-engine.md)。ADR-0004 与 ADR-0007 只保留历史背景，当前契约以 ADR-0009 为前提；取代是链式的，ADR-0009 同时取代 ADR-0007 与被 ADR-0007 取代的 ADR-0004。

@@ -8,22 +8,38 @@
     "fingerprint-platform-version": {"type": "string"},
     "fingerprint-brand": {"values": ["Chrome", "Edge", "Opera", "Vivaldi"]},
     "fingerprint-brand-version": {"type": "string"},
-    "fingerprint-hardware-concurrency": {"type": "integer"},
+    "fingerprint-hardware-concurrency": {
+      "type": "integer",
+      "description": "Allowed CPU core counts per persona platform; values are not the host core count.",
+      "per_platform_values": {
+        "windows": [4, 6, 8, 12, 16, 20, 24],
+        "macos": [8, 10, 12, 14, 16],
+        "linux": [2, 4, 6, 8, 12, 16, 24, 32, 64]
+      }
+    },
     "lang": {"type": "string"},
     "accept-lang": {"type": "string"},
     "timezone": {"type": "string"},
+    "window-size": {
+      "type": "string",
+      "description": "WIDTH,HEIGHT window size passed to the kernel; window size only, never a screen resolution."
+    },
     "proxy-server": {"type": "string"},
     "disable-non-proxied-udp": {"type": "boolean"},
-    "disable-spoofing": {"values": ["font", "audio", "canvas", "clientrects", "gpu"]}
+    "disable-spoofing": {
+      "values": ["font", "audio", "canvas", "clientrects", "gpu"],
+      "description": "Spoof categories supported by this artifact for every persona platform; any other category must be rejected."
+    }
   },
   "seed_derived": ["canvas", "audio", "webgl", "device_memory", "gpu_model"],
-  "known_issues": ["#102"],
+  "known_issues": ["#98", "#99", "#102"],
   "limitations": [
     "Host-bound screen size, devicePixelRatio, color depth and font enumeration remain observable.",
     "Docker uses Xvfb; screen attributes are shared by all profiles.",
-    "Headless pseudo_headful mode changes UA only; other Headless characteristics remain."
+    "Headless pseudo_headful mode changes UA only; other Headless characteristics remain.",
+    "Canvas sub-region readback can differ from full-surface readback (#98, #99); probe reports must attribute the gap to the kernel, not to the spec."
   ],
-  "sandbox": {"requires_namespace_sandbox": true},
+  "sandbox_kind": "namespace",
   "network_controls": {"doh_mode": "disabled", "ipv6_mode": "block"},
   "headless_chrome_ua_patch": true
 }

@@ -2,7 +2,7 @@
 
 - 状态：已接受
 - 决策范围：正向代理协议引擎的进程数量、运行时配置变更、连接复用、故障域与许可
-- 取代：[ADR-0007](0007-protocol-engine-forward-proxy.md)
+- 取代：[ADR-0007](0007-protocol-engine-forward-proxy.md)（ADR-0007 又取代 [ADR-0004](0004-local-proxy-relay.md)，本 ADR 同时终结该链）
 
 ## 背景
 
@@ -17,20 +17,23 @@ ADR-0007 选择每个运行档案启动一个独占的 sing-box 进程。该模�
 
 sing-box 官方二进制不能满足前两项：它的 Clash API 只支持查询、切换已声明的 Selector、切换 mode；`PUT /configs` 是空实现，`PATCH /configs` 只改 mode；`SIGHUP` 会关闭整个实例再重新创建，期间所有档案断网且连接池丢失。它没有运行时增删入站、出站或路由规则的公开 API。
 
-Xray-core 提供 `HandlerService` 的 `AddInbound`、`RemoveInbound`、`AddOutbound`、`RemoveOutbound`，以及 `RoutingService` 的 `AddRule`、`RemoveRule`；Xray-core `v26.11.9` 已包含 Hysteria2。它缺少 TUIC，因此 TUIC 继续留在后续范围。
+Xray-core 提供 `HandlerService` 的 `AddInbound`、`RemoveInbound`、`AddOutbound`、`RemoveOutbound`，以及 `RoutingService` 的 `AddRule`、`RemoveRule`；Xray-core `v26.11.9` 已包含 Hysteria2 与 WireGuard 出站。它缺少 TUIC，因此 TUIC 继续留在后续范围。
 
 ## 决策
 
 - 每个宿主只运行一个受监督的 Xray-core 进程，作为共享正向代理引擎。
 - Xray 的 gRPC 管理 API 只绑定 `127.0.0.1` 的随机端口，不暴露到局域网、容器外或公网；管理 API 与浏览器入站使用不同端口。
 - 每个运行档案分配一个固定的回环 HTTP 入站端口，并创建一条以该入站为条件的路由规则；Chromium 只接收 `--proxy-server=http://127.0.0.1:<proxy_port>`。
+- 路由规则以稳定 `ruleTag` 标识：`AddRule` 增量添加时必须设置 `shouldAppend=true`，不得清空或重建既有规则表；删除规则只按 `ruleTag` 调用 `RemoveRule`。
+- Xray 路由配置不存在 `routing.final` 字段，网关不得生成该字段；失败关闭依赖 `block`（blackhole）作为第一个出站，并在启动时断言该不变量，断言失败则拒绝服务而不是回退到直连。
 - 出站按 `outbound_key = hash(protocol, server, port, credential_ref, transport, TLS/REALITY, mux_settings)` 共享。相同 key 的档案共享一个出站；不同凭据或不同传输不共享。
-- 每个共享出站维护引用计数。第一个使用它的运行档案创建出站，最后一个停止的档案删除出站；路由规则和入站则按运行档案创建和删除。
+- 每个共享出站维护引用计数，但只统计非终止状态（`starting`/`running`/`stopping`）的运行时。第一个使用它的运行档案创建出站，最后一个停止的档案删除出站；停止时先清除该运行时的 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag` 和 `proxy_port`，再递减引用计数，避免陈旧引用阻止删除。路由规则和入站则按运行档案创建和删除。
 - 在协议能力允许时启用 Xray mux；Hysteria2 使用其 QUIC 连接复用。连接复用能力由引擎能力清单声明，不能对不支持的协议假装复用。
 - Xray 的默认路由出站必须是 block；不得生成 direct 出站、系统代理回退或其他节点的静默降级。
 - 代理网关负责 API 调用的串行化、幂等、引用计数、失败回滚和启动时对账。引擎重启后，网关按原始 `proxy_port` 重建入站、出站和路由规则。
 - 引擎进程故障时，所有运行档案立即失去网络并产生 `proxy.engine.failed`；网关按有界退避重启引擎。重建成功则恢复运行档案的网络；重建失败则把受影响运行时标记为 `failed`，不自动直连。
-- 固定 Xray-core `v26.11.9` 或经准入的后继补丁版本，校验 SHA-256，并维护协议能力清单。TUIC 不在 v1；Hysteria2、VLESS、VMess、Shadowsocks、Trojan、HTTP/SOCKS 按清单支持。
+- 固定 Xray-core `v26.11.9` 或经准入的后继补丁版本，并维护协议能力清单。协议以对象映射声明：`protocols.<name> = {tier, transports, tls_modes, methods?, plugins?, notes?}`，`tier` 取值 `A|B|basic`。Tier A 为 VLESS、VMess、Shadowsocks、Trojan；Tier B 为 Hysteria2、WireGuard；basic 为 HTTP、HTTPS、SOCKS5。TUIC 不在 v1。
+- 引擎二进制同时记录发布资产摘要 `asset_sha256` 与可执行文件摘要 `binary_sha256`；运行时以安装记录的 `binary_sha256` 校验可执行文件，不用发布资产摘要代替。可执行文件缺失返回 `PROXY_ENGINE_NOT_FOUND`，摘要不符返回 `PROXY_ENGINE_CHECKSUM_MISMATCH`，两者都拒绝启动且不创建入站、出站或规则。
 - Xray-core 以 MPL-2.0 分发；发布物保留许可证、版权与来源信息，不修改二进制。
 
 ## 备选方案
@@ -49,15 +52,17 @@ Xray-core 提供 `HandlerService` 的 `AddInbound`、`RemoveInbound`、`AddOutbo
 - 引擎进程是共享单点。引擎崩溃、API 不可用或重建失败会影响所有运行档案；必须通过失败关闭、有界重启、对账和明确 UI 状态处理。
 - 代理凭据集中在一个引擎进程的受保护内存中；不再依赖每档案临时配置文件的短生命周期。API 只绑定回环，日志与错误继续脱敏。
 - 代理网关的实现复杂度上升：需要管理出站引用计数、入站/规则标签、端口复用、API 幂等、并发锁和引擎重启后的全量重建。
+- 引用计数只看到非终止运行时，因此停止、崩溃和失败必须按同一顺序清理：先清除运行时上的代理绑定字段，再递减计数。遗漏任一分支都会永久抬高计数，导致出站和连接池无法释放。
 - 共享出站会让同一节点看到来自多个档案复用连接的流量，这是连接复用的目标；如果某个档案必须避免与其它档案共享上游连接，需要为该档案使用不同的节点或凭据，使其 `outbound_key` 不同。
-- TUIC 退出 v1；Xray 不支持 TUIC。Hysteria2 保留，但需要锁定包含其实现并经过准入的 Xray 版本。
+- TUIC 退出 v1；Xray 不支持 TUIC。Hysteria2 与 WireGuard 作为 Tier B 保留：可用但不属于首发的协议矩阵承诺，能力清单必须声明其传输与 TLS 限制。
 - Xray 的 MPL-2.0 降低了 GPL 分发与法律评审风险；仍需保留许可证和来源信息，并完成发布物合规检查。
 
 ## 证据
 
 - Xray-core `app/proxyman/command/command.proto` 定义 `AddInbound`、`RemoveInbound`、`AddOutbound`、`RemoveOutbound`。
-- Xray-core `app/router/command/command.proto` 定义 `AddRule`、`RemoveRule`。
-- Xray-core `v26.11.9` 的源码树包含 `proxy/hysteria` 与 Hysteria2 配置映射；不包含 TUIC。
+- Xray-core `app/router/command/command.proto` 定义 `AddRule`、`RemoveRule`；`AddRuleRequest` 带 `should_append` 字段，默认的清空后追加语义不适合增量路由，网关必须显式传 `true`。
+- Xray-core 的路由配置结构只包含 `domainStrategy`、`rules` 与 `balancers`，没有 `routing.final`；失败关闭只能通过首出站 blackhole 与启动断言保证。
+- Xray-core `v26.11.9` 的源码树包含 `proxy/hysteria` 与 `proxy/wireguard`，不包含 TUIC。
 - sing-box `v1.14.0` 的 `experimental/clashapi/configs.go` 中 `PUT /configs` 为空实现，`PATCH /configs` 只设置 mode；`cmd/sing-box/cmd_run.go` 的 `SIGHUP` 会关闭并重建实例。
 - 产品需求要求失败关闭、凭据不进入浏览器、目标域名不本地解析；共享引擎不改变这些边界。
 

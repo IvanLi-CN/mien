@@ -16,7 +16,6 @@
     "languages",
     "timezone",
     "window",
-    "spoof",
     "webrtc",
     "network"
   ],
@@ -44,7 +43,10 @@
       "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
     },
     "hardware_concurrency": {
-      "enum": [2, 4, 6, 8, 10, 12, 16]
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256,
+      "description": "Realistic core count for the persona platform. The allowed set is data-driven: validate against the installed kernel manifest flags.fingerprint-hardware-concurrency.per_platform_values, not against a hard-coded list here."
     },
     "languages": {
       "type": "array",
@@ -75,18 +77,19 @@
           "minimum": 240,
           "maximum": 4320
         }
-      }
+      },
+      "description": "Canonical window size. This is the only place window size is stored: it is not duplicated in runtime preferences, profile responses or exports. Window size only, never a screen resolution."
     },
     "spoof": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["font", "audio", "canvas", "clientrects", "gpu"],
+      "description": "Per-category spoof toggles: true means the category is spoofed, false disables it for this profile and maps to `--disable-spoofing`. Omitted categories and an omitted object default to enabled. Only categories declared by the installed kernel capability manifest may appear; unsupported categories are rejected rather than silently dropped (REQ-FP-011). Disabling every supported category produces an explicit warning.",
       "properties": {
-        "font": {"type": "boolean"},
-        "audio": {"type": "boolean"},
-        "canvas": {"type": "boolean"},
-        "clientrects": {"type": "boolean"},
-        "gpu": {"type": "boolean"}
+        "font": {"type": "boolean", "default": true},
+        "audio": {"type": "boolean", "default": true},
+        "canvas": {"type": "boolean", "default": true},
+        "clientrects": {"type": "boolean", "default": true},
+        "gpu": {"type": "boolean", "default": true}
       }
     },
     "webrtc": {
@@ -94,7 +97,7 @@
       "additionalProperties": false,
       "required": ["disable_non_proxied_udp"],
       "properties": {
-        "disable_non_proxied_udp": {"type": "boolean"}
+        "disable_non_proxied_udp": {"type": "boolean", "default": true, "description": "Defaults to true. Setting false is an advanced unsafe setting requiring explicit confirmation and an audit action before persistence."}
       }
     },
     "network": {

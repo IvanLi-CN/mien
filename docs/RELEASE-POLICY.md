@@ -16,9 +16,9 @@
 
 | 输入 | 解析路径 | 示例 |
 | --- | --- | --- |
-| `patch` | 对 trusted final baseline 递增 patch | `0.1.0` → `0.1.1` |
-| `minor` | 对 trusted final baseline 递增 minor | `0.1.1` → `0.2.0` |
-| `major` | 对 trusted final baseline 递增 major | `0.2.0` → `1.0.0` |
+| `patch` | 对 trusted baseline 递增 patch | `0.1.0` → `0.1.1` |
+| `minor` | 对 trusted baseline 递增 minor | `0.1.1` → `0.2.0` |
+| `major` | 对 trusted baseline 递增 major | `0.2.0` → `1.0.0` |
 | `X.Y.Z` | explicit version；可接受 `vX.Y.Z` 输入，但 canonical 不带 `v` | `0.2.0` |
 
 约束：
@@ -32,18 +32,18 @@
 
 ## 3. Trusted baseline
 
-Baseline 来源是当前的**公开、非 draft、非 prerelease GitHub Release**，tag 形态为 `vX.Y.Z`。
+Trusted baseline 是仓库中**所有已存在的 `vX.Y.Z` Git tag 与 GitHub Release 的 SemVer 最大值**，不论其 draft、prerelease、invalidated 或公开状态；所有已存在版本均占用版本序号。
 
-- 不使用 `VERSION` 文件、main 提交数、PR 合并顺序、最后一次 workflow artifact 或本地 tag 作为 baseline。
+- 不使用 `VERSION` 文件、main 提交数、PR 合并顺序或 workflow artifact 作为版本真相；workflow 从 GitHub 读取所有 `vX.Y.Z` tags 与 Releases，任何已存在版本都占用序号。
 - 读取 baseline 时按 SemVer 排序，不按创建时间或字符串排序。
 - 没有 baseline 时只允许 explicit `0.1.0`；其他输入拒绝。
 - baseline 在 target 解析、reservation、Release 前分别重新读取；权限、API 或身份不可确认时 fail closed。
-- 已存在同名公开 release 时，不能把同 target 解释为新版本；只允许同一 source 的 recovery。
+- prerelease、draft 或 invalidated Release 对应的 tag/version 仍占用序号；任何已存在 tag/release 只有在完整 identity 与 reservation 匹配时才允许 recovery。
 
 ## 4. Ordering 与 collision
 
 - 使用 SemVer 2.0.0 的 stable 比较规则；canonical version 是 `MAJOR.MINOR.PATCH`。
-- 新 target 必须严格大于 trusted baseline。
+- 新 identity 的 target 必须严格大于所有已存在 tag/release 的 SemVer；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形。
 - 相同 target 只允许作为同一 source identity 的 idempotent retry/recovery，不得重新分配 successor。
 - tag `vX.Y.Z` 已存在时，只能读取并验证其 peeled commit；如果指向不同 source，停止，不改写 tag。
 - Release record、container tag 或 GitHub Release 已属于另一个 source identity 时，停止并报告冲突。
@@ -57,7 +57,7 @@ Baseline 来源是当前的**公开、非 draft、非 prerelease GitHub Release*
 | `policy_id` | `mien-semver-v1` |
 | `release_target` | owner 输入的原始值，例如 `minor` 或 `0.2.0` |
 | `canonical_version` | workflow 解析出的 `X.Y.Z` |
-| `source_sha` | dispatch 固定并验证的 `main` merge/source SHA |
+| `source_sha` | 新 identity 首次 dispatch 时从 `main` 固定的 SHA；所有 recovery 从 reservation 读取并 checkout 该 SHA |
 | `reservation_id` | GitHub Release draft 的 release ID |
 | `artifacts` | macOS DMG、Docker image 等产物的 SHA-256 或 digest |
 | `publication` | tag `vX.Y.Z`、GitHub Release、GHCR image tag/digest |
@@ -70,7 +70,7 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 
 - draft 的 `tag_name` 为 `vX.Y.Z`，`target_commitish` 为 `source_sha`；draft 不创建公开 tag。
 - draft 正文记录 policy、target、canonical version、source SHA、workflow run 和 reservation 状态。
-- 已存在同 version、同 source 的 draft 时复用；同 version、不同 source 时冲突；已有公开 release 时只能走 recovery 校验。
+- 已存在同 version、同 source 的 draft 时复用；同 version、不同 source 时冲突；任一 tag/release 占用该版本时，只能验证并恢复完全相同的已记录 identity。
 - reservation 是版本和 source 的 claim；后续 job 不从旧的 workflow artifact 或本地状态重新分配版本。
 - 任何需要 tag、公开 Release 或不可逆上传的步骤都必须在 reservation 成功之后执行。
 - `stage-release` 成功后才把 artifact digest 写入 identity；已记录 digest 的 retry 必须复用同一字节和 digest，不重新构建或替换资产。只有尚未完成 stage 的失败才允许在相同 reservation 下重新构建。
@@ -84,7 +84,7 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 
 ## 8. Source 与质量门禁
 
-- `workflow_dispatch` 必须从 `main` 发起；`source_sha` 取 dispatch 固定的 SHA。
+- 新 identity 的 `workflow_dispatch` 必须从 `main` 发起并固定 source SHA；同 identity recovery 以 reservation 中的 source SHA 为准，即使 `main` 已前进。
 - source 必须是正常 PR 合并结果；release workflow 不直接写 `main`，不绕过 review 或 required checks。
 - 目标 SHA 必须存在成功的 `CI Main / verify` 结论；缺失时 fail closed。
 - PR gate 证明候选可合并，`CI Main / verify` 证明 mainline 可发布；两者不能互相替代。
@@ -104,21 +104,22 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 1. `resolve-target`：读取 target 和 baseline，解析 canonical version，读取 source 和 `CI Main / verify`。
 2. `reserve`：创建或复用 draft release；写入 identity。
 3. `test`：运行完整 CI 和 e2e；失败不构建发布物。
-4. `macos-arm64`、`docker-amd64`：构建一次，记录 digest，不发布。
+4. `macos-arm64`、`docker-amd64`：在 reservation 的 `source_sha` 上构建并记录 digest，不公开发布。
 5. `stage-release`：把产物、SBOM、校验和与 identity 写入 draft；校验 digest。
-6. `attest`：对产物生成 artifact attestation（支持时）。
-7. `release`：创建或验证 tag，公开 GitHub Release；`release` environment 已批准。
-8. `verify-release`：下载公开资产，校验 checksum、AdHoc 签名、更新清单和 identity；失败标记 release 无效。
+6. `attest`：为所有产物生成并验证 artifact attestation；缺失或失败即停止，不存在跳过分支。
+7. `promote-docker`：将已验证 digest 提升到 `vX.Y.Z`；绑定 `release` environment。
+8. `release`：在 Docker 提升成功后创建或验证 tag，公开 GitHub Release；绑定 `release` environment。
+9. `verify-release`：下载公开资产，校验 checksum、AdHoc 签名、更新清单和 identity；失败标记 release 无效。
 
 Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-identity.json` 中已验证的 artifact digest，并保持 Release 的 canonical version、source SHA 和 digest 不变。
 
 ## 11. Recovery
 
-- 失败后使用相同 `release_target` 和相同 `source_sha` 重跑；先读取已存在的 draft/public release 和 identity，不重新计算 baseline 或 successor。
+- 失败后以相同 `release_target` 重跑；先读取已有 reservation/identity，并 checkout reservation 中绑定的 `source_sha`，即使 `main` 已前进。不得从本次 dispatch 的新 `main` SHA 重建旧 identity；若原 SHA 无法 checkout，则停止并报告。
 - 同 target、同 source 只补齐缺失步骤；不重写 tag、不改变 channel、不创建新版本。
-- 已记录 artifact digest 时，recovery 复用该 digest 和已上传资产；公开 release 存在时只做验证，不重新构建发布物。
+- 已记录 artifact digest 时，对应构建 job 必须跳过并复用已上传资产；`stage-release` 必须拒绝与 identity digest 不同的产物。公开 release 存在时只做验证，不重新构建或覆盖资产；若重新构建 DMG，先前手动测试证据失效并须重测。
 - 已存在 tag 时，读取 tag 的 peeled commit 并与 `source_sha` 比较；只有 identity 成立才恢复。
-- source 已变化时，不得把旧 release 伪装成 recovery；必须从新的 main SHA 重新选择 target，产生新的 identity。
+- 已绑定 identity 后，main 前进不改变恢复 source；只有 owner 主动发起全新发布时，才使用新的 main SHA 和新的 `release_target` 建立新 identity。
 - recovery 不降低 `CI Main / verify`、artifact checksum、Release 或 `verify-release` 门禁。
 - 如果旧 source 没有合法 identity，停止并请求 owner 选择新的 release boundary。
 - 删除 draft reservation 被视为放弃该 identity，必须由 owner 明确决定；workflow 不静默清理 draft。
@@ -128,11 +129,11 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 以下任一条件不满足时停止：
 
 - `release_target` 缺失、非法、无 baseline 或无法解析。
-- target 不大于 baseline，或与已有公开 release 冲突。
+- 任一已存在 tag/release 版本大于或等于新 target（同 identity recovery 除外），或目标与已有 identity 冲突。
 - source 不是 `main`、不是 PR 合并结果，或 `CI Main / verify` 未成功。
 - reservation 的 version/source 与请求不一致。
 - tag 已存在且指向不同 SHA。
-- 任一产物 digest、SBOM、签名、checksum、更新清单或 attestation 缺失/不匹配。
+- 任一产物 digest、SBOM、签名、checksum、更新清单或必需 attestation 缺失/不匹配。
 - 发布环境未批准、权限不足或 release secret 不可用。
 - 公开 release 已属于另一个 identity。
 
@@ -140,7 +141,7 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 
 - 确认 release target、trusted baseline 来源和首个 `0.1.0` release。
 - 配置 main branch protection、`CI PR / required`、`CI Main / verify` 和 `release` environment 审批。
-- 配置 tag protection（repository ruleset，目标 `v*`，禁止更新与删除）：把 GitHub Actions app 加入 bypass list，允许 `release` job 用 `GITHUB_TOKEN` 创建 `vX.Y.Z`；或由 owner 预创建 exact tag。先确认仓库计划支持 ruleset；两种方式都不得允许改写已有 tag。
+- 配置 repository ruleset：目标 `v*`，只启用 `Restrict updates` 与 `Restrict deletions`，不设 bypass list；关闭 `Restrict creations`，使 release job 可用 `GITHUB_TOKEN` 创建新 tag。规则不得允许改写或删除既有 tag。
 - 配置 Tauri 更新签名密钥；不配置 Apple Developer ID 或公证凭据。
 - 配置 GitHub Release、GHCR 的权限和 artifact retention。
 - 决定 Release 后的部署目标；部署授权、凭据和 smoke test 不属于本仓库的 release workflow。
