@@ -25,10 +25,10 @@
 
 ### REQ-FP-001
 
-- The system MUST define a versioned fingerprint spec schema containing `schema_version`, `seed`, `platform`, `platform_version`, `brand`, `brand_version`, `hardware_concurrency`, `languages`, `timezone`, `window`, `spoof`, `webrtc`, and `network` fields. `window` is the canonical window-size location: it MUST NOT be duplicated in profile payloads, runtime preferences, exports, or a `window_json` column, and it maps to the manifest `window-size` flag (type `string`, `WIDTH,HEIGHT`).
+- The system MUST define a versioned stored/exported fingerprint spec schema containing `schema_version`, `seed`, `platform`, `platform_version`, `brand`, `brand_version`, `hardware_concurrency`, `languages`, `timezone`, `window`, `spoof`, `webrtc`, and `network` fields. Create and update requests use the companion input schema, which omits `seed`; the server generates a fresh seed on create/duplicate and never changes it on update. `window` is the canonical window-size location: it MUST NOT be duplicated in profile payloads, runtime preferences, exports, or a `window_json` column, and it maps to the manifest `window-size` flag (type `string`, `WIDTH,HEIGHT`).
 - Optionality: `spoof` and its categories are optional and default to enabled; omitted values MUST NOT be normalized into a different meaning. Required fields and types otherwise follow the schema.
-- Inputs: 用户编辑、预设、导入文件或复制操作。
-- Outputs: 通过 schema 校验的规格；未知字段、缺失必填字段、错误类型和越界值必须被拒绝；窗口尺寸只能从指纹规格读取，不创建档案顶层 `window` 字段或 `window_json` 存储。
+- Inputs: 用户编辑、预设、导入文件或复制操作；创建/更新请求不携带 `seed`，导入使用导出规格并携带 `seed`。
+- Outputs: 通过 schema 校验的规格；未知字段、缺失必填字段、错误类型和越界值必须被拒绝；窗口尺寸只能从指纹规格读取，不创建档案顶层 `window` 字段或 `window_json` 存储；更新请求试图修改 `seed` 时拒绝。
 
 ### REQ-FP-002
 
@@ -76,7 +76,7 @@
 ### REQ-FP-009
 
 - The system MUST validate every spec field and value against the installed kernel capability manifest before saving or launching.
-- Capability shape: the manifest declares `flags` (including required `window-size` of type `string` with a candidate set), `sandbox_kind` (`namespace|seatbelt|win32-restricted-token|none`), `network_controls` with `doh_mode: disabled|unsupported` and `ipv6_mode: block|unsupported`, and `flagSpec.values` or `per_platform_values` for data-driven platform restrictions.
+- Capability shape: the manifest declares `flags` (including required `window-size` of type `string` with a non-empty candidate set), `sandbox_kind` (`namespace|seatbelt|win32-restricted-token|none`), `network_controls` with `doh_mode: disabled|unsupported` and `ipv6_mode: block|unsupported`, and `flagSpec.values` or `per_platform_values` for data-driven platform restrictions. `per_platform_values` must cover `windows`, `macos` and `linux`, with a non-empty array for each; empty or partial maps are invalid manifests.
 - `unsupported` semantics: a manifest that declares `unsupported` is valid; it means the artifact cannot enforce that control on that platform. Validation MUST treat it as a missing capability and refuse the affected launch rather than marking the manifest invalid or silently relaxing the spec.
 - Inputs: 规格、能力清单、内核版本。
 - Outputs: 支持的字段与取值；清单外字段、无效果开关和不支持的取值必须被拒绝，不得静默丢弃；清单声明 `per_platform_values` 时以其为权威，否则使用 `values`；`window-size` 缺失或没有候选集合时清单无效。
@@ -139,7 +139,7 @@
 
 - The system MUST derive the expected sandbox mechanism from the manifest `sandbox_kind` (`namespace|seatbelt|win32-restricted-token|none`), replacing the former `requires_namespace_sandbox` boolean, and MUST require the effective sandbox to be verified before any proxy resource is created or the kernel is spawned.
 - Inputs: 清单 `sandbox_kind`（Linux `namespace` 同时要求强制 seccomp profile）、宿主/容器配置、启动计划、沙箱探测结果、`ALLOW_UNSANDBOXED`。
-- Outputs: 沙箱生效时写入 `isolation=enforced`；Docker 中无法确认时返回 `SANDBOX_UNAVAILABLE` 且不创建出站、入站、路由规则或子进程；`ALLOW_UNSANDBOXED=1` 时继续启动，写 `isolation=unsandboxed` 并记录审计与启动警告；桌面无法确认时保留 `unsandboxed` 或 `unknown`，不得阻止启动。
+- Outputs: 沙箱生效时写入 `isolation=enforced`；任何宿主无法确认时返回 `SANDBOX_UNAVAILABLE` 且不创建出站、入站、路由规则或子进程；服务端显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才继续启动，写 `isolation=unsandboxed` 并记录审计与启动警告；桌面端无法确认 seatbelt/restricted-token 时返回 `SANDBOX_UNAVAILABLE`，不存在桌面无沙箱例外。
 - Semantics: 启动事务顺序、`runtimes.isolation` 持久化与 proof strip 推导由 `browser-runtime` REQ-RUNTIME-014/018 定义。
 
 ### REQ-FP-020
@@ -263,7 +263,7 @@
 
 - Method: 在 `sandbox_kind=namespace` 且 seccomp 生效、无法启用命名空间沙箱、`ALLOW_UNSANDBOXED=1` 显式无沙箱、以及 `sandbox_kind=none` 四种配置下启动，检查启动顺序、代理资源与 `isolation`。
 - covers: `REQ-FP-019`, `REQ-RUNTIME-014`
-- Pass condition: 沙箱校验发生在创建代理资源与启动内核之前；生效时 `isolation=enforced`；Docker 无法确认时 `SANDBOX_UNAVAILABLE` 且无出站/入站/规则/子进程；显式无沙箱时 `isolation=unsandboxed` 并写审计与警告；桌面无法确认时保留 `unsandboxed`/`unknown` 且不阻止启动。
+- Pass condition: 沙箱校验发生在创建代理资源与启动内核之前；生效时 `isolation=enforced`；任何宿主无法确认时 `SANDBOX_UNAVAILABLE` 且无出站/入站/规则/子进程；服务端显式无沙箱且通过包含性探针时 `isolation=unsandboxed` 并写审计与警告；桌面无法确认时拒绝启动。
 
 ### VER-FP-020
 

@@ -132,7 +132,7 @@
 
 - The system MUST treat direct mode as an explicit risky configuration and MUST NOT create a runtime inbound/outbound for a direct profile.
 - Inputs: 档案代理模式、启动请求、宿主类型（桌面/服务端）、`MIEN_ALLOW_DIRECT_EGRESS`、审计上下文。
-- Outputs: 直连档案不创建入站/出站；UI 与 API 标记 `direct=true`、降低保证（`reduced_assurance=true`）和风险说明；桌面端允许直连但必须展示降低保证；服务端必须在 `MIEN_ALLOW_DIRECT_EGRESS=1` 时才能启动并写入审计事件，否则拒绝启动；T-18 的远程 DNS、非代理 UDP、DoH、IPv6 与失败关闭控制只适用于代理模式，不得对直连模式声称具备；不得把直连伪装成代理。
+- Outputs: 直连档案不创建入站/出站；UI 与 API 标记 `direct=true`、降低保证（`reduced_assurance=true`）和风险说明；桌面端允许直连但必须展示降低保证；服务端必须在 `MIEN_ALLOW_DIRECT_EGRESS=1` 时才能启动并写入审计事件，否则返回 `DIRECT_EGRESS_DISABLED`（403）并拒绝启动；T-18 的远程 DNS、非代理 UDP、DoH、IPv6 与失败关闭控制只适用于代理模式，不得对直连模式声称具备；不得把直连伪装成代理。
 
 ### REQ-PROXY-019
 
@@ -162,19 +162,19 @@
 
 - The system MUST bind the Xray management API to loopback only, serialize mutations, make add/remove idempotent, and reconcile outbound refcounts after restart.
 - Inputs: 管理 API 地址、并发启动/停止请求、引擎重启、`runtimes` 与 `proxy_outbounds` 持久化状态。
-- Outputs: 无重复出站、无孤儿入站或规则、引用计数按非终态运行时可重建；控制面重启时对非终态 `starting`/`stopping` 行先终止可归属引擎、删除其代理资源，再转为 `stopped`（或 teardown 后 `failed`）；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 不暴露到非回环地址。
+- Outputs: 无重复出站、无孤儿入站或规则、引用计数按非终态运行时可重建；控制面重启时对非终态 `starting`/`stopping` 行先终止可归属内核与代理资源，teardown 成功后转 `stopped`；共享引擎重建失败时先转 `stopping`，teardown 完成后才转 `failed`；teardown 失败保留 `stopping` 与 `last_error`；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 不暴露到非回环地址。
 
 ### REQ-PROXY-024
 
-- The system MUST identify every route rule by a stable `ruleTag`, add rules incrementally with `shouldAppend=true`, and remove rules only by `ruleTag`; it MUST NOT emit a `routing.final` field.
+- The system MUST identify every route rule by a stable `ruleTag`, add rules incrementally with `shouldAppend=true`, and remove rules only by `ruleTag`; it MUST NOT emit `routing.final`, `routing.script` or any other whole-routing override.
 - Inputs: 运行档案标识、Xray `AddRule`/`RemoveRule`、当前路由状态。
 - Outputs: 每条规则带 `rt:<runtime_id>:rule`；添加规则不清空或重排已有规则；删除只移除目标 tag；未匹配流量保持断网。
 
 ### REQ-PROXY-025
 
-- The system MUST declare the blackhole (`block`) outbound as the first outbound at engine startup and MUST assert this ordering invariant before accepting any runtime; assertion failure MUST refuse service instead of falling back to direct.
+- The system MUST declare the blackhole (`block`) outbound as the first outbound at engine startup and MUST assert this ordering and the absence of `routing.script` before accepting any runtime; assertion failure MUST refuse service instead of falling back to direct.
 - Inputs: 启动引导配置、出站列表、引擎启动结果。
-- Outputs: 引导配置只包含 block 作为首出站和 API 入站；启动断言通过后才服务；断言失败返回稳定引擎错误且不创建任何运行档案资源。
+- Outputs: 引导配置只包含 block 作为首出站和 API 入站，且不含 `routing.final`、`routing.script` 或 `routing.balancers`；启动断言通过后才服务；断言失败返回稳定引擎错误且不创建任何运行档案资源。
 
 ## Verification
 

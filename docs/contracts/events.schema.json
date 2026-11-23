@@ -602,6 +602,13 @@
                 "null"
               ]
             },
+            "exit_code": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Kernel exit code when state is crashed or failed."
+            },
             "error_code": {
               "anyOf": [
                 {
@@ -621,7 +628,31 @@
               "description": "Redacted diagnostic text; never a URL, credential or full configuration."
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "direct"
+                ],
+                "properties": {
+                  "direct": {
+                    "const": true
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "reduced_assurance"
+                ],
+                "properties": {
+                  "reduced_assurance": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          ]
         }
       }
     },
@@ -911,7 +942,7 @@
               "type": "object",
               "propertyNames": {
                 "not": {
-                  "pattern": "(?:[Pp]assword|[Pp]assphrase|[Pp]wd|[Pp][Ss][Kk]|[Pp]rivate|[Ss]ecret|[Tt]oken|[Cc]redential|[Cc]ookie|[Uu][Uu][Ii][Dd]|[Bb]earer|[Aa][Pp][Ii][_-]?[Kk]ey)"
+                  "pattern": "(?:[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Pp][Hh][Rr][Aa][Ss][Ee]|[Pp][Ww][Dd]|[Pp][Ss][Kk]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Uu][Uu][Ii][Dd]|[Bb][Ee][Aa][Rr][Ee][Rr]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Pp][Rr][Ee][Ss][Hh][Aa][Rr][Ee][Dd][_-]?[Kk][Ee][Yy]|[Aa][Uu][Tt][Hh](?:[_-]?[Ss][Tt][Rr])?)"
                 }
               },
               "additionalProperties": {
@@ -1028,6 +1059,7 @@
         "GROUP_NAME_CONFLICT",
         "TAG_NAME_CONFLICT",
         "PROFILE_IMPORT_CONFLICT",
+        "PROFILE_RESTORE_UNAVAILABLE",
         "VIEWER_NOT_AVAILABLE",
         "VALIDATION_FAILED",
         "FINGERPRINT_INVALID",
@@ -1041,8 +1073,10 @@
         "INSUFFICIENT_RESOURCES",
         "KERNEL_NOT_FOUND",
         "KERNEL_CHECKSUM_MISMATCH",
+        "KERNEL_VERSION_NOT_FOUND",
         "PROXY_ENGINE_NOT_FOUND",
         "PROXY_ENGINE_CHECKSUM_MISMATCH",
+        "PROXY_ENGINE_VERSION_NOT_FOUND",
         "PROXY_ENGINE_NOT_READY",
         "PROXY_ENGINE_API_UNAVAILABLE",
         "PROXY_ENGINE_START_FAILED",
@@ -1058,11 +1092,14 @@
         "RUNTIME_SPAWN_FAILED",
         "RUNTIME_CDP_TIMEOUT",
         "SANDBOX_UNAVAILABLE",
+        "DIRECT_EGRESS_DISABLED",
         "DISPLAY_UNAVAILABLE",
         "STORAGE_BUSY",
         "STORAGE_MIGRATION_FAILED",
         "STORAGE_INTEGRITY_FAILED",
-        "INTERNAL_UNEXPECTED"
+        "INTERNAL_UNEXPECTED",
+        "GROUP_NOT_FOUND",
+        "TAG_NOT_FOUND"
       ]
     }
   }

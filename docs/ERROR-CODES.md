@@ -46,9 +46,14 @@
 | `GROUP_NAME_CONFLICT` | 409 | 否 | 分组名称重复 |
 | `TAG_NAME_CONFLICT` | 409 | 否 | 标签名称重复 |
 | `PROFILE_IMPORT_CONFLICT` | 409 | 否 | 导入档案与现有档案冲突且未选择新 ID |
+| `PROFILE_RESTORE_UNAVAILABLE` | 409 | 否 | 回收站目录缺失或已不可恢复；行保持 `deleted`，必须重试 purge 或人工处理 |
 | `VIEWER_NOT_AVAILABLE` | 404 | 否 | 查看器未启用或运行时没有可查看显示；运行时行缺失时优先返回 `RUNTIME_NOT_FOUND` |
+| `GROUP_NOT_FOUND` | 404 | 否 | 分组不存在 |
+| `TAG_NOT_FOUND` | 404 | 否 | 标签不存在 |
 
 找不到资源的语义必须区分“行不存在”和“资源仍存在但不可操作”：软删除且未 purge 的档案对启动或会改变档案的写操作返回 `PROFILE_DELETED`（409），不返回 404；restore、purge、读取和删除重试必须继续可用；已 purge 的档案与从未存在的 ID 返回 `PROFILE_NOT_FOUND`。查看器请求先检查档案与运行时，再检查查看器能力，不得用 `VIEWER_NOT_AVAILABLE` 掩盖缺失的运行时。
+
+restore 前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；目录缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409），不得创建空目录。该行保持 `deleted` 与稳定 `deletion_error`，由 purge 重试完成清理。
 
 `tokensCreate` 接受 `Idempotency-Key`，但明文 Token 永远不重放：相同或不同请求体的重复键都必须返回 `IDEMPOTENCY_CONFLICT`（409），不得返回缓存的 201 响应；这是该码对“不可重放响应”的唯一扩展语义。其他写操作的相同键与相同请求仍返回原响应，只有不同请求体才冲突。
 
@@ -73,8 +78,10 @@
 | `INSUFFICIENT_RESOURCES` | 503 | 是 | 内存、磁盘或文件描述符不足 |
 | `KERNEL_NOT_FOUND` | 500 | 否 | 已安装内核的可执行文件缺失 |
 | `KERNEL_CHECKSUM_MISMATCH` | 500 | 否 | 内核发布资产或可执行文件摘要不符 |
+| `KERNEL_VERSION_NOT_FOUND` | 404 | 否 | 请求激活的内核版本没有安装记录 |
 | `PROXY_ENGINE_NOT_FOUND` | 500 | 否 | 已安装 Xray 的可执行文件缺失 |
 | `PROXY_ENGINE_CHECKSUM_MISMATCH` | 500 | 否 | Xray 发布资产或可执行文件摘要不符 |
+| `PROXY_ENGINE_VERSION_NOT_FOUND` | 404 | 否 | 请求激活的协议引擎版本没有安装记录 |
 
 安装记录同时保存 `asset_sha256`（下载的发布资产）与 `binary_sha256`（解包后可执行文件）。安装时校验 `asset_sha256`，运行时只校验 `binary_sha256`；文件缺失与摘要不符是两类不同错误，不得都用 `*_CHECKSUM_MISMATCH`。
 
@@ -103,10 +110,11 @@
 | --- | --- | --- | --- |
 | `RUNTIME_SPAWN_FAILED` | 500 | 否 | 内核进程无法创建 |
 | `RUNTIME_CDP_TIMEOUT` | 500 | 是 | CDP 在超时内未就绪 |
-| `SANDBOX_UNAVAILABLE` | 500 | 否 | Docker 中无法确认 Chromium 沙箱 |
+| `SANDBOX_UNAVAILABLE` | 500 | 否 | 任何宿主无法确认 Chromium 沙箱，或服务端无沙箱模式未通过包含性探针 |
+| `DIRECT_EGRESS_DISABLED` | 403 | 否 | 服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1`，拒绝启动直连档案 |
 | `DISPLAY_UNAVAILABLE` | 503 | 是 | 有头模式所需 Xvfb/宿主显示不可用 |
 
-`SANDBOX_UNAVAILABLE` 在创建代理资源与启动进程之前返回；显式 `ALLOW_UNSANDBOXED=1` 时启动继续，但运行时 `isolation=unsandboxed` 且必须写审计事件。
+`SANDBOX_UNAVAILABLE` 在创建代理资源与启动进程之前返回。服务端显式 `ALLOW_UNSANDBOXED=1` 时必须同时通过包含性探针与独立 UID/网络边界，否则仍然拒绝；允许时运行时 `isolation=unsandboxed` 且必须写审计事件。桌面端没有无沙箱启动例外：无法确认 seatbelt/restricted-token 时拒绝启动。
 
 
 ## 7. 存储与内部
@@ -125,7 +133,7 @@
 - 代理凭据、Cookie、Token、UUID、私钥和完整分享链接永远不能进入 `message` 或 `details`。
 - 可重试错误必须返回 `retryable=true`；客户端按指数退避重试，并设置上限。
 - UI 必须能根据 `code` 区分配置、引擎、节点和目标站点问题。
-- CI 必须同时校验：本文代码集合与 OpenAPI `Error.code` 枚举双向一致；每个代码的 HTTP 与 `retryable` 映射一致；事件 `error_code` 与 fixture 取值经契约测试验证属于该集合（允许 `null`）；生成物 `git diff --exit-code` 无漂移。只允许第 5 节列出的代理检查错误码在 HTTP 200 响应体中携带 `error_code`。
+- CI 必须同时校验：本文代码集合与 OpenAPI `Error.code` 枚举双向一致；每个代码的 HTTP 与 `retryable` 映射一致；事件 `error_code` 与 fixture 取值经契约测试验证属于该集合（允许 `null`）；生成物 `git diff --exit-code` 无漂移。代理检查的 HTTP 200 `ProxyCheck` 与 `proxy.check.completed` 事件只能使用第 5 节的 `ProxyCheckErrorCode`；运行时资源的 200/202 响应中的 `error_code` 是资源状态，使用完整 `ErrorCode`，不属于“成功响应包装错误”的例外。
 - 每个错误码至少有一个 `fixtures/api/errors/` 响应样例；`ProxyCheck` 错误还要有 `ok=false` 的 200 响应样例。没有样例或样例与目录不一致的代码不得发布。
 - 代码不得只存在于实现或 OpenAPI：目录是契约来源，枚举由目录生成或逐项校验；发现目录外代码、未使用代码或未声明状态码即构建失败。
 - 目录是错误码唯一契约源；OpenAPI 的 `ErrorCode` 与事件 schema 的 `errorCode` 都由目录生成，生成物提交后由 `git diff --exit-code` 校验，不手写第二份列表。

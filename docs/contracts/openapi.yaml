@@ -235,6 +235,8 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         '403':
           "$ref": "#/components/responses/Forbidden"
+        '422':
+          "$ref": "#/components/responses/ValidationError"
       x-required-scope: profiles.read
     post:
       tags:
@@ -444,6 +446,7 @@ paths:
         '404':
           "$ref": "#/components/responses/NotFound"
         '409':
+          description: 目录不可恢复（PROFILE_RESTORE_UNAVAILABLE）或状态冲突。
           "$ref": "#/components/responses/Conflict"
       x-required-scope: profiles.write
   "/api/v1/profiles/import":
@@ -534,6 +537,7 @@ paths:
         '401':
           "$ref": "#/components/responses/Unauthorized"
         '403':
+          description: scope 不足、CSRF/Origin 拒绝、强制改密，或服务端未启用直连出口（DIRECT_EGRESS_DISABLED）。
           "$ref": "#/components/responses/Forbidden"
         '404':
           "$ref": "#/components/responses/NotFound"
@@ -716,6 +720,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
+          description: 分组不存在（GROUP_NOT_FOUND）
           "$ref": "#/components/responses/NotFound"
         '409':
           "$ref": "#/components/responses/Conflict"
@@ -737,6 +742,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
+          description: 分组不存在（GROUP_NOT_FOUND）
           "$ref": "#/components/responses/NotFound"
       x-required-scope: profiles.write
   "/api/v1/tags":
@@ -820,6 +826,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
+          description: 标签不存在（TAG_NOT_FOUND）
           "$ref": "#/components/responses/NotFound"
         '409':
           "$ref": "#/components/responses/Conflict"
@@ -841,6 +848,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
+          description: 标签不存在（TAG_NOT_FOUND）
           "$ref": "#/components/responses/NotFound"
       x-required-scope: profiles.write
   "/api/v1/proxies":
@@ -869,6 +877,8 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         '403':
           "$ref": "#/components/responses/Forbidden"
+        '422':
+          "$ref": "#/components/responses/ValidationError"
       x-required-scope: proxies.read
     post:
       tags:
@@ -1072,6 +1082,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
+          description: 内核版本不存在（KERNEL_VERSION_NOT_FOUND）
           "$ref": "#/components/responses/NotFound"
         '409':
           "$ref": "#/components/responses/Conflict"
@@ -1122,6 +1133,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
+          description: 协议引擎版本不存在（PROXY_ENGINE_VERSION_NOT_FOUND）
           "$ref": "#/components/responses/NotFound"
         '409':
           "$ref": "#/components/responses/Conflict"
@@ -1389,7 +1401,7 @@ paths:
           default: 100
       responses:
         '200':
-          description: 时间升序的有界脱敏日志；无日志返回 RUNTIME_NOT_FOUND。
+          description: 时间升序的有界脱敏日志；运行时存在但尚无日志时返回空 items 与 truncated=false。
           content:
             application/json:
               schema:
@@ -1399,6 +1411,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
+          description: 运行时不存在（RUNTIME_NOT_FOUND）。
           "$ref": "#/components/responses/NotFound"
         '422':
           "$ref": "#/components/responses/ValidationError"
@@ -1550,11 +1563,13 @@ components:
           schema:
             "$ref": "#/components/schemas/Error"
     PurgeFailed:
-      description: 永久删除的目录移除失败；档案仍为 deleted，可重试
+      description: 永久删除失败；档案仍为 deleted，可重试。目录移除失败返回 PROFILE_PURGE_FAILED，存储错误返回对应稳定错误码。
       content:
         application/json:
           schema:
-            "$ref": "#/components/schemas/PurgeFailure"
+            oneOf:
+            - "$ref": "#/components/schemas/PurgeFailure"
+            - "$ref": "#/components/schemas/PurgeInternalError"
     Unavailable:
       description: 依赖或资源暂不可用
       content:
@@ -1681,6 +1696,18 @@ components:
             const: PROFILE_PURGE_FAILED
           deletion_error:
             "$ref": "#/components/schemas/DeletionError"
+    PurgeInternalError:
+      allOf:
+      - "$ref": "#/components/schemas/Error"
+      - type: object
+        required:
+        - code
+        properties:
+          code:
+            enum:
+            - STORAGE_BUSY
+            - STORAGE_INTEGRITY_FAILED
+            - INTERNAL_UNEXPECTED
     RuntimeState:
       type: string
       enum:
@@ -1727,6 +1754,7 @@ components:
       - updated_at
       - fingerprint
       - kernel_version
+      - proxy_id
       - isolation
       - direct
       - reduced_assurance
@@ -1807,6 +1835,27 @@ components:
           type: array
           items:
             type: string
+      allOf:
+      - if:
+          required:
+          - direct
+          properties:
+            direct:
+              const: true
+        then:
+          properties:
+            reduced_assurance:
+              const: true
+      - if:
+          required:
+          - proxy_id
+          properties:
+            proxy_id:
+              type: 'null'
+        then:
+          properties:
+            direct:
+              const: true
     ProfileInput:
       type: object
       required:
@@ -1836,7 +1885,7 @@ components:
           - 'null'
           maxLength: 4000
         fingerprint:
-          "$ref": "#/components/schemas/Fingerprint"
+          "$ref": "./fingerprint-input.schema.json"
         proxy_id:
           type:
           - string
@@ -1879,7 +1928,7 @@ components:
           - 'null'
           maxLength: 4000
         fingerprint:
-          "$ref": "#/components/schemas/Fingerprint"
+          "$ref": "./fingerprint-input.schema.json"
         proxy_id:
           type:
           - string
@@ -2041,7 +2090,7 @@ components:
           payload:
             type: string
             minLength: 1
-            description: profile-encrypted-v1 不透明容器。
+            description: profile-encrypted-v1 不透明容器；Argon2id 参数、salt 与认证密文均位于该字符串内部，不出现在 envelope 顶层。
     ProfileImportInput:
       oneOf:
       - type: object
@@ -2309,6 +2358,11 @@ components:
           enum:
           - chrome
           - null
+        exit_code:
+          type:
+          - integer
+          - 'null'
+          description: 最近一次内核退出码；仅 crashed/failed 时可能非空。
         proxy_port:
           type:
           - integer
@@ -2326,12 +2380,24 @@ components:
           anyOf:
           - "$ref": "#/components/schemas/ErrorCode"
           - type: 'null'
+          description: 运行时资源的最近错误，使用完整 ErrorCode；这不是代理检查 200 响应中的 ProxyCheck 子集。
         isolation:
           "$ref": "#/components/schemas/Isolation"
         limitations:
           type: array
           items:
             type: string
+      allOf:
+      - if:
+          required:
+          - direct
+          properties:
+            direct:
+              const: true
+        then:
+          properties:
+            reduced_assurance:
+              const: true
     Kernel:
       type: object
       required:
@@ -2421,40 +2487,7 @@ components:
         protocols:
           type: object
           additionalProperties:
-            type: object
-            additionalProperties: false
-            required:
-            - tier
-            - transports
-            - tls_modes
-            properties:
-              tier:
-                enum:
-                - A
-                - B
-                - basic
-              transports:
-                type: array
-                minItems: 1
-                uniqueItems: true
-                items:
-                  type: string
-              tls_modes:
-                type: array
-                minItems: 1
-                uniqueItems: true
-                items:
-                  type: string
-              methods:
-                type: array
-                items:
-                  type: string
-              plugins:
-                type: array
-                items:
-                  type: string
-              notes:
-                type: string
+            "$ref": "#/components/schemas/ProtocolCapability"
         limitations:
           type: array
           items:
@@ -2486,6 +2519,7 @@ components:
       required:
       - id
       - name
+      - prefix
       - scopes
       - created_at
       properties:
@@ -2493,6 +2527,11 @@ components:
           type: string
         name:
           type: string
+        prefix:
+          type: string
+          minLength: 4
+          maxLength: 16
+          description: 用于列表展示的前缀，不能用于认证；完整 Token 只在创建响应出现一次。
         scopes:
           type: array
           items:
@@ -2627,6 +2666,12 @@ components:
             const: plain
           payload:
             "$ref": "./profile-export.schema.json"
+          conflict_strategy:
+            type: string
+            enum:
+            - new_id
+            - abort
+            default: new_id
       - type: object
         additionalProperties: false
         required:
@@ -2644,6 +2689,12 @@ components:
             minLength: 12
             maxLength: 1024
             writeOnly: true
+          conflict_strategy:
+            type: string
+            enum:
+            - new_id
+            - abort
+            default: new_id
     ProfileImportPreview:
       type: object
       required:
@@ -2844,6 +2895,7 @@ components:
       - GROUP_NAME_CONFLICT
       - TAG_NAME_CONFLICT
       - PROFILE_IMPORT_CONFLICT
+      - PROFILE_RESTORE_UNAVAILABLE
       - VIEWER_NOT_AVAILABLE
       - VALIDATION_FAILED
       - FINGERPRINT_INVALID
@@ -2857,8 +2909,10 @@ components:
       - INSUFFICIENT_RESOURCES
       - KERNEL_NOT_FOUND
       - KERNEL_CHECKSUM_MISMATCH
+      - KERNEL_VERSION_NOT_FOUND
       - PROXY_ENGINE_NOT_FOUND
       - PROXY_ENGINE_CHECKSUM_MISMATCH
+      - PROXY_ENGINE_VERSION_NOT_FOUND
       - PROXY_ENGINE_NOT_READY
       - PROXY_ENGINE_API_UNAVAILABLE
       - PROXY_ENGINE_START_FAILED
@@ -2874,8 +2928,11 @@ components:
       - RUNTIME_SPAWN_FAILED
       - RUNTIME_CDP_TIMEOUT
       - SANDBOX_UNAVAILABLE
+      - DIRECT_EGRESS_DISABLED
       - DISPLAY_UNAVAILABLE
       - STORAGE_BUSY
       - STORAGE_MIGRATION_FAILED
       - STORAGE_INTEGRITY_FAILED
       - INTERNAL_UNEXPECTED
+      - GROUP_NOT_FOUND
+      - TAG_NOT_FOUND

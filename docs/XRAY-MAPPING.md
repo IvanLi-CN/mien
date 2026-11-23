@@ -8,7 +8,7 @@
 - 清单中的 `sha256` 是发布资产摘要；安装记录同时保存 `asset_sha256`（下载资产）与 `binary_sha256`（解包后可执行文件）。安装时校验 `asset_sha256`，启动时只校验 `binary_sha256`；文件缺失返回 `PROXY_ENGINE_NOT_FOUND`，摘要不符返回 `PROXY_ENGINE_CHECKSUM_MISMATCH`。不修改二进制。
 - 管理 API 只监听 `127.0.0.1` 的随机端口；不映射到容器外或局域网。
 - 代理凭据只通过回环管理 API 或受保护引导通道传递，不进入 argv、日志、事件、持久化配置或浏览器。
-- 浏览器只连接本运行档案的回环 HTTP 入站。
+- 代理模式下浏览器只连接本运行档案的回环 HTTP 入站；直连模式没有入站，浏览器直接出口并标记降低保证。
 
 ## 2. 引导配置
 
@@ -44,10 +44,11 @@
 
 实现时由代理网关分配实际 API 端口并写入引导配置；`port: 0` 只是合同示意，不能让 Xray 自行分配后无法被网关发现。
 
-失败关闭的两个不变量：
+失败关闭的三个不变量：
 
 - `block`（blackhole）必须是出站列表的第一项；网关在启动后、接受任何运行档案前断言该顺序，断言失败则拒绝服务，不得补建 direct 出站或回退直连。
 - Xray 路由配置没有 `routing.final` 字段，引导配置不得生成该字段；未匹配流量只能由首出站 blackhole 或显式规则处理。
+- 引导配置不得包含 `routing.script`、`routing.balancers` 或其他可整体接管路由的字段；网关同时断言不存在这些字段。
 
 ## 3. 每运行档案入站
 
@@ -108,8 +109,8 @@ Chromium 参数：
 - 第一个使用 key 的运行档案：`AddOutbound`，`ref_count=1`。
 - 后续使用相同 key：复用出站，`ref_count++`。
 - 引用计数只统计非终态运行时（`starting`/`running`/`stopping`），终态 `stopped`/`crashed`/`failed` 不计数。
-- 运行档案停止或失败 teardown：先删除其路由规则和入站，再清空 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port`，最后 `ref_count--`；teardown 必须幂等，同一引用只释放一次。
-- 引用归零：`RemoveOutbound`，删除 `proxy_outbounds` 行。
+- 运行档案停止或失败 teardown：先删除其路由规则和入站，再在同一事务中按 `proxy_outbound_key` 执行 `ref_count--` 并清空 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port`；提交后再删除归零的 Xray 出站。teardown 必须幂等，同一引用只释放一次；若事务后 Xray 删除失败，`proxy_outbounds` 以 `ref_count=0` 保留为可重试孤儿，不从已清空的运行时重复递减。
+- 引用归零且 `RemoveOutbound` 成功：删除 `proxy_outbounds` 行；失败时保留 `ref_count=0` 的孤儿行，由对账重试，不从运行时重复递减。
 - API 调用必须串行化；启动、失败回滚和引擎重建都要按非终态运行时对账引用计数；不一致时返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH` 并修复。
 
 ## 5. 协议映射
@@ -165,14 +166,14 @@ Chromium 参数：
 - 共享引擎退出：所有运行档案立即失败关闭，发布 `proxy.engine.failed`；网关按有界退避重启。
 - 重启后：通过 Xray API 重建所有 `proxy_outbounds`、运行档案入站和路由；入站使用原 `proxy_port`。
 - 重建成功：发布 `proxy.engine.rebuilt`；浏览器可恢复网络。
-- 重建失败：先删除受影响运行时的入站与路由规则、释放出站引用以及配额/锁，再把运行时标记为 `failed`；不得存在终态但仍有活内核或残留代理资源，不得直连回退；保留诊断信息。
-- 控制面重启：读取 `proxy_engine_state`、`runtimes` 和 `proxy_outbounds`；对非终态 `starting`/`stopping` 行先终止可归属引擎、按 tag 删除其代理资源，再转为 `stopped`（或 teardown 后 `failed`）；引用计数只按非终态运行时对账，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
+- 重建失败：先把受影响运行时转入 `stopping`，终止内核进程组，删除入站与路由规则，在同一事务中递减出站引用并清空 `proxy_*`，释放配额/锁，teardown 完成后才标记 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不得存在终态但仍有活内核或残留代理资源，不得直连回退；保留诊断信息。
+- 控制面重启：读取 `proxy_engine_state`、`runtimes` 和 `proxy_outbounds`；对非终态 `starting`/`stopping` 行先终止可归属内核、按 tag 删除其代理资源并在同一事务递减引用和清空 `proxy_*`，再转为 `stopped`；teardown 失败保留 `stopping` 与 `last_error`。引用计数只按非终态运行时对账，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
 - 删除孤儿入站/规则时按 `rt:<id>:*` tag 匹配；不得误删其他运行档案的资源。
 - 升级引擎会重置连接池；不得静默替换运行中引擎。
 
 ## 9. 安全边界
 
-- Xray API 没有应用层鉴权，只能绑定回环；同用户本机进程的残余风险必须记录。
+- Xray API 没有应用层鉴权，只能绑定回环；同用户本机进程的残余风险必须记录。无沙箱服务端模式必须把内核放在独立网络命名空间或等价边界，使管理 API 对内核不可达；无法证明时拒绝启动。桌面端不允许无沙箱启动。
 - API 端口与运行档案入站端口分开；API 不映射到容器外。
 - 代理凭据不进入日志、事件、错误、argv、浏览器配置或持久化引擎配置。
 - 引擎崩溃转储、core dump 和调试日志不得包含凭据；生产环境禁用 core dump。
@@ -184,7 +185,7 @@ Chromium 参数：
 
 - [ ] `AddInbound` / `RemoveInbound` / `AddOutbound` / `RemoveOutbound` 在 v26.11.9 上可用。
 - [ ] `AddRule` / `RemoveRule` 可用；`AddRule` 以 `shouldAppend=true` 增量追加且不清空已有规则，规则带稳定 `ruleTag`，删除只按 tag 且幂等。
-- [ ] 引导配置的 `block` 是首出站，启动断言失败时拒绝服务；配置中不存在 `routing.final`。
+- [ ] 引导配置的 `block` 是首出站，启动断言失败时拒绝服务；配置中不存在 `routing.final`、`routing.script` 或 `routing.balancers`。
 - [ ] 安装记录保存 `asset_sha256`/`binary_sha256`；启动只校验 `binary_sha256`，缺失与摘要不符分别返回 `PROXY_ENGINE_NOT_FOUND`/`PROXY_ENGINE_CHECKSUM_MISMATCH`。
 - [ ] 每运行档案 HTTP 入站只绑定回环；不同档案端口/标签隔离。
 - [ ] 沙箱校验失败时网关不创建任何入站、出站或规则。
@@ -194,7 +195,7 @@ Chromium 参数：
 - [ ] mux/QUIC 复用能力与协议矩阵一致。
 - [ ] Hysteria2 通过 Xray `hysteria` v2 配置可连接；TUIC 被拒绝。
 - [ ] 强杀共享引擎后，所有运行档案失败关闭；原端口重建成功。
-- [ ] `ref_count` 只统计非终态运行时；teardown 先清空四个代理绑定字段再递减，重复 teardown 不重复释放。
+- [ ] `ref_count` 只统计非终态运行时；teardown 在同一事务中递减并清空四个代理绑定字段，重复 teardown 不重复释放；归零出站删除失败时可作为孤儿重试。
 - [ ] 代理检查的节点/网络失败以 HTTP 200 `ProxyCheck.error_code` 返回，不使用 502；临时资源按 tag 删除。
 - [ ] 直连模式不创建任何 Xray 入站、出站或规则；服务端开关/审计与降低保证标记生效。
 - [ ] 共享引擎 API 不可从非回环地址访问。

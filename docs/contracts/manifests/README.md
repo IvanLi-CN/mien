@@ -50,10 +50,10 @@
 
 - `type`：`uint32`、`integer`、`string`、`boolean` 之一。
 - `values`：该开关允许的取值集合；缺省表示形式合法即可。
-- `per_platform_values`：按**画像平台**（`windows`、`macos`、`linux`）声明的允许取值集合，用于 CPU 核心数这类按平台受限、且与宿主平台不同的字段。
+- `per_platform_values`：按**画像平台**（`windows`、`macos`、`linux`）声明的允许取值集合，用于 CPU 核心数这类按平台受限、且与宿主平台不同的字段。三个平台键都必须存在，且每个数组非空；缺失平台或空数组是无效清单。
 - 当 `per_platform_values` 存在时，它是该开关的权威取值来源；`values` 只用于没有平台差异的开关。消费方不得把两个来源合并成更宽松的集合，以免静默扩大能力。
 
-`window-size`（`type: string`，`WIDTH,HEIGHT`）在所有平台清单中声明，schema 把 `flags.window-size` 设为必填，缺失即清单无效。清单同时提供 `values` 候选集合；消费方只能接受集合内值，不能从 UI 预设另造集合。窗口尺寸属于指纹规格的规范字段，**不是屏幕分辨率**：屏幕尺寸、`devicePixelRatio`、颜色深度和字体枚举仍是宿主绑定特征，不由清单或规格伪造（REQ-FP-010）。
+`window-size`（`type: string`，`WIDTH,HEIGHT`）在所有平台清单中声明，schema 把 `flags.window-size` 设为必填、类型固定为 `string`，并要求非空 `values` 候选集合；缺失或空集合都使清单无效。消费方只能接受集合内值，不能从 UI 预设另造集合。窗口尺寸属于指纹规格的规范字段，**不是屏幕分辨率**：屏幕尺寸、`devicePixelRatio`、颜色深度和字体枚举仍是宿主绑定特征，不由清单或规格伪造（REQ-FP-010）。
 
 语言与时区同样走清单校验：清单声明限制集合时按其校验，未声明时按 BCP-47 与 IANA 规则校验。任何清单外的字段、取值或不生效开关都必须被拒绝，不得静默丢弃（REQ-FP-009）。
 
@@ -67,7 +67,7 @@
 | `macos-arm64` | `seatbelt` |
 | `windows-x64` | `win32-restricted-token`（restricted token + job object + integrity levels；普通渲染进程不使用 AppContainer） |
 
-清单声明的是构件设计依赖；产品仍需在服务流量前核验实际生效的沙箱状态。Docker 中无法确认 `namespace` 沙箱时返回 `SANDBOX_UNAVAILABLE`，只有 `ALLOW_UNSANDBOXED=1` 才允许启动并写入审计；桌面（`seatbelt`/`win32-restricted-token`）无法确认时不阻断启动，但必须写 `isolation=unknown` 或 `unsandboxed` 并呈现降低保证，不存在隐藏的自动放宽。Docker 中的 `namespace` 沙箱要求强制 seccomp profile，不能记为“按需”。
+清单声明的是构件设计依赖；产品仍需在服务流量前核验实际生效的沙箱状态。Docker 中无法确认 `namespace` 沙箱时返回 `SANDBOX_UNAVAILABLE`，服务端只有 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才允许启动并写入审计；桌面（`seatbelt`/`win32-restricted-token`）无法确认时同样拒绝启动，不存在桌面无沙箱例外。Docker 中的 `namespace` 沙箱要求强制 seccomp profile，不能记为“按需”。
 
 ### 2.3 `network_controls`
 
@@ -99,7 +99,7 @@
 | `basic` | HTTP、HTTPS、SOCKS5 | 基础正向代理能力，支持用户名密码与远程 DNS，不参与 Tier A/B 门禁 |
 
 - WireGuard 为 Tier B：`transports` 仅 `udp`、`tls_modes` 仅 `none`，需要 UDP 出站与独立端到端验证；失败时必须报错，不得降级到其他协议或直连。
-- Hysteria2 为 Tier B：需要 UDP 出站与容器 UDP 许可；混淆支持按清单声明，不得默认存在。
+- Hysteria2 为 Tier B：需要 UDP 出站；Docker 部署还需要容器 UDP 许可，macOS 部署只需要宿主 UDP 出口。混淆支持按清单声明，不得默认存在。
 - TUIC 不进入 v1，不得出现在任何清单中。
 - `connection_reuse: true` 表示 Xray 支持 mux/原生 QUIC 连接复用；具体协议组合与共享出站行为仍需 M0 runtime spike 确认。
 - `headless_chrome_ua_patch: true` 来自 fingerprint-chromium 148 源码中的 `patches/extra/fingerprint/010-headless.patch` 与 `002-user-agent-fingerprint.patch`：它只把 `HeadlessChrome` UA 改为 `Chrome`，不改变其他 Headless 特征。

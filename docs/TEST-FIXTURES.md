@@ -23,7 +23,7 @@
 
 | Fixture | 内容 | 用途 |
 | --- | --- | --- |
-| `kernel/148/<platform>/` | 148 发行包解压后的内核；`asset_sha256` 与 `binary_sha256` 记录在 provenance 与 manifest | 启动、双层校验和、版本绑定 |
+| `kernel/148/<platform>/` | 148 发行包解压后的内核；provenance 同时记录 `asset_sha256` 与 `binary_sha256`，manifest 只记录发布资产 `sha256` | 启动、双层校验和、版本绑定 |
 | `kernel/148/<platform>/manifest.json` | 使用 [`contracts/manifests/`](contracts/manifests/) 的候选清单 | 能力清单与 UI 校验 |
 | `kernel/manifest-cases/` | `sandbox_kind`、`network_controls`（`disabled`/`unsupported`）、`flagSpec.per_platform_values`、`window-size` 的合法与缺能力清单 | 清单 schema、能力门禁与降级校验 |
 | `fingerprint/presets/*.json` | 主机对齐、跨系统画像、最小/最大显式字段 | 规格校验 |
@@ -31,9 +31,9 @@
 | `fingerprint/probe/` | 本地探针页；采集 UA、UA-CH、canvas、audio、WebGL、字体、WebRTC | 稳定性与差异测试 |
 | `fingerprint/headless-ua/` | 有头、无头、伪有头的探针快照 | 验证伪有头仅改 UA |
 | `profile/export/` | 明文、加密、错误口令、篡改容器、冲突导入样例 | 导入导出与凭据移除 |
-| `profile/import/` | dry-run 校验、`new_id`/`abort` 冲突、加密 passphrase、部分失败、同 seed 导入不报冲突 | 导入事务与错误报告 |
+| `profile/import/` | dry-run 校验、`new_id`/`abort` 冲突（同一 `source_profile_id` 或同名分组/标签）、加密 passphrase、部分失败、同 seed 导入不报冲突 | 导入事务与错误报告 |
 | `profile/copy/` | `copy_fingerprint=false/true`、归档档案复制、同 seed 源档案 | 复制语义与 seed 总是重新生成 |
-| `profile/lifecycle/` | archive/restore、软删除到 `trash/`、purge 失败写 `deletion_error`、`deleted` 拒绝启动、`profiles/<id>/downloads` 的 0700 与路径包含 | 生命周期、下载目录与清理 |
+| `profile/lifecycle/` | archive/restore、软删除到 `trash/`、trash 缺失时 restore 返回 `PROFILE_RESTORE_UNAVAILABLE`、purge 失败写 `deletion_error`、`deleted` 拒绝启动、`profiles/<id>/downloads` 的 0700 与路径包含 | 生命周期、下载目录与清理 |
 
 ## 2. 代理节点
 
@@ -74,7 +74,7 @@
 | `xray/inbound-golden/*.json` | runtime id + port → HTTP 入站 | 入站与标签 |
 | `xray/route-golden/*.json` | runtime → 路由规则 | 默认 block 与规则顺序 |
 | `xray/outbound-key-vectors/*.json` | 规范对象、凭据指纹、期望 SHA-256 | `outbound_key` 稳定性 |
-| `xray/refcount/` | 三档案共享同一出站、不同凭据不共享；终态运行时不计入，停止/失败 teardown 清空 `proxy_*` 且只递减一次 | 引用计数与连接复用 |
+| `xray/refcount/` | 三档案共享同一出站、不同凭据不共享；终态运行时不计入，停止/失败 teardown 在同一事务递减并清空 `proxy_*`，只递减一次；归零出站删除失败可作为孤儿重试 | 引用计数与连接复用 |
 | `xray/crash/` | 强杀引擎、原端口重建、重建失败 | 故障关闭与恢复 |
 | `xray/api-boundary/` | 非回环 API/入站探测 | API 与入站只绑定回环 |
 | `xray/check/` | 检查失败时 `ProxyCheck` 的 200 响应与事件；拒绝连接、认证、TLS、超时、DNS | 代理检查错误映射 |
@@ -89,7 +89,7 @@
 | `runtime/pseudo-headful/` | 声明与未声明 `headless_chrome_ua_patch` | 能力门禁与 UA 范围 |
 | `runtime/xvfb/` | `MIEN_SCREEN`、openbox、窗口尺寸 | 显示行为 |
 | `runtime/novnc/` | 一次性令牌、过期、故障 | 查看器边界 |
-| `runtime/sandbox/` | 严格沙箱、无沙箱显式授权、不可用；无沙箱时不可读 `/data/secrets`、不可访问数据库与 Xray API，子进程 `env_clear` 白名单 | 安全门禁与 blast radius |
+| `runtime/sandbox/` | 严格沙箱、服务端无沙箱显式授权、不可用、桌面拒绝；无沙箱时不可读 `/data/secrets`、不可访问数据库与 Xray API，子进程 `env_clear` 白名单 | 安全门禁与 blast radius |
 | `runtime/isolation/` | `enforced`/`unsandboxed`/`unknown` 的 API 与 UI 状态 | `isolation` 持久化与 proof strip |
 | `runtime/logs/` | 日志环、轮转文件、超限与脱敏金丝雀 | 有界日志尾部端点与脱敏 |
 
@@ -98,7 +98,7 @@
 | Fixture | 内容 | 用途 |
 | --- | --- | --- |
 | `api/openapi/` | 由 OpenAPI 生成的客户端与请求样例 | 契约测试 |
-| `api/errors/` | 每个稳定错误码的响应样例；`ProxyCheck` 错误的 200 `ok=false` 样例 | 错误目录与 `ErrorCode` 枚举校验 |
+| `api/errors/` | 每个稳定错误码的响应样例；`ProxyCheck` 错误的 200 `ok=false` 样例；`DIRECT_EGRESS_DISABLED`、`PROFILE_RESTORE_UNAVAILABLE`、版本未找到与分组/标签未找到样例 | 错误目录与 `ErrorCode` 枚举校验 |
 | `api/auth/` | 会话、Bearer、scope、CSRF、Origin、限流、管理员引导与首次改密后删除引导秘密 | 认证授权 |
 | `api/audit/` | `event_type`/`profile_id`/`action` 筛选与分页 | 活动记录契约 |
 | `events/*.json` | 每个事件类型的合法/非法实例 | 事件 schema |

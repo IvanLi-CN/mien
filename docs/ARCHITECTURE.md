@@ -8,8 +8,8 @@
 
 - 指纹内核固定为 fingerprint-chromium `148.0.7778.215`，不修改、不分叉，升级必须经过独立准入。
 - 协议引擎固定为构建清单中的 Xray-core，每个宿主一个共享进程、不修改；安装时校验 `asset_sha256`，启动前校验可执行文件 `binary_sha256`；运行时通过只绑定回环的 Xray gRPC 管理 API 动态增删入站、出站与路由规则，升级必须经过协议矩阵准入。
-- 每个档案独占浏览器数据目录、种子和运行时；档案之间不共享 Cookie、缓存或存储。
-- Chromium 只连接所属运行档案的回环 HTTP 入站；VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与凭据由共享 Xray 引擎处理，产品不自行实现协议。
+- 每个档案独占浏览器数据目录与运行时；创建/复制生成新种子，导入可保留导出种子以复现指纹，允许两个档案拥有相同 seed 但数据目录和运行时仍独立；档案之间不共享 Cookie、缓存或存储。
+- 代理模式下 Chromium 只连接所属运行档案的回环 HTTP 入站；直连模式没有该入站，浏览器直接出口并标记降低保证。VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与凭据由共享 Xray 引擎处理，产品不自行实现协议。
 - Docker 默认有头运行，使用 Xvfb；无头与伪有头是显式降级选项。
 - macOS 只支持 Apple Silicon；Docker 只支持 `linux/amd64`。
 - 显示尺寸、设备像素比、颜色深度和字体枚举受宿主约束，架构必须让这些限制可观测，而不是假装可伪造。
@@ -102,8 +102,8 @@ flowchart TB
 | --- | --- | --- | --- |
 | 服务端控制面 | 容器内 `0.0.0.0:8080` | 开启 | 由部署者映射；必须置于认证之后 |
 | 桌面自动化 API | `127.0.0.1` 随机端口 | 关闭 | 用户显式启用；Token 鉴权；绑定地址必须是回环，非回环配置在启动时拒绝 |
-| 每运行档案 HTTP 入站 | `127.0.0.1` 固定分配端口 | 每个运行档案一个 | 不对外暴露；Chromium 只连接此处 |
-| Xray gRPC 管理 API | `127.0.0.1` 随机端口 | 常驻 | 无应用层鉴权；同 UID 进程可调用（无沙箱时即包含内核 UID），残余风险见 SECURITY T-15/T-22；不映射到容器外 |
+| 每运行档案 HTTP 入站 | `127.0.0.1` 固定分配端口 | 每个代理运行档案一个 | 不对外暴露；代理模式下 Chromium 只连接此处；直连档案没有入站 |
+| Xray gRPC 管理 API | `127.0.0.1` 随机端口 | 常驻 | 无应用层鉴权；同 UID 进程可调用，残余风险见 SECURITY T-15/T-22/T-27；无沙箱服务端必须用独立网络边界使内核不可达；不映射到容器外 |
 | CDP | `127.0.0.1` 随机端口 | 按档案启用 | 不对外暴露 |
 | noVNC | 容器内 `0.0.0.0:6080` | 关闭 | 一次性令牌或独立认证 |
 | Xvfb | 容器内 `:99` | 有头模式 | Unix socket，不监听 TCP |
@@ -152,7 +152,7 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `profiles` | `id`, `name`, `group_id`, `notes`, `fingerprint_json`, `fingerprint_schema`, `kernel_version`, `proxy_id`, `runtime_json`, `status`, `created_at`, `updated_at`, `archived_at`, `deleted_at`, `deletion_error` | 档案本体；`id` 为 ULID；`status` 为 `active`/`archived`/`deleted`；目录删除失败时保留 `deleted` 并记录 `deletion_error` 供重试；窗口尺寸只存在于 `fingerprint_json`，不再有 `window_json` |
+| `profiles` | `id`, `name`, `group_id`, `notes`, `fingerprint_json`, `fingerprint_schema`, `kernel_version`, `proxy_id`, `import_source_id`, `runtime_json`, `status`, `created_at`, `updated_at`, `archived_at`, `deleted_at`, `deletion_error` | 档案本体；`id` 为 ULID；`import_source_id` 记录导入来源 ID 用于冲突检测，不作为新 ID；`status` 为 `active`/`archived`/`deleted`；目录删除失败时保留 `deleted` 并记录 `deletion_error` 供重试；窗口尺寸只存在于 `fingerprint_json`，不再有 `window_json` |
 | `groups` | `id`, `name`, `sort_order` | 分组；名称在组内唯一 |
 | `tags` | `id`, `name`, `color` | 标签；名称唯一 |
 | `profile_tags` | `profile_id`, `tag_id` | 多对多；`idx_profile_tags_tag(tag_id)` 支撑按标签筛选 |
@@ -161,8 +161,8 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `kernel_installs` | `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `active`, `installed_at` | 已安装内核；`asset_sha256` 是发布资产摘要，`binary_sha256` 是解包后可执行文件摘要，运行时只比对后者；支持并存与回滚 |
 | `proxy_engine_installs` | `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `license`, `source_url`, `active`, `installed_at` | 已安装 Xray-core；双哈希语义同内核；协议矩阵、许可与回滚 |
 | `proxy_engine_state` | `pid`, `api_port`, `state`, `started_at`, `last_error` | 单实例引擎运行态；控制面启动时对账 |
-| `proxy_outbounds` | `outbound_key`, `route_key_json`, `ref_count`, `created_at`, `updated_at` | 共享出站引用计数；`ref_count` 只统计非终态运行时；运行时停止时先清空 `runtimes.proxy_*` 再递减 |
-| `api_tokens` | `id`, `name`, `token_hash`, `scopes_json`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；只存哈希与 scope 集合 |
+| `proxy_outbounds` | `outbound_key`, `route_key_json`, `ref_count`, `created_at`, `updated_at` | 共享出站引用计数；`ref_count` 只统计非终态运行时；运行时停止时在同一事务中递减引用并清空 `runtimes.proxy_*` |
+| `api_tokens` | `id`, `name`, `token_prefix`, `token_hash`, `scopes_json`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；`token_prefix` 仅用于列表展示，完整值只存 HMAC 哈希与 scope 集合 |
 | `sessions` | `id`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` | 服务端登录会话；Cookie 只存随机标识，库中只存哈希 |
 | `admin_credentials` | `id`, `password_hash`, `algo`, `params_json`, `must_change`, `bootstrap_pending`, `updated_at` | 单管理员凭据（`id=1`）；Argon2id 参数版本化；首次登录强制改密，改密后清空引导标记并删除引导密码来源 |
 | `event_log` | `sequence`, `event_id`, `type`, `payload_json`, `created_at` | WebSocket 事件回放；`sequence` 为自增整数游标，`event_id` 为外部去重标识；按保留策略清理 |
@@ -171,9 +171,9 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `audit_events` | `id`, `actor`, `action`, `event_type`, `profile_id`, `target`, `result`, `metadata_json`, `created_at` | 审计；`event_type`/`profile_id` 为筛选字段，`action` 保留兼容；元数据脱敏 |
 | `settings` | `key`, `value_json`, `updated_at` | 全局设置；不存主密钥 |
 
-档案生命周期：`active <-> archived` 由 archive/restore 驱动；`active|archived -> deleted` 由 `DELETE permanent=false` 驱动，目录移动到 `<data-root>/trash/<id>` 并写 `deleted_at`；`deleted -> active` 由 restore 驱动并清空 `archived_at`；`deleted -> purge` 由 `DELETE permanent=true` 驱动，先删除目录再删除行，目录删除失败则保留 `deleted` 并写 `deletion_error`。软删除或 purge 前必须确认运行时不处于非终态；运行中的档案不得移动或删除目录。`deleted` 档案不能启动，也不能通过运行控制隐式恢复；启动或修改返回 `PROFILE_DELETED`（409），restore/purge/读取仍可用；已 purge 或从未存在的 ID 返回 `PROFILE_NOT_FOUND`（404）。
+档案生命周期：`active <-> archived` 由 archive/restore 驱动；`active|archived -> deleted` 由 `DELETE permanent=false` 驱动，目录移动到 `<data-root>/trash/<id>` 并写 `deleted_at`；`deleted -> active` 由 restore 驱动，恢复前必须确认 trash 目录仍是目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409）且不创建空目录；`deleted -> purge` 由 `DELETE permanent=true` 驱动，先删除目录再删除行；目录已缺失时视为已删除并继续删行，目录删除失败或行删除失败则保留 `deleted` 并写 `deletion_error`。软删除或 purge 前必须确认运行时不处于非终态；运行中的档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止。`deleted` 档案不能启动，也不能通过运行控制隐式恢复；启动或修改返回 `PROFILE_DELETED`（409），restore/purge/读取仍可用；已 purge 或从未存在的 ID 返回 `PROFILE_NOT_FOUND`（404）。
 
-Profile 响应中的 `isolation` 派生自最近一次运行时的 `runtimes.isolation`；没有运行时记录时为 `unknown`。停止档案仍保留最后一次已知值，供 proof strip 区分“未运行”与“未知”。
+Profile 响应中的 `isolation` 派生自最近一次运行时的 `runtimes.isolation`；没有运行时记录时为 `unknown`。成功启动的运行时只能是 `enforced` 或服务端显式授权的 `unsandboxed`；停止档案仍保留最后一次已知值，proof strip 的 `unsandboxed`/`unknown` 警告优先于 `stopped` 的中性样式。
 
 数据目录布局：
 
@@ -201,14 +201,13 @@ macOS 的 `<data-root>` 为 `~/Library/Application Support/Mien`，日志位于 
 stateDiagram-v2
   [*] --> stopped
   stopped --> starting: start
-  starting --> running: CDP ready / process + inbound + grace
-  starting --> stopping: cancel or failed cleanup
-  starting --> failed: validation / spawn / timeout, no resources left
-  starting --> crashed: kernel exits before ready
-  running --> stopping: stop or engine failure
-  running --> crashed: kernel exit
-  stopping --> stopped: graceful exit / forced kill / cancel complete
-  stopping --> failed: teardown complete after non-user failure
+  starting --> running: CDP ready / process + inbound-if-proxied + grace
+  starting --> stopping: cancel or post-resource failure cleanup
+  starting --> failed: pre-resource failure
+  running --> stopping: stop, kernel exit or engine failure
+  stopping --> stopped: stop / cancel / orphan cleanup
+  stopping --> failed: post-resource or engine failure after teardown
+  stopping --> crashed: kernel exit after teardown
   crashed --> starting: retry with backoff
   crashed --> stopped: stop/cleanup
   failed --> starting: explicit retry
@@ -216,7 +215,7 @@ stateDiagram-v2
   stopped --> [*]
 ```
 
-`starting` 期间任何一步失败都必须回滚：删除路由规则与入站、清空 `proxy_*` 字段、释放共享出站引用、终止已启动内核、释放档案锁、写回错误。共享引擎本身不因单个档案启动失败而退出。`starting` 中的 stop 是取消，转入 `stopping`；`stopping`/`starting` 在控制面重启后终止可归属内核并清理资源，成功后写 `stopped`。teardown 失败时保留非终态与 `last_error` 并重试，不得在资源仍存在时写 `failed`；只有清理完成后才允许进入 `failed` 终态。任何终态（`crashed`、`failed`、`stopped`）都不得留下仍在运行的内核或仍计数的代理资源。`crashed` 不自动无限重启；退避次数和窗口可配置。
+`starting` 的 pre-resource 失败（schema/清单/沙箱校验、未创建代理资源或子进程）直接写 `failed`。post-resource 失败、`stop` 取消、内核退出或共享引擎失败都先转入 `stopping`：终止内核进程组、删除路由与入站、在同一事务中递减出站引用并清空 `proxy_*`、释放档案锁与配额；用户停止/取消和孤儿清理完成后写 `stopped`，post-resource 启动失败或引擎失败写 `failed`，内核退出写 `crashed`。teardown 失败时保留 `stopping` 与 `last_error` 并重试，不得在资源仍存在时写终态。任何终态（`crashed`、`failed`、`stopped`）都不得留下仍在运行的内核或仍计数的代理资源。`crashed` 不自动无限重启；退避次数和窗口可配置。
 
 ## 7. 关键流程
 
@@ -255,7 +254,7 @@ sequenceDiagram
   Core-->>UI: 状态事件 + proxy_port（CDP URL 仅由受保护的 Runtime 查询返回）
 ```
 
-启动流程是串行的资源获取过程。先写入 `starting` 记录；沙箱校验必须发生在创建任何代理资源和启动内核之前：Docker 中无法确认沙箱生效时以 `SANDBOX_UNAVAILABLE` 拒绝，并以 `ALLOW_UNSANDBOXED=1` 作为唯一例外。通过后把 `isolation` 定为 `enforced`、`unsandboxed` 或 `unknown` 并持久化。代理模式在共享引擎就绪后创建出站、入站和路由；直接模式跳过这些资源，不声称具备 DoH/IPv6/非代理 UDP 防护，并在 Profile/Runtime 返回 `direct=true` 与降低保证。每次增量建规则都带稳定 `ruleTag` 并使用 `shouldAppend=true`，使新规则追加在引导配置的 blackhole 之后。任何一步失败都回滚并返回稳定错误码。代理检查结果只是警告，不阻断启动；内核校验失败、引擎校验失败、沙箱不可用、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。`headless` 使用 `--headless=new`；`pseudo_headful` 还要求内核能力清单声明 `headless_chrome_ua_patch=true`，只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
+启动流程是串行的资源获取过程。先写入 `starting` 记录；沙箱校验必须发生在创建任何代理资源和启动内核之前：桌面无法确认 seatbelt/restricted-token 时以 `SANDBOX_UNAVAILABLE` 拒绝；服务端只有显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才写 `unsandboxed` 并审计。通过后把 `isolation` 定为 `enforced` 或服务端显式 `unsandboxed` 并持久化，`unknown` 只用于没有成功运行时记录或历史迁移行。代理模式在共享引擎就绪后创建出站、入站和路由；直接模式跳过这些资源，服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时返回 `DIRECT_EGRESS_DISABLED`，设置时写审计；直连模式不声称具备 DoH/IPv6/非代理 UDP 防护，并在 Profile/Runtime 返回 `direct=true` 与降低保证。每次增量建规则都带稳定 `ruleTag` 并使用 `shouldAppend=true`，使新规则追加在引导配置的 blackhole 之后，且引导配置不得包含 `routing.script`。任何一步失败都回滚并返回稳定错误码。代理检查结果只是警告，不阻断启动；内核校验失败、引擎校验失败、沙箱不可用、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。`headless` 使用 `--headless=new`；`pseudo_headful` 还要求内核能力清单声明 `headless_chrome_ua_patch=true`，只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
 
 ### 7.2 停止档案
 
@@ -472,12 +471,12 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 
 | 区域 | 控制 |
 | --- | --- |
-| 认证 | 服务端会话 Cookie `HttpOnly`、`SameSite=Strict`；服务端模式恒为 `Secure`；API Token 只存哈希；登录限流；管理员凭据存 `admin_credentials`（Argon2id），由 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 引导，两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600）；首次登录强制改密，改密后删除应用生成的引导文件并清除引导标记；外部环境变量/Secret 由部署者撤销，应用不得声称已删除。 |
+| 认证 | 服务端会话 Cookie `HttpOnly`、`SameSite=Strict`；非回环服务端必须设置 `MIEN_PUBLIC_URL` 且 Cookie 恒为 `Secure`；API Token 只存展示前缀与 HMAC 哈希；登录限流；管理员凭据存 `admin_credentials`（Argon2id），由 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 引导，两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600）；首次登录强制改密，改密后删除应用生成的引导文件并清除引导标记；外部环境变量/Secret 由部署者撤销，应用不得声称已删除。 |
 | 授权 | v1 使用管理员与 Token 范围；所有写操作检查档案归属和 Token scope。 |
 | 密钥 | 桌面使用系统钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 `MIEN_MASTER_KEY`；字段级 AES-256-GCM；API Token 从不使用 AES-GCM，只用 HKDF-peppered 哈希，主密钥轮换使全部 Token 失效并要求重发。 |
 | 进程 | 参数数组启动，不经过 shell；进程组管理；档案锁；并发配额；子进程 `env_clear` 后只注入白名单变量。 |
 | 文件 | 档案目录 0700；路径规范化并校验前缀；导入文件大小限制；符号链接拒绝。 |
-| 网络 | 每运行档案 HTTP 入站、Xray gRPC 管理 API 与 CDP 都绑定回环，但回环只限制可达范围、不提供调用者鉴权；服务端默认只允许认证流量；仅当来源在 `MIEN_TRUSTED_PROXIES` 中时才采信 `X-Forwarded-For`/`X-Forwarded-Proto`，限流按校验后的客户端 IP；noVNC 一次性令牌；容器网络最小化。 |
+| 网络 | 每运行档案 HTTP 入站、Xray gRPC 管理 API 与 CDP 都绑定回环，但回环只限制可达范围、不提供调用者鉴权；非回环服务端必须设置 `MIEN_PUBLIC_URL` 并使用 `Secure` Cookie；仅当来源在 `MIEN_TRUSTED_PROXIES` 中时才采信 `X-Forwarded-For`/`X-Forwarded-Proto`，限流按校验后的客户端 IP；noVNC 一次性令牌；容器网络最小化。 |
 | 内核 | 安装时校验 `asset_sha256`，启动时校验可执行文件的 `binary_sha256`；能力清单；版本固定；沙箱状态检查；不允许静默升级。 |
 | 协议引擎 | Xray-core 单实例共享进程；安装时校验 `asset_sha256`，启动时校验 `binary_sha256`；协议能力清单；管理 API 只绑定回环；凭据不写日志；MPL-2.0 许可与来源信息。 |
 | 容器 | 非 root；只读根文件系统；强制 seccomp 配置（由宿主侧发布物提供并在容器创建前读取，非“按需”）；`--tmpfs /tmp:rw,noexec,nosuid,size=1g`；`/dev/shm` 显式定量；HOME/XDG 可写目录位于 `/data`；丢弃能力；`no-new-privileges`；镜像扫描；不使用 Docker socket。 |
@@ -485,7 +484,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 
 ### 10.3 沙箱策略
 
-Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否生效，并把结果写入运行时的 `isolation`。命名空间沙箱依赖一个专用 seccomp 配置：它允许非特权用户命名空间（`clone`/`unshare` 所需最小集合），路径和 allowlist 是 M0 交付物与发布制品；宿主侧发布物供 Docker daemon 在创建容器前读取，`--security-opt seccomp=<host-path>` 不得指向镜像内文件，镜像只保留 `/opt/mien/seccomp/chromium.json` 审计副本。文档不得把它描述为“按需”。Docker 无法提供清单声明的 `sandbox_kind`（当前为 `namespace`）时默认拒绝启动；只有显式设置 `ALLOW_UNSANDBOXED=1` 并记录审计事件后才允许 `--no-sandbox`，此时 `isolation=unsandboxed`。无法完成探测且未显式开启时不得猜测为安全，只能拒绝。桌面使用宿主原生沙箱（`seatbelt` 或 `win32-restricted-token`）；无法确认时不阻断启动，但必须写 `isolation=unsandboxed` 或 `unknown` 并呈现降低保证。已知内核 148 存在渲染进程越界访问报告（#102），无沙箱运行会显著放大影响；#98 与 #99 是读回不一致问题，不应与越界报告混为一谈。
+所有宿主在有头、无头或伪有头启动前都必须检测 Chromium 沙箱是否生效，并把结论写入运行时的 `isolation`。命名空间沙箱依赖一个专用 seccomp 配置：它允许非特权用户命名空间（`clone`/`unshare` 所需最小集合），路径和 allowlist 是 M0 交付物与发布制品；宿主侧发布物供 Docker daemon 在创建容器前读取，`--security-opt seccomp=<host-path>` 不得指向镜像内文件，镜像只保留 `/opt/mien/seccomp/chromium.json` 审计副本。Docker 无法提供清单声明的 `sandbox_kind`（当前为 `namespace`）时默认拒绝启动；服务端只有显式 `ALLOW_UNSANDBOXED=1`、通过包含性探针并具备独立 UID/网络边界时才允许 `--no-sandbox`，此时 `isolation=unsandboxed` 并写审计。桌面使用宿主原生沙箱（`seatbelt` 或 `win32-restricted-token`）；无法确认时同样拒绝启动，不存在桌面无沙箱例外。`unknown` 只用于没有成功运行时记录或历史迁移行，不能作为新启动的成功结论。已知内核 148 存在渲染进程越界访问报告（#102），无沙箱运行会显著放大影响；#98 与 #99 是读回不一致问题，不应与越界报告混为一谈。
 
 ## 11. 失败处理
 
@@ -496,11 +495,11 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 | 指纹规格与能力清单不符 | 拒绝启动，返回具体字段和原因。 |
 | 代理配置无效或引擎校验失败 | 拒绝启动，释放配额，保留档案数据。 |
 | 共享引擎启动或 API 就绪失败 | 拒绝启动新档案，返回稳定错误；已运行档案按引擎故障策略处理。 |
-| 内核启动后立即退出 | 状态 `crashed`；由唯一 teardown 例程删除该档案的路由与入站并释放共享出站引用（恰好一次），记录退出码与日志尾部，按退避策略决定是否允许重试；共享引擎继续服务其他档案。 |
-| 沙箱状态无法确认 | 代理资源创建与进程启动前拒绝，返回 `SANDBOX_UNAVAILABLE`；`ALLOW_UNSANDBOXED=1` 时继续但写 `isolation=unsandboxed` 与审计事件。 |
-| 共享引擎运行中退出 | 所有运行档案网络失败，不发直连回退；记录 `proxy.engine.failed`，按有界退避重启并按原端口重建；重建失败时对每个受影响运行时先转入 `stopping` 并执行 teardown（终止内核进程组、按 `ruleTag` 删规则与入站、释放出站引用、释放配额与锁），完成后才写 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不得在终态背后留下活内核或计入引用计数的资源。 |
-| CDP 在超时内未就绪 | 终止内核进程组，删除该档案的路由与入站，状态 `failed`。 |
-| 内核在 `starting` 期间提前退出 | 状态 `crashed`；执行同一 teardown 例程后再允许按退避重试。 |
+| 内核启动后立即退出 | 先转入 `stopping`，由唯一 teardown 例程删除该档案的路由与入站并释放共享出站引用（恰好一次），记录退出码与日志尾部；teardown 完成后写 `crashed`，按退避策略决定是否允许重试；共享引擎继续服务其他档案。 |
+| 沙箱状态无法确认 | 代理资源创建与进程启动前拒绝，返回 `SANDBOX_UNAVAILABLE`；服务端仅在 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时继续，写 `isolation=unsandboxed` 与审计事件；桌面端直接拒绝。 |
+| 共享引擎运行中退出 | 所有运行档案网络失败，不发直连回退；记录 `proxy.engine.failed`，按有界退避重启并按原端口重建；重建失败时对每个受影响运行时先转入 `stopping` 并执行 teardown（终止内核进程组、按 `ruleTag` 删规则与入站、在同一事务中递减出站引用并清空 `proxy_*`、释放配额与锁），完成后才写 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不得在终态背后留下活内核或计入引用计数的资源。 |
+| CDP 在超时内未就绪 | 先转入 `stopping`，终止内核进程组、删除该档案的路由与入站并释放引用，teardown 完成后写 `failed`。 |
+| 内核在 `starting` 期间提前退出 | 先转入 `stopping`；执行同一 teardown 例程后写 `crashed`，再允许按退避重试。 |
 | 控制面崩溃 | 内核与共享引擎可能成为孤儿；下次启动对账，确认引擎归属后接管并重建或清理入站/规则；非终态 `starting`/`stopping` 行先终止可归属内核并清理资源，再写 `stopped`。teardown 失败时保留非终态与 `last_error` 并重试，不得在资源仍存在时写 `failed`。 |
 | 数据库锁定 | 短重试后返回可重试错误；迁移使用单写者。 |
 | Xvfb 不可用 | 有头启动失败；无头模式仍可用，但 UI 明确提示。 |
@@ -568,7 +567,7 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 ## 14. 可观测性
 
 - 结构化日志字段：`ts`、`level`、`request_id`、`profile_id`、`runtime_id`、`event`、`error_code`、`isolation`。
-- 启动失败返回稳定错误码，例如 `KERNEL_NOT_FOUND`、`KERNEL_CHECKSUM_MISMATCH`、`FINGERPRINT_INVALID`、`PROXY_ENGINE_NOT_FOUND`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT`、`PROXY_CONFIG_INVALID`、`SANDBOX_UNAVAILABLE`、`RUNTIME_CDP_TIMEOUT`、`QUOTA_EXCEEDED`。
+- 启动失败返回稳定错误码，例如 `KERNEL_NOT_FOUND`、`KERNEL_CHECKSUM_MISMATCH`、`FINGERPRINT_INVALID`、`PROXY_ENGINE_NOT_FOUND`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT`、`PROXY_CONFIG_INVALID`、`SANDBOX_UNAVAILABLE`、`DIRECT_EGRESS_DISABLED`、`RUNTIME_CDP_TIMEOUT`、`QUOTA_EXCEEDED`。
 - 运行时事件通过 WebSocket 推送：`runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`、`proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
 - 指标：启动次数、成功率、启动耗时、运行档案数、代理检查失败率、崩溃次数。
 - 日志轮转按档案和总量限制；默认保留最近 7 天或 100 MB，取较小者。

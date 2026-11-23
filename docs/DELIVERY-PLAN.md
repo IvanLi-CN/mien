@@ -76,7 +76,7 @@
 
 M0 结束前必须冻结：
 
-- [`contracts/openapi.yaml`](contracts/openapi.yaml)：端点、DTO、错误、鉴权、分页。
+- [`contracts/openapi.yaml`](contracts/openapi.yaml)：端点、DTO、错误、鉴权、分页；`fingerprint-input.schema.json` 约束创建/更新请求，存储与导出仍使用 `fingerprint-spec.schema.json`。
 - [`contracts/events.schema.json`](contracts/events.schema.json)：事件枚举和 payload。
 - [`ERROR-CODES.md`](ERROR-CODES.md)：稳定错误码与 HTTP 映射。
 - [`DATABASE-SCHEMA.md`](DATABASE-SCHEMA.md)：表、约束、索引、迁移。
@@ -145,9 +145,9 @@ M0 结束前必须冻结：
 
 ## 5. 不阻塞开工的事项
 
-以下可以在 M1/M2 并行推进，不阻塞第一个切片：
+以下可以在 M1/M2 并行推进，不阻塞第一个切片；但 `CI PR / required`、`contracts` job 与链接/schema/DDL 检查必须先于首个切片就位，不属于可并行事项：
 
-- GitHub Actions CI/release workflow、AdHoc 打包、SBOM/许可构建。
+- release workflow、AdHoc 打包、SBOM/许可构建；PR CI required check 仍按 2.4 先行落地。
 - 10 档案容量与 24 小时浸泡。
 - noVNC 之外的远程查看增强。
 - 订阅、节点测速、多节点调度和 TUIC。

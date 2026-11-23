@@ -139,7 +139,7 @@
 
 - The system MUST expose `GET /api/v1/profiles/{profile_id}/logs?limit=` for a bounded, redacted runtime log tail, backed by the runtime log ring or rotated log files.
 - Inputs: 档案 ID、`limit` 查询参数、会话或 `profiles.read` scope、运行时日志环/轮转文件。
-- Outputs: 200 响应包含不超过 `limit` 的有界日志尾部及截断标记（字段由 OpenAPI 定义）；`limit` 非法或超出上限返回 422；未认证 401；缺少 scope 403；档案不存在 404 `PROFILE_NOT_FOUND`；既无运行时也无保留日志时 404 `RUNTIME_NOT_FOUND`；响应不含凭据、Cookie、授权头、UUID、完整 URL 或完整代理配置；桌面宿主提供等价 IPC/本地日志回退。
+- Outputs: 200 响应包含不超过 `limit` 的有界日志尾部及截断标记（字段由 OpenAPI 定义）；运行时存在但尚无日志时返回 200 空 items；`limit` 非法或超出上限返回 422；未认证 401；缺少 scope 403；档案不存在 404 `PROFILE_NOT_FOUND`；既无运行时也无保留日志时 404 `RUNTIME_NOT_FOUND`；响应不含凭据、Cookie、授权头、UUID、完整 URL 或完整代理配置；桌面宿主提供等价 IPC/本地日志回退。
 - Semantics: 日志写入、轮转与脱敏规则由 `browser-runtime` REQ-RUNTIME-015 定义，本要求固定 HTTP 边界与授权。
 
 ### REQ-API-020
@@ -147,7 +147,7 @@
 - The system MUST expose profile export and import as `POST /api/v1/profiles/{profile_id}/export`, `POST /api/v1/profiles/import/validate` and `POST /api/v1/profiles/import`, matching the request/response shapes and payload semantics defined by `profile-management`.
 - Inputs: `ProfileExportRequest`、`ProfileImportInput`、CSRF Token 或 Bearer Token、`profiles.read`/`profiles.write` scope。
 - Outputs: 导出返回 `ProfileExportEnvelope`；`passphrase` 为 write-only，加密格式必填、明文格式禁止，且不得出现在 URL、查询串、日志、审计或错误消息；明文 `payload` 遵循 `profile-export.schema.json`；加密 `payload` 是不透明、带版本号的容器，使用 Argon2id 派生密钥与认证加密，envelope 版本参与 AAD。
-- Import: `import/validate` 是 dry-run，不写行、不建目录，返回逐项草稿/errors/冲突；`import` 返回 `ProfileImportResult`，`conflict_strategy=new_id` 分配新 ID，`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`。
+- Import: `import/validate` 是 dry-run，不写行、不建目录，返回逐项草稿/errors/冲突；`import` 返回 `ProfileImportResult`，档案冲突以导出项 `source_profile_id` 匹配 `profiles.import_source_id` 或现有 `profiles.id`，分组/标签冲突按名称匹配；`conflict_strategy=new_id` 分配新档案 ID 并保留 `import_source_id`，`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`。
 - Redaction: 导出中的代理只含 `credential_fields` 名称与非秘密 `options`，`credentials_removed=true`；秘密键被拒绝；导出不包含顶层 `runtime.window`，窗口尺寸只在指纹规格内。
 
 ### REQ-API-021
@@ -187,7 +187,7 @@
 
 - Method: 创建 Token，检查数据库与创建响应；使用不同 scope 调用，对照 OpenAPI 的 Bearer 与 `x-required-scope` 声明；尝试在请求体携带 `token`/`ticket`；撤销后重试。
 - covers: `REQ-API-005`
-- Pass condition: 明文只在 201 响应出现一次；数据库只存哈希；OpenAPI 使用 HTTP Bearer 且每个受保护操作带 `x-required-scope`，CI 校验其属于 `TokenScope`；越权 403；请求体出现一次性秘密字段被拒绝；撤销立即生效；last_used 更新。
+- Pass condition: 明文只在 201 响应出现一次；数据库只存展示前缀与 HMAC 哈希，前缀不能用于认证；OpenAPI 使用 HTTP Bearer 且每个受保护操作带 `x-required-scope`，CI 校验其属于 `TokenScope`；越权 403；请求体出现一次性秘密字段被拒绝；撤销立即生效；last_used 更新。
 
 ### VER-API-006
 

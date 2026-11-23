@@ -62,7 +62,7 @@ flowchart LR
 | 编号 | 威胁 | 攻击路径 | 控制 | 残余风险 |
 | --- | --- | --- | --- | --- |
 | T-01 | 未认证访问控制面 | 直接请求档案、启动或删除端点 | 公开白名单与契约完全一致：仅 `/healthz`、`/readyz`、`/api/v1` 发现、`/api/v1/auth/login`、`/api/v1/openapi.json`；其余端点强制认证；默认只暴露必要端口；反向代理 TLS | 部署者错误公开端口仍可能暴露登录页 |
-| T-02 | 会话或 Token 窃取 | XSS、日志、URL、共享终端 | HttpOnly/SameSite Cookie；Token 只存哈希；不在 URL 放长效 Token；CSP；脱敏 | 同用户恶意软件可读取浏览器会话 |
+| T-02 | 会话或 Token 窃取 | XSS、日志、URL、共享终端 | HttpOnly/SameSite Cookie；Token 只存展示前缀与 HMAC 哈希；不在 URL 放长效 Token；CSP；脱敏 | 同用户恶意软件可读取浏览器会话 |
 | T-03 | CSRF | 恶意站点诱导已登录浏览器发起写请求 | SameSite=Strict；Origin 校验；CSRF Token；Bearer Token 不受 Cookie 影响 | 旧浏览器或错误代理配置可能削弱 SameSite |
 | T-04 | 登录暴力破解 | 自动化尝试密码 | 登录限流、递增锁定、统一错误消息、Argon2id | 分布式低频尝试仍可能持续 |
 | T-05 | 代理凭据泄露 | 进程参数、引擎 API、日志、错误、数据库 | 凭据加密存储；只经回环 API 传递；日志脱敏；Chromium argv 不含凭据 | 内存转储和同用户调试可读取运行中凭据 |
@@ -77,7 +77,7 @@ flowchart LR
 | T-14 | 日志泄露 | 记录代理 URL、Token、Cookie、页面内容 | 结构化日志字段白名单；统一脱敏；日志轮转与权限 | 调试日志可能临时包含更多信息 |
 | T-15 | 同用户滥用回环代理 | 本机进程连接运行档案入站或 Xray 管理 API | 回环绑定；随机分配端口；容器网络隔离；API 不暴露 | macOS 同用户进程仍可使用；渲染进程也可经浏览器网络栈访问回环代理端口 |
 | T-16 | 主密钥丢失或泄露 | 误删钥匙串、环境变量泄露 | 钥匙串或 0600 文件；Secret 管理；备份流程；轮换流程；轮换后全部 API Token 失效并要求重新签发 | 丢失后敏感字段不可恢复 |
-| T-17 | 无沙箱运行 | 容器默认配置无法启用沙箱 | 启动前检查；默认拒绝；`ALLOW_UNSANDBOXED=1` 显式授权并审计；无沙箱时内核不得读取 `/data/secrets` 与数据库、不得连接 Xray 管理 API；子进程 `env_clear` 白名单；持久化 `isolation=unsandboxed` | 恶意网页可直接攻击浏览器主进程 |
+| T-17 | 无沙箱运行 | 容器或宿主默认配置无法启用沙箱 | 启动前检查；默认拒绝；`ALLOW_UNSANDBOXED=1` 仅服务端生效，且必须通过包含性探针与独立 UID/网络边界并审计；无沙箱时内核不得读取 `/data/secrets` 与数据库、不得连接 Xray 管理 API；桌面端无此例外；子进程 `env_clear` 白名单；持久化 `isolation=unsandboxed` | 恶意网页可直接攻击浏览器主进程 |
 | T-18 | 网络泄漏 | DNS、WebRTC、IPv6、DoH 绕过代理 | 远程 DNS；`--disable-non-proxied-udp`；DoH 禁用；IPv6 阻止；失败关闭；canary 测试 | 代理节点自身行为不可控 |
 | T-19 | 产品被滥用 | 欺诈、垃圾信息、规避平台规则 | 可接受使用政策；不提供代理/账号/验证码；限制分发；保留终止支持权利 | 无法完全阻止双用途使用 |
 | T-20 | 备份或导出泄露 | 明文导出、未加密卷、共享备份 | 默认导出不含秘密；加密导出；卷加密建议；备份权限 | 用户自行复制导出文件 |
@@ -86,7 +86,7 @@ flowchart LR
 | T-24 | 共享引擎故障或拒绝服务 | 一个 Xray 进程承载所有运行档案 | 失败关闭；有界重启；原端口重建；全局事件；API 串行化与配额 | 引擎崩溃会同时中断所有档案 |
 | T-23 | 恶意 WebView 内容调用 IPC | 远程页面、XSS 或注入脚本调用 Tauri 命令 | 生产 CSP；禁止远程导航；capabilities 仅授权主窗口与必要命令；输入校验；不返回秘密 | WebView 被攻破后仍可调用已授权命令 |
 | T-25 | 直连模式出口泄漏 | 直连档案绕过代理，DNS、IPv6 与 WebRTC 直接暴露真实出口 | 直连是显式降级配置：桌面端标记降低保证；服务端必须 `MIEN_ALLOW_DIRECT_EGRESS=1` 并写入审计；T-18 控制只适用于代理模式；UI 与 API 不把直连伪装成代理 | 直连流量与真实地址对目标站点和本地网络完全可见 |
-| T-26 | 伪造客户端地址或协议 | 直连客户端伪造 `X-Forwarded-For`/`X-Forwarded-Proto` 绕过限流或影响 Cookie 与重定向 | 只信任 `MIEN_TRUSTED_PROXIES` 内的代理；`MIEN_PUBLIC_URL` 定义外部原始地址；服务端模式强制 `Secure` Cookie；按校验后的客户端 IP 限流 | 部署者配置了错误代理列表仍可能信任不可信来源 |
+| T-26 | 伪造客户端地址或协议 | 直连客户端伪造 `X-Forwarded-For`/`X-Forwarded-Proto` 绕过限流或影响 Cookie 与重定向 | 只信任 `MIEN_TRUSTED_PROXIES` 内的代理；非回环服务端必须设置 `MIEN_PUBLIC_URL`，仅回环开发模式可省略；服务端模式强制 `Secure` Cookie；按校验后的客户端 IP 限流 | 部署者配置了错误代理列表仍可能信任不可信来源 |
 | T-27 | 页面经浏览器网络栈访问回环 | 恶意页面 fetch `127.0.0.1:<proxy_port>`，绕过渲染进程命名空间对回环的假设 | 每运行档案随机端口；入站只接受代理语义且不暴露管理 API；Xray gRPC 与数据库在独立端口/路径；探针验证页面不能触达管理 API 或本地服务 | 页面仍可把该回环端口当作本机 HTTP 代理使用；这是已接受的本地代理暴露，不把它当作沙箱边界 |
 
 ## 5. 控制措施
@@ -96,8 +96,8 @@ flowchart LR
 - 管理员凭据只存于 `admin_credentials` 表。引导密码从 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE`（文件权限 0600）读取；两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600），不写入日志或事件。
 - 引导密码以 Argon2id（随机 salt、参数版本化）哈希后写入 `admin_credentials`；首次登录返回 `must_change_password`，改密前除改密与登出外的写操作返回 `AUTH_PASSWORD_CHANGE_REQUIRED`。
 - 改密成功后清除 `admin_credentials` 中的引导标记、删除应用自己生成的 `<data-root>/secrets/admin-bootstrap` 并写入审计事件。环境变量或外部 Secret 无法由应用删除，部署者必须撤销/轮换；应用不得声称已删除外部来源。旧会话同时失效。
-- 会话 Cookie 使用 `HttpOnly`、`SameSite=Strict`；服务端模式（设置 `MIEN_PUBLIC_URL` 或 TLS 终止）一律使用 `Secure`。
-- API Token 高熵随机、只保存 HKDF pepper 派生的 HMAC-SHA-256 哈希、可撤销、带范围；Token 创建时只显示一次，明文不落库、不可回放。
+- 会话 Cookie 使用 `HttpOnly`、`SameSite=Strict`；非回环服务端必须设置 `MIEN_PUBLIC_URL`，服务端模式一律使用 `Secure`；仅回环开发模式可省略，且不得对外发布。
+- API Token 高熵随机、只保存展示前缀与 HKDF pepper 派生的 HMAC-SHA-256 哈希、可撤销、带范围；前缀不能用于认证；Token 创建时只显示一次，明文不落库、不可回放。
 - v1 不实现多用户 RBAC；服务端只有一个管理员身份和范围化 Token。多用户属于后续范围。
 - 所有写操作检查认证、授权、Origin（对照 `MIEN_PUBLIC_URL`）与 CSRF；Bearer Token 请求不依赖 Cookie。
 - 客户端地址与协议只采信 `MIEN_TRUSTED_PROXIES` 配置的结果（见 5.4），限流按校验后的客户端 IP 计数。
@@ -121,22 +121,22 @@ flowchart LR
 - 路径规范化、前缀校验、拒绝符号链接；导入文件大小与 schema 限制。
 - 内核首次启动前校验 SHA-256；校验失败拒绝启动。
 - 共享 Xray 引擎首次启动前校验版本与 SHA-256；管理 API 只绑定回环；凭据不写入持久化配置或 argv。
-- 无沙箱模式的爆炸半径：内核以独立 UID（或独立容器/网络边界，见 5.5）运行；`/data/secrets`、`/data/db` 与 `/data/run` 只由控制面 UID 读写（0700），内核不加载这些路径；内核用户数据、下载与缓存目录位于独立的 0700 目录。
-- 无沙箱模式启动前必须通过包含性探针：以内核 UID 读取 `/data/secrets/master.key` 与 `/data/db/mien.db` 必须失败，连接 Xray 管理 API 必须不可达。任一成功即返回 `SANDBOX_UNAVAILABLE` 并拒绝启动；服务端无沙箱模式还要求管理 API 与内核处于不可互相路由的边界（独立网络命名空间或等价隔离），无法保证时禁止启动。
+- 服务端无沙箱模式的爆炸半径：内核以独立 UID（或独立容器/网络边界，见 5.5）运行；`/data/secrets`、`/data/db` 与 `/data/run` 只由控制面 UID 读写（0700），内核不加载这些路径；内核用户数据、下载与缓存目录位于独立的 0700 目录。桌面端没有无沙箱模式。
+- 服务端无沙箱模式启动前必须通过包含性探针：以内核 UID 读取 `/data/secrets/master.key` 与 `/data/db/mien.db` 必须失败，连接 Xray 管理 API 必须不可达；同时要求管理 API 与内核处于不可互相路由的边界（独立网络命名空间或等价隔离）。任一条件不满足即返回 `SANDBOX_UNAVAILABLE` 并拒绝启动。桌面端不允许无沙箱启动；无法确认 seatbelt/restricted-token 时直接拒绝。
 - 渲染进程（含无沙箱模式）不得进入控制面 IPC/HTTP 处理器、不得读取数据库文件、不得拥有 Xray 管理 API 凭据或可达路径；沙箱生效时由 Chromium 命名空间网络隔离保证，无沙箱时由上述探针、UID/路径权限与网络边界保证。
-- `runtimes.isolation` 取值为 `enforced|unsandboxed|unknown`；无沙箱或未知必须持久化并在 UI、API、事件和证明条中显示降低保证，即使档案已停止。
+- `runtimes.isolation` 取值为 `enforced|unsandboxed|unknown`；成功启动只能是 `enforced` 或服务端显式授权的 `unsandboxed`，`unknown` 只用于没有成功运行时记录或历史迁移行。无沙箱或未知必须持久化并在 UI、API、事件和证明条中显示降低保证，即使档案已停止；停止样式不得覆盖该警告。
 
 ### 5.4 网络
 
 - 控制面默认只监听必要接口；Docker 通过端口映射和反向代理控制暴露。
 - 控制面公开端点仅 `/healthz`、`/readyz`、`/api/v1` 发现、`/api/v1/auth/login` 与 `/api/v1/openapi.json`，与 OpenAPI 契约及 T-01 例外表完全一致；新增公开端点必须同时更新契约、测试与本文。
-- 服务端外部原始地址由 `MIEN_PUBLIC_URL` 显式配置，不从请求头推断；Cookie 的 `Secure`、Origin 校验与重定向均使用该值。
+- 非回环服务端必须显式配置 `MIEN_PUBLIC_URL`，否则启动失败；外部原始地址不从请求头推断。Cookie 的 `Secure`、Origin 校验与重定向均使用该值；仅回环开发模式可省略，此时只接受回环来源且不得对外发布。
 - 只有对端地址落在 `MIEN_TRUSTED_PROXIES`（精确地址或 CIDR）内时才信任 `X-Forwarded-For`/`X-Forwarded-Proto`；解析时从右向左跳过受信代理，取第一个不可信地址作为客户端 IP；列表为空时忽略这些头。
 - 登录、Token 认证与其他限流按校验后的客户端 IP 计数，不按伪造头；服务端模式一律设置 `Secure` Cookie。
 - 每运行档案 HTTP 入站、Xray 管理 API 和 CDP 只绑定 `127.0.0.1`；容器不映射这些端口。
 - 桌面管理 UI 不启动本地 HTTP 控制面；自动化 API 显式启用后只绑定回环并使用 Token。
 - noVNC 默认关闭；开启时使用一次性令牌或独立认证。
-- 直连模式：桌面端允许但必须标记降低保证（`direct=true` 与风险说明），不创建代理入站/出站；服务端必须显式设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 才允许直连启动，否则返回稳定错误并拒绝，允许时写入审计事件。T-18 的远程 DNS、禁用非代理 UDP、DoH、IPv6 与失败关闭控制只适用于代理模式，直连模式不得声称具备这些保护。
+- 直连模式：桌面端允许但必须标记降低保证（`direct=true` 与风险说明），不创建代理入站/出站；服务端必须显式设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 才允许直连启动，否则返回 `DIRECT_EGRESS_DISABLED`（403）并拒绝，允许时写入审计事件。T-18 的远程 DNS、禁用非代理 UDP、DoH、IPv6 与失败关闭控制只适用于代理模式，直连模式不得声称具备这些保护。
 - 代理模式默认远程 DNS、禁用非代理 UDP、禁用 DoH 绕过；IPv6 不能代理时阻止。
 - 代理模式引擎失败关闭，不回退直连；容器网络默认只允许共享引擎到代理节点的必要连接。服务端显式启用 `MIEN_ALLOW_DIRECT_EGRESS=1` 时，网络策略必须为直连档案开放相应出口并写入审计，不能再声称“仅代理出口”。
 
@@ -148,8 +148,8 @@ flowchart LR
 - 宿主要求：启用非特权用户命名空间；Ubuntu 24.04+ 等受 AppArmor `userns` 限制的宿主必须解除限制（`kernel.apparmor_restrict_unprivileged_userns=0`）或加载等价 AppArmor 配置。宿主不满足时返回 `SANDBOX_UNAVAILABLE`，不得静默降级。
 - 可写层布局：`--read-only`；`--tmpfs /tmp:rw,noexec,nosuid,size=1g`；`--shm-size=1g` 的 `/dev/shm`（按最大并发档案数调整，不足时返回资源不足错误而不是静默降级）；`HOME=/data/home`、`XDG_CONFIG_HOME=/data/home/.config`、`XDG_CACHE_HOME=/data/home/.cache`、`TMPDIR=/tmp`，上述 HOME/XDG 目录权限 0700。
 - `cap-drop ALL`、`no-new-privileges`；不挂载 Docker socket 或宿主敏感目录。
-- 启动前验证 Chromium 沙箱状态；无法确认时拒绝启动。`ALLOW_UNSANDBOXED=1` 只允许显式降级，且必须满足 5.3 的包含性探针，否则拒绝启动。
-- 基线命令只覆盖沙箱生效的部署。启用 `ALLOW_UNSANDBOXED=1` 时必须改用满足 5.3 包含性探针的扩展配置（内核独立 UID，或独立容器/网络边界）；不得用 `--privileged`、`CAP_SYS_ADMIN` 或放宽 seccomp 来通过探针，初始化所需的最小能力必须在 exec 控制面前丢弃。
+- 启动前验证 Chromium 沙箱状态；无法确认时拒绝启动。`ALLOW_UNSANDBOXED=1` 只对服务端生效，且必须满足 5.3 的包含性探针与网络边界，否则拒绝启动；桌面端没有该开关。
+- 基线命令只覆盖沙箱生效的部署。服务端启用 `ALLOW_UNSANDBOXED=1` 时必须改用满足 5.3 包含性探针的扩展配置（内核独立 UID，或独立容器/网络边界）；不得用 `--privileged`、`CAP_SYS_ADMIN` 或放宽 seccomp 来通过探针，初始化所需的最小能力必须在 exec 控制面前丢弃。
 - 镜像固定摘要、SBOM、漏洞扫描；不使用浮动 `latest` 作为生产标签。
 - 资源限制：CPU、内存、PID、打开文件数，避免单档案拖垮宿主。
 
@@ -252,7 +252,7 @@ docker run --detach \
 - 不挂载 Docker socket、宿主 home、SSH 密钥或其他敏感目录。
 - 限制 CPU、内存、PID（含 `/dev/shm` 容量）和文件描述符；设置健康检查。
 - 反向代理终止 TLS；只暴露控制面端口；noVNC 不默认发布。
-- 反代部署必须设置 `MIEN_PUBLIC_URL` 与 `MIEN_TRUSTED_PROXIES`，且后者只列出实际反代地址或最小 CIDR（例如单个 `/32`），不得使用整个容器网桥子网；三者与 `Secure` Cookie、Origin 校验、限流口径一致。
+- 反代部署必须设置 `MIEN_PUBLIC_URL` 与 `MIEN_TRUSTED_PROXIES`，且后者只列出实际反代地址或最小 CIDR（例如单个 `/32`），不得使用整个容器网桥子网；`Secure` Cookie、Origin 校验与限流口径必须一致。
 - 数据卷使用加密存储；主密钥与引导密码通过 Secret 管理或 0600 文件提供；首次改密后删除应用生成的引导文件并清除标记，外部 Secret 由部署者撤销。
 - 需要直连模式时显式设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 并接受审计与降低保证。
 - 默认限制容器出站网络，仅允许共享协议引擎到代理节点的必要连接；Hysteria2 需要允许 UDP 出站；TUIC 不进入 v1。显式启用直连模式时，必须为直连流量单独放行出口并记录部署审计，不能同时声称代理-only 网络策略。
@@ -269,8 +269,8 @@ docker run --detach \
 | M0-SEC-3 只读与 tmpfs/shm | 基线 `docker run` 命令与写探针输出 | 除 `/data`、`/tmp`、`/dev/shm` 外无可写路径；`/dev/shm` 容量满足最大并发档案；HOME/XDG 位于 `/data` |
 | M0-SEC-4 管理员引导 | 启动 → 登录 → 改密流程记录与数据库导出 | `admin_credentials` 只存 Argon2id 哈希；首次登录返回 `must_change_password`；改密后应用生成的引导文件被删除、引导标记被清除并写入审计；外部 env/Secret 的撤销由部署者完成 |
 | M0-SEC-5 Token 哈希与轮换 | 数据库导出、重启记录、主密钥轮换记录 | 只存 HKDF pepper 的 HMAC-SHA-256 哈希；同一主密钥重启后 Token 可用；轮换后旧 Token 返回 401，重新签发可用 |
-| M0-SEC-6 可信代理 | 伪造 `X-Forwarded-For` 的请求记录 | 非受信来源的转发头被忽略；限流按真实客户端 IP；服务端模式 Cookie 带 `Secure` |
-| M0-SEC-7 直连模式 | 服务端开关测试与审计导出 | 未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时拒绝直连启动；设置后启动、写入审计、UI 标记降低保证；不创建代理入站/出站 |
+| M0-SEC-6 可信代理 | 伪造 `X-Forwarded-For` 的请求记录、非回环启动日志 | 非受信来源的转发头被忽略；限流按真实客户端 IP；非回环服务端缺少 `MIEN_PUBLIC_URL` 时拒绝启动；服务端模式 Cookie 带 `Secure` |
+| M0-SEC-7 直连模式 | 服务端开关测试与审计导出 | 未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时返回 `DIRECT_EGRESS_DISABLED` 并拒绝直连启动；设置后启动、写入审计、UI 标记降低保证；不创建代理入站/出站 |
 | M0-SEC-8 无沙箱包含性 | 探针输出与拒绝启动记录 | 内核 UID 无法读 `/data/secrets/master.key` 与 `/data/db/mien.db`；无法连接 Xray 管理 API；任一可达即拒绝启动 |
 
 ### 8.2 发布安全门禁

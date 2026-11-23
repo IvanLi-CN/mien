@@ -17,7 +17,7 @@
 - 选择直接执行内核二进制而不是 `open -a`，避免 macOS 丢失启动参数。
 - 内核与协议引擎安装记录同时保存下载资产摘要 `asset_sha256` 与解包后可执行文件摘要 `binary_sha256`；运行时只校验后者，避免把发布资产摘要误用作可执行文件指纹。
 - 选择由产品校验内核校验和与沙箱状态，因为上游不提供这些运行时保证；沙箱结论持久化为 `isolation` 三值（`enforced`、`unsandboxed`、`unknown`），与运行模式一起决定降低保证和 proof 展示。
-- 状态机把就绪前内核退出（`starting -> crashed`）与共享引擎故障后的 teardown（`running -> failed`）作为显式转移；只有 teardown 完成后才写终态，避免终态背后仍有存活内核。
+- 状态机把内核退出（`starting|running -> stopping -> crashed`）与共享引擎故障后的 teardown（`running -> stopping -> failed`）作为显式转移；只有 teardown 完成后才写终态，避免终态背后仍有存活内核。
 - 日志尾部通过有界、脱敏的控制面端点与桌面回退暴露，轮转与保留策略由运行时层统一实施。
 - noVNC 被设计为可选高权限入口，默认关闭，避免把容器变成可远程控制的桌面。
 

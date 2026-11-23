@@ -24,7 +24,7 @@
 ### 区块
 
 1. 基本身份：名称、Space/分组、标签、备注。
-2. 指纹：平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、种子。窗口尺寸只属于指纹规格，不作为档案顶层字段；插件面、字体与屏幕字段为 host-bound，只显示当前宿主值。
+2. 指纹：平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、只读种子。窗口尺寸只属于指纹规格，不作为档案顶层字段；插件面、字体与屏幕字段为 host-bound，只显示当前宿主值。
 3. 代理：选择已有代理或新建；脱敏显示节点与 `credential_set`。
 4. 运行：启动地址、运行模式、CDP 自动化开关。
 5. 风险：跨系统画像、无头/伪有头、无沙箱、直连代理等限制。
@@ -48,7 +48,7 @@
 - 选择 `pseudo_headful` 时，UI 与 API 返回 `mode=pseudo_headful`、`reduced_assurance=true`、`ua_scope=chrome`。
 - 运行中的档案不允许无确认切换模式；必须先停止。
 - 表单失败显示字段级错误；不得把代理凭据回显到表单。
-- 导入使用 `/profiles` 命令栏的 Import 入口：选择明文或加密文件，显示凭据移除提示和冲突处理；导出从 `/profiles/:id/edit` 或详情动作触发，明确明文/加密与口令。
+- 导入使用 `/profiles` 命令栏的 Import 入口：选择明文或加密文件，显示凭据移除提示和冲突处理；冲突按 `source_profile_id` 或同名分组/标签识别，不得仅按名称猜测档案身份；导出从 `/profiles/:id/edit` 或详情动作触发，明确明文/加密与口令。
 
 ### 交互状态
 
@@ -65,8 +65,8 @@
 
 - 运行状态（六态）、模式、`direct`、`reduced_assurance`、`ua_scope`。
 - 四段 proof：fingerprint、proxy、runtime、isolation。`isolation` 取值为 `enforced`/`unsandboxed`/`unknown`，以 `runtimes.isolation`（最近一次运行）为唯一数据源派生，Profile payload 暴露同一派生值。
-- `isolation` 呈现：`enforced` 显示“沙箱已生效”；`unsandboxed` 持续显示“无沙箱”与降低保证；`unknown` 用虚线描边加 `?` 与文本“未确认”；`stopped` 用低透明度中性，`unknown` 与 `stopped` 不得共用同一呈现。
-- 停止的档案仍显示最近一次运行的 `unsandboxed` 与降低保证；从未启动且无运行记录时显示 `unknown`，不得因此省略 proof。
+- `isolation` 呈现：`enforced` 显示“沙箱已生效”；`unsandboxed` 持续显示“无沙箱”与降低保证；`unknown` 用虚线描边加 `?` 与文本“未确认”；`stopped` 只表示“未运行”，不得覆盖 `unsandboxed` 或 `unknown` 警告，也不得与 `unknown` 共用同一呈现。
+- 停止的档案仍显示最近一次运行的 `unsandboxed` 或 `unknown` 与降低保证；从未启动且无运行记录时显示 `unknown`，不得因此省略 proof。成功启动的运行时不会显示 `unknown`。
 - 代理线路、节点地区、延迟、最近检查时间、`ProxyCheck.error_code`。
 - 指纹种子、内核版本、代理 ID；不显示凭据。
 - 启动/停止、编辑、复制、归档/恢复、删除到回收站/恢复/彻底删除。
@@ -79,9 +79,9 @@
 - `starting`：显示启动阶段与当前步骤；取消会中止启动、进入 `stopping` 并清理资源，完成后显示 `stopped`；不显示虚假“已运行”；重复 start 只显示进行中。
 - `running`：显示停止；模式相关限制与 `isolation` 持续可见。
 - `stopping`：显示停止进度；完成后清空入站/规则/端口并显示 `stopped`。
-- `crashed`：内核提前退出（`starting` 或 `running` 遇异常退出）；显示退出码、错误码、最近日志与重试入口；启用自动重启时最多 3 次递增退避，稳定后重置，超过上限停止重试并提示崩溃循环。
-- `failed`：引擎/启动事务失败等非崩溃类失败；只有拆除内核、入站/规则与出站引用后才会进入该终态。若 teardown 尚未完成，界面保持 `stopping` 并显示重试/诊断入口，不得同时显示“运行中”或伪造终态。
-- `stopped` 与 `deleted`：`deleted` 不能启动，启动入口禁用且原因可见；彻底删除失败显示 `deletion_error` 与重试入口。
+- `crashed`：内核提前退出（`starting` 或 `running` 遇异常退出）；先清理内核、入站/规则与出站引用，清理完成后显示 `crashed`、退出码、错误码、最近日志与重试入口；启用自动重启时最多 3 次递增退避，稳定后重置，超过上限停止重试并提示崩溃循环。
+- `failed`：pre-resource 失败直接显示 `failed`；post-resource 启动失败、引擎失败等非崩溃类失败只有在拆除内核、入站/规则与出站引用后才进入该终态。若 teardown 尚未完成，界面保持 `stopping` 并显示重试/诊断入口，不得同时显示“运行中”或伪造终态。
+- `stopped` 与 `deleted`：`deleted` 不能启动，启动入口禁用且原因可见；运行中档案删除返回 `RUNTIME_CONFLICT`，界面不得显示“自动停止后删除”；回收站目录缺失时 restore 返回 `PROFILE_RESTORE_UNAVAILABLE`；彻底删除失败显示 `deletion_error` 与重试入口。
 - 共享引擎故障：显示全局网络中断与 `proxy.engine.failed`，所有运行档案 proof 变为失败或降级；重建成功显示 `proxy.engine.rebuilt` 并恢复，重建失败按 `failed` 终态展示。
 - 日志尾部：读取 `GET /api/v1/profiles/{id}/logs?limit=` 或桌面等价 IPC，显示有界脱敏内容、`limit` 与截断标记；不可用时显示稳定错误码与重试，不留空白。
 

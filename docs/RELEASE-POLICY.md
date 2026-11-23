@@ -32,10 +32,10 @@
 
 ## 3. Trusted baseline
 
-Trusted baseline 是仓库中**所有已存在的 `vX.Y.Z` Git tag 与 GitHub Release 的 SemVer 最大值**，不论其 draft、prerelease、invalidated 或公开状态；所有已存在版本均占用版本序号。
+Trusted baseline 是仓库中**所有已存在的 `vX.Y.Z` Git tag 与 GitHub Release 的核心版本最大值**，不论其 draft、prerelease、invalidated 或公开状态；所有已存在版本均占用版本序号。
 
 - 不使用 `VERSION` 文件、main 提交数、PR 合并顺序或 workflow artifact 作为版本真相；workflow 从 GitHub 读取所有 `vX.Y.Z` tags 与 Releases，任何已存在版本都占用序号。
-- 读取 baseline 时按 SemVer 排序，不按创建时间或字符串排序。
+- 读取 baseline 时按 SemVer 排序，不按创建时间或字符串排序；历史 prerelease/build metadata 的版本按 `MAJOR.MINOR.PATCH` 核心元组占用同一序号，`v1.0.0-rc.1` 与 `v1.0.0+meta` 都会阻止新的 `1.0.0`。
 - 没有 baseline 时只允许 explicit `0.1.0`；其他输入拒绝。
 - baseline 在 target 解析、reservation、Release 前分别重新读取；权限、API 或身份不可确认时 fail closed。
 - prerelease、draft 或 invalidated Release 对应的 tag/version 仍占用序号；任何已存在 tag/release 只有在完整 identity 与 reservation 匹配时才允许 recovery。
@@ -43,7 +43,7 @@ Trusted baseline 是仓库中**所有已存在的 `vX.Y.Z` Git tag 与 GitHub Re
 ## 4. Ordering 与 collision
 
 - 使用 SemVer 2.0.0 的 stable 比较规则；canonical version 是 `MAJOR.MINOR.PATCH`。
-- 新 identity 的 target 必须严格大于所有已存在 tag/release 的 SemVer；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形：先读取 reservation 并验证 policy/target/version/source SHA 完全一致，再放行；不得仅因 version 相同就复用。
+- 新 identity 的 target 必须严格大于所有已存在 tag/release 的核心版本；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形：先读取 reservation 并验证 policy/target/version/source SHA 完全一致，再从 collision 集合中排除该 reservation 自身，再放行；其他 identity 使用同一版本仍然冲突。不得仅因 version 相同就复用。
 - 相同 target 只允许作为同一 source identity 的 idempotent retry/recovery，不得重新分配 successor。
 - tag `vX.Y.Z` 已存在时，只能读取并验证其 peeled commit；如果指向不同 source，停止，不改写 tag。
 - Release record、container tag 或 GitHub Release 已属于另一个 source identity 时，停止并报告冲突。
@@ -93,7 +93,7 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 ## 9. Publication mapping
 
 - Git tag：`vX.Y.Z`，只在 Release 阶段创建或验证；不覆盖已存在 tag。
-- GitHub Release：标题和 tag 使用 canonical version；附 DMG、`SHA256SUMS`、SBOM、许可证、`release-identity.json` 和 Tauri 更新清单。
+- GitHub Release：标题和 tag 使用 canonical version；附 DMG、`SHA256SUMS`、SBOM、`LICENSE`、`NOTICE`、`LICENSES/`、`release-identity.json` 和 Tauri 更新清单。
 - Docker：`ghcr.io/<owner>/mien-server:vX.Y.Z` 和固定 digest；不使用可变 `latest` 作为生产发布映射。
 - Docker 构建先推 `staging-<run_id>` 临时 tag；验证通过后在 `promote-docker` 阶段按 digest 提升为 `vX.Y.Z`，不重复构建。
 - macOS 使用 AdHoc 签名，不公证；Gatekeeper 手动放行说明随 Release 一起发布。Apple 签名不是 publication identity。
@@ -105,8 +105,8 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 2. `reserve`：创建或复用 draft release；写入 identity。
 3. `test`：运行完整 CI 和 e2e；失败不构建发布物。
 4. `macos-arm64`、`docker-amd64`：在 reservation 的 `source_sha` 上构建并记录 digest，不公开发布。
-5. `stage-release`：把产物、SBOM、校验和与 identity 写入 draft；校验 digest。
-6. `attest`：为所有产物生成并验证 artifact attestation；缺失或失败即停止，不存在跳过分支。
+5. `stage-release`：把产物、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、校验和与 identity 写入 draft；校验 digest。
+6. `attest`：为所有产物、SBOM、许可包与 seccomp 发布物生成并验证 artifact attestation；缺失或失败即停止，不存在跳过分支。
 7. `promote-docker`：将已验证 digest 提升到 `vX.Y.Z`；绑定 `release` environment。
 8. `release`：在 Docker 提升成功后创建或验证 tag，公开 GitHub Release；绑定 `release` environment。
 9. `verify-release`：下载公开资产，校验 checksum、AdHoc 签名、更新清单和 identity；失败标记 release 无效。
@@ -128,12 +128,12 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 
 以下任一条件不满足时停止：
 
-- `release_target` 缺失、非法、无 baseline 或无法解析。
+- `release_target` 缺失、非法、无 baseline 或无法解析；或历史 prerelease/build metadata 的核心版本仍占用同一序号。
 - 任一已存在 tag/release 版本大于或等于新 target（同 identity recovery 除外），或目标与已有 identity 冲突。
 - source 不是 `main`、不是 PR 合并结果，或 `CI Main / verify` 未成功。
 - reservation 的 version/source 与请求不一致。
 - tag 已存在且指向不同 SHA。
-- 任一产物 digest、SBOM、签名、checksum、更新清单或必需 attestation 缺失/不匹配。
+- 任一产物 digest、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、签名、checksum、更新清单或必需 attestation 缺失/不匹配。
 - 发布环境未批准、权限不足或 release secret 不可用。
 - 公开 release 已属于另一个 identity。
 
@@ -141,7 +141,7 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 
 - 确认 release target、trusted baseline 来源和首个 `0.1.0` release。
 - 配置 main branch protection、`CI PR / required`、`CI Main / verify` 和 `release` environment 审批；`stage-release`、`promote-docker`、`release` 的独立 re-run 都必须重新进入审批。
-- 配置 repository ruleset：目标 `v*`，只启用 `Restrict updates` 与 `Restrict deletions`，不设 bypass list；关闭 `Restrict creations`，使 release job 可用 `GITHUB_TOKEN` 创建新 tag。规则不得允许改写或删除既有 tag。
+- 配置 repository ruleset：目标 `v*`，启用 `Restrict updates`、`Restrict deletions` 与 `Restrict creations`；bypass 仅允许 release GitHub App（由受保护的 `release` environment 签发），不允许任何人类角色或日常 `GITHUB_TOKEN` 绕过。release job 通过该 App 创建新 tag；规则不得允许改写或删除既有 tag，也不得让任意有 tag 写权限的身份抬高 trusted baseline。
 - 配置 Tauri 更新签名密钥；不配置 Apple Developer ID 或公证凭据。
 - 配置 GitHub Release、GHCR 的权限和 artifact retention。
 - 决定 Release 后的部署目标；部署授权、凭据和 smoke test 不属于本仓库的 release workflow。

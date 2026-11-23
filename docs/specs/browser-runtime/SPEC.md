@@ -34,13 +34,13 @@
 - The system MUST enforce the runtime state machine and MUST emit a state event for every transition.
 - Inputs: 启动、停止、内核退出、超时、控制面重启。
 - Outputs: 合法转移序列；非法转移必须被拒绝并记录；外部观察者可以通过事件流重建状态。
-- Transitions: `stopped -> starting`（start）、`starting -> running`（CDP 就绪，或“进程存活 + 代理入站就绪 + 有界宽限”）、`starting -> crashed`（就绪前内核退出）、`starting -> stopping`（启动中 stop 取消，或失败后进入 teardown）、`starting -> failed`（校验、生成、沙箱、spawn 或超时失败，且已确认无资源残留）、`running -> stopping`（stop，或共享引擎故障后进入 teardown）、`running -> crashed`（内核退出）、`stopping -> stopped`（正常退出或超时强制终止）、`stopping -> failed`（非用户发起的失败在 teardown 完成后进入终态）、`crashed -> starting`（退避重试）、`crashed -> stopped`、`failed -> starting`（用户显式重试且已确认无残留）与 `failed -> stopped`（清理或停止）。`starting`/`running` 不得直接写 `failed`；teardown 未完成时必须保留非终态并记录 `last_error`。
+- Transitions: `stopped -> starting`（start）、`starting -> running`（CDP 就绪，或“进程存活 + 代理模式下的入站就绪 + 有界宽限”；直连模式没有入站条件）、`starting -> stopping`（启动中 stop 取消，或 post-resource 失败后进入 teardown）、`starting -> failed`（校验、生成、沙箱、spawn 前失败，确认没有创建任何代理资源或子进程）、`running -> stopping`（stop、内核退出或共享引擎故障后进入 teardown）、`stopping -> stopped`（用户停止/取消完成，或控制面重启后的孤儿清理）、`stopping -> failed`（post-resource 启动失败或共享引擎失败，teardown 完成后进入终态）、`stopping -> crashed`（内核退出，teardown 完成后进入终态）、`crashed -> starting`（退避重试）、`crashed -> stopped`、`failed -> starting`（用户显式重试且已确认无残留）与 `failed -> stopped`（清理或停止）。`starting`/`running` 不得直接写 `failed` 或 `crashed`;teardown 未完成时必须保留 `stopping` 并记录 `last_error`。
 
 ### REQ-RUNTIME-003
 
 - The system MUST make start and stop idempotent per profile and MUST allow at most one supervised runtime per profile.
 - Inputs: 重复的启动/停止请求、并发请求、档案锁。
-- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；`starting` 中的 stop 是取消，转入 `stopping`，清理完成后返回 `stopped`；已停止时停止返回成功；对 `crashed`/`failed` 运行时执行停止必须清理残留资源并转为 `stopped`；并发启动不得产生两个内核。
+- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；`starting` 中的 stop 是取消，转入 `stopping`，清理完成后返回 `stopped`；已停止时停止返回成功；对 `crashed`/`failed` 运行时执行停止只做幂等清理并返回 `stopped`；并发启动不得产生两个内核。
 
 ### REQ-RUNTIME-004
 
@@ -83,13 +83,13 @@
 
 - The system MUST detect kernel exit, record exit code and recent logs, and apply bounded restart behavior without an infinite crash loop.
 - Inputs: 内核退出事件、自动重启配置、退避窗口。
-- Outputs: 状态 `crashed`；默认不自动重启；启用自动重启时最多 3 次，使用递增退避；稳定运行后重置计数。
+- Outputs: 内核退出后先进入 `stopping` 执行同一 teardown，清理完成再写 `crashed`；记录退出码与最近日志；默认不自动重启；启用自动重启时最多 3 次，使用递增退避；稳定运行后重置计数。teardown 失败时保持 `stopping` 并重试，不得在资源仍存在时写 `crashed`。
 
 ### REQ-RUNTIME-011
 
 - The system MUST stop a runtime by requesting graceful shutdown, waiting for a bounded timeout, then terminating the whole process group; it MUST remove the runtime's route rule and inbound and release its shared-outbound reference, while leaving the shared engine running for other profiles.
 - Inputs: 停止请求、进程状态、超时配置。
-- Outputs: 正常退出或强制终止后状态 `stopped`；清理顺序固定为终止进程组 → 按 `ruleTag` 删除路由规则 → 删除入站 → 清空 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port` → 递减非终态共享出站引用 → 释放锁；强制终止记录为审计事件。
+- Outputs: 正常退出或强制终止后状态 `stopped`；清理顺序固定为终止进程组 → 按 `ruleTag` 删除路由规则 → 删除入站 → 在同一事务中按 `proxy_outbound_key` 递减非终态共享出站引用并清空 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port` → 释放锁；若引用归零，再删除 Xray 出站和 `proxy_outbounds` 行。强制终止记录为审计事件。重试时若 `proxy_outbound_key` 已为空，只重试孤儿出站清理，不重复递减。
 - Invariant: `proxy_outbounds.ref_count` 只统计非终态运行时；`stopped`、`crashed`、`failed` 运行时不得保留 `proxy_*` 字段或仍计数的出站引用。
 
 ### REQ-RUNTIME-012
@@ -102,13 +102,13 @@
 
 - The system MUST expose CDP only on loopback by default, obtain the actual port from the kernel's `DevToolsActivePort` file, and MUST NOT publish it to the container network or LAN by default.
 - Inputs: 自动化开关、用户数据目录、内核启动结果。
-- Outputs: 自动化开启时返回 `ws://127.0.0.1:<port>/devtools/browser/<id>`，端口未就绪时启动失败；关闭自动化时不创建调试端口，`starting → running` 改由“进程存活 + 代理入站就绪 + 有界启动宽限”判定。
+- Outputs: 自动化开启时返回 `ws://127.0.0.1:<port>/devtools/browser/<id>`，端口未就绪时启动失败；关闭自动化时不创建调试端口，`starting → running` 改由“进程存活 + 代理模式下的入站就绪 + 有界启动宽限”判定；直连模式没有入站，只等待进程存活与宽限。
 
 ### REQ-RUNTIME-014
 
-- The system MUST verify the effective Chromium sandbox state before creating any proxy resource or spawning the kernel, derive the runtime `isolation` verdict, and MUST refuse an unconfirmed sandbox in Docker unless an explicit unsafe opt-in is set and audited.
+- The system MUST verify the effective Chromium sandbox state before creating any proxy resource or spawning the kernel, derive the runtime `isolation` verdict, and MUST refuse an unconfirmed sandbox on every host. Only the server may opt into an audited unsandboxed fallback after the containment probe and network boundary pass; desktop has no such opt-in.
 - Inputs: 容器配置、内核清单 `sandbox_kind`、seccomp 配置、内核启动参数、沙箱探测结果、`ALLOW_UNSANDBOXED`。
-- Outputs: 校验通过后在启动事务中写入 `runtimes.isolation`；Docker 中无法确认沙箱时返回 `SANDBOX_UNAVAILABLE`，且不创建出站、入站、路由规则或子进程；`ALLOW_UNSANDBOXED=1` 时继续启动，写 `isolation=unsandboxed` 并记录审计事件与启动警告；宿主桌面无法确认沙箱时保留 `isolation=unsandboxed` 或 `unknown`，不得阻止启动。
+- Outputs: 校验通过后在启动事务中写入 `runtimes.isolation`；任何宿主无法确认沙箱时返回 `SANDBOX_UNAVAILABLE`，且不创建出站、入站、路由规则或子进程。服务端只有显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才继续启动，写 `isolation=unsandboxed` 并记录审计与警告；桌面端不提供无沙箱启动例外，无法确认 seatbelt/restricted-token 时同样返回 `SANDBOX_UNAVAILABLE`。`isolation=unknown` 只保留给没有成功运行时记录或历史迁移行，不能作为新启动的成功结论。
 
 ### REQ-RUNTIME-015
 
@@ -132,14 +132,14 @@
 
 - The system MUST persist and expose the isolation verdict as `isolation` with values `enforced`, `unsandboxed`, or `unknown`, and MUST derive the isolation proof and reduced-assurance markers from it.
 - Inputs: 沙箱校验结果、运行模式、`runtimes` 记录、档案详情。
-- Outputs: `runtimes.isolation` 持久化；运行时与档案响应包含 `isolation`、`direct` 和 `reduced_assurance`；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation`，并显示 `unsandboxed` 或 `unknown` 提示。
-- UI semantics: proof strip 的 isolation 段由该字段驱动；`unknown` 使用虚线轮廓与 `?` 文本说明，`stopped` 使用中性低透明度，两者不得呈现为相同状态。
+- Outputs: `runtimes.isolation` 持久化；运行时与档案响应包含 `isolation`、`direct` 和 `reduced_assurance`；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation`。没有运行时记录时为 `unknown`，成功启动的运行时只能是 `enforced` 或服务端显式授权的 `unsandboxed`。
+- UI semantics: proof strip 的 isolation 段由该字段驱动；`unknown` 使用虚线轮廓与 `?` 文本说明，`stopped` 使用中性低透明度；但 `isolation` 警告高于 `stopped` 的“未运行”中性样式，停止的 `unsandboxed`/`unknown` 档案仍必须显示降低保证，不得被 `stopped` 覆盖。
 
 ### REQ-RUNTIME-019
 
 - The system MUST tear down a runtime before writing any terminal state when the shared proxy engine fails or must be rebuilt.
 - Inputs: 共享引擎故障或重建失败事件、运行时记录、进程与代理资源状态。
-- Outputs: 先转入 `stopping`，依次终止内核进程组、删除该档案的入站与路由、清空 `proxy_*`、递减非终态出站引用、释放档案锁与配额，确认无残留后才写 `failed` 并发出 `runtime.failed` 事件；teardown 失败时保留 `stopping`、记录 `last_error` 并重试，不得提前发出终态事件；`crashed`、`failed`、`stopped` 之后不得存在仍在运行的内核或仍计数的代理资源；引擎恢复后由用户显式重试启动，不自动把运行时改回 `running`。
+- Outputs: 先转入 `stopping`，依次终止内核进程组、删除该档案的入站与路由、在同一事务中递减非终态出站引用并清空 `proxy_*`、释放档案锁与配额，确认无残留后才写 `failed` 并发出 `runtime.failed` 事件；teardown 失败时保留 `stopping`、记录 `last_error` 并重试，不得提前发出终态事件；`crashed`、`failed`、`stopped` 之后不得存在仍在运行的内核或仍计数的代理资源；引擎恢复后由用户显式重试启动，不自动把运行时改回 `running`。
 
 ## Verification
 
@@ -153,7 +153,7 @@
 
 - Method: 驱动启动、成功、停止、崩溃、超时、就绪前退出、共享引擎故障和控制面重启路径，收集事件流。
 - covers: `REQ-RUNTIME-002`
-- Pass condition: 事件序列符合状态机，包括 `starting -> stopping -> stopped`、`starting -> crashed`、`running -> stopping -> failed`；非法转移被拒绝；teardown 失败时保持非终态；终态无残留内核或代理资源；最终状态与数据库一致。
+- Pass condition: 事件序列符合状态机，包括 `starting -> stopping -> stopped`（取消）、`starting -> failed`（pre-resource）、`starting -> stopping -> failed`（post-resource）、`running -> stopping -> crashed`、`running -> stopping -> failed`；非法转移被拒绝；teardown 失败时保持 `stopping`；终态无残留内核或代理资源；最终状态与数据库一致。
 
 ### VER-RUNTIME-003
 
@@ -165,7 +165,7 @@
 
 - Method: 删除已安装内核文件、篡改解包后的可执行文件、只把发布资产摘要换成另一个值。
 - covers: `REQ-RUNTIME-004`
-- Pass condition: 文件缺失返回 `KERNEL_NOT_FOUND`；可执行文件摘要与安装记录 `binary_sha256` 不符返回 `KERNEL_CHECKSUM_MISMATCH`，即使发布资产摘要匹配；两种失败都没有子进程、入站、路由或出站引用残留，且不留中间态。
+- Pass condition: 只改发布资产摘要而 `binary_sha256` 仍匹配时启动成功；文件缺失返回 `KERNEL_NOT_FOUND`；可执行文件摘要与安装记录 `binary_sha256` 不符返回 `KERNEL_CHECKSUM_MISMATCH`，即使发布资产摘要匹配；两种失败都没有子进程、入站、路由或出站引用残留，且不留中间态。
 
 ### VER-RUNTIME-005
 
@@ -201,31 +201,31 @@
 
 - Method: 让内核以不同退出码退出，启用和禁用自动重启，观察退避。
 - covers: `REQ-RUNTIME-010`
-- Pass condition: 状态变为 `crashed`；默认不重启；启用后最多 3 次递增退避；稳定运行后计数重置。
+- Pass condition: 内核退出后先进入 `stopping`，teardown 完成后状态为 `crashed`；退出码与日志可读；默认不重启；启用后最多 3 次递增退避；稳定运行后计数重置；teardown 失败时保持 `stopping`。
 
 ### VER-RUNTIME-011
 
 - Method: 在页面加载、下载和大内存占用时停止档案，并在超时场景强制终止。
 - covers: `REQ-RUNTIME-011`
-- Pass condition: 优先正常退出；超时后进程组全部终止；入站、路由按 `ruleTag` 删除，`proxy_*` 字段清空后非终态引用递减；`proxy_outbounds.ref_count` 不因终态行残留而漂移；共享引擎继续运行；审计事件记录强制终止。
+- Pass condition: 优先正常退出；超时后进程组全部终止；入站、路由按 `ruleTag` 删除；非终态引用递减与 `proxy_*` 清空在同一事务完成，重试不会重复递减；`proxy_outbounds.ref_count` 不因终态行残留而漂移；共享引擎继续运行；审计事件记录强制终止。
 
 ### VER-RUNTIME-012
 
 - Method: 在 `starting` 与 `stopping` 中间态强杀控制面并重启，检查进程归属、代理资源与数据库状态。
 - covers: `REQ-RUNTIME-012`
-- Pass condition: 可归属进程被接管或安全停止；不可归属进程不被误杀；中断的 `starting`/`stopping` 行在 teardown 后写 `stopped`，仅 teardown 失败写 `failed`；不产生第二个内核，不留中间态或未计数的出站引用。
+- Pass condition: 可归属进程被接管或安全停止；不可归属进程不被误杀；中断的 `starting`/`stopping` 行在 teardown 后写 `stopped`，teardown 失败保留 `stopping` 与 `last_error`；不产生第二个内核，不留中间态或未计数的出站引用。
 
 ### VER-RUNTIME-013
 
-- Method: 开启自动化，读取 `DevToolsActivePort`，从容器外和局域网尝试连接。
+- Method: 开启自动化并读取 `DevToolsActivePort`；另以关闭自动化的代理档案和直连档案启动，检查就绪条件。从容器外和局域网尝试连接。
 - covers: `REQ-RUNTIME-013`
-- Pass condition: 回环 CDP 可用；容器外和局域网无法直连；未开启自动化时无调试端口。
+- Pass condition: 回环 CDP 可用；容器外和局域网无法直连；未开启自动化时无调试端口；代理档案等待入站就绪，直连档案不等待不存在的入站且仍能在宽限内进入 `running`。
 
 ### VER-RUNTIME-014
 
 - Method: 在启用命名空间沙箱、无法启用沙箱和显式无沙箱（`ALLOW_UNSANDBOXED=1`）三种容器配置下启动，检查启动顺序、代理资源与 `isolation`。
 - covers: `REQ-RUNTIME-014`
-- Pass condition: 沙箱校验发生在创建代理资源和启动内核之前；生效时成功并写 `isolation=enforced`；无法确认时返回 `SANDBOX_UNAVAILABLE` 且未创建出站、入站、路由或内核进程；显式无沙箱时启动、写 `isolation=unsandboxed` 并记录审计与警告。
+- Pass condition: 沙箱校验发生在创建代理资源和启动内核之前；生效时成功并写 `isolation=enforced`；无法确认时返回 `SANDBOX_UNAVAILABLE` 且未创建出站、入站、路由或内核进程；服务端显式无沙箱且通过包含性探针时启动、写 `isolation=unsandboxed` 并记录审计与警告；桌面端无法确认时拒绝启动。
 
 ### VER-RUNTIME-015
 
@@ -249,7 +249,7 @@
 
 - Method: 分别产生 `enforced`、`unsandboxed` 与 `unknown` 的运行时，并检查已停止档案的档案详情与 proof strip。
 - covers: `REQ-RUNTIME-018`
-- Pass condition: `runtimes.isolation` 持久化并在重启后仍以数据库为准；运行时与档案响应包含 `isolation`、`direct` 及按模式/直连/隔离推导的 `reduced_assurance`；已停止档案仍显示最后一次隔离结论与降低保证提示；直连档案必须显示降低保证；`unknown` 的虚线与 `?` 文本和 `stopped` 的中性低透明度可区分。
+- Pass condition: `runtimes.isolation` 持久化并在重启后仍以数据库为准；运行时与档案响应包含 `isolation`、`direct` 及按模式/直连/隔离推导的 `reduced_assurance`；已停止档案仍显示最后一次隔离结论与降低保证提示；直连档案必须显示降低保证；`unknown` 的虚线与 `?` 文本和 `stopped` 的中性低透明度可区分，但停止的 `unsandboxed`/`unknown` 警告不得被 `stopped` 中性样式覆盖。
 
 ### VER-RUNTIME-019
 

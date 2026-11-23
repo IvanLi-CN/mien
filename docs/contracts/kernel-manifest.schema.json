@@ -71,7 +71,14 @@
       "properties": {
         "flags": {
           "properties": {
-            "window-size": {"required": ["values"]}
+            "window-size": {
+              "required": ["values"],
+              "properties": {
+                "type": {
+                  "const": "string"
+                }
+              }
+            }
           }
         }
       }
@@ -87,14 +94,17 @@
         },
         "values": {
           "type": "array",
+          "minItems": 1,
           "items": {"type": ["string", "integer"]},
           "description": "Allowed values for flags without platform-specific restrictions. Reject values outside this set; never drop them silently."
         },
         "per_platform_values": {
           "type": "object",
           "minProperties": 1,
+          "required": ["windows", "macos", "linux"],
           "additionalProperties": {
             "type": "array",
+            "minItems": 1,
             "items": {"type": ["string", "integer"]}
           },
           "propertyNames": {"enum": ["windows", "macos", "linux"]},

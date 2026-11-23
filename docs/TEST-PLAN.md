@@ -137,7 +137,7 @@
 | --- | --- | --- |
 | RT-001 | 创建、启动、访问、停止 | 状态与事件正确，数据落盘 |
 | RT-002 | 100 次启动/停止 | 无孤儿、无端口泄漏、无锁残留 |
-| RT-003 | 强杀内核 | 状态变为 crashed，记录退出码与日志尾部 |
+| RT-003 | 强杀内核 | 先进入 `stopping` 执行 teardown，清理完成后状态变为 `crashed`，记录退出码与日志尾部；不残留入站、路由或出站引用 |
 | RT-004 | 控制面强杀并重启 | 对账正确，可归属进程接管或安全停止，无重复 |
 | RT-005 | 容器重启 | 数据保留，状态回到 stopped，无孤儿 |
 | RT-006 | 并发启动 10 个档案 | 全部成功或按配额排队，无交叉数据目录 |
@@ -153,12 +153,12 @@
 | RT-016 | 伪有头能力门禁 | `headless_chrome_ua_patch=false` 或缺失时拒绝启动并返回稳定错误；`true` 时只改变 UA，其他 Headless 特征仍被记录 |
 | RT-017 | 同档案并发启动/停止 | 并发 start 只产生一个运行时与一个内核，重复请求返回进行中而非第二个实例；start 与 stop 交错不产生孤儿内核、重复入站或锁残留；并发 stop 幂等，终态稳定 |
 | RT-018 | 跨档案数据隔离 | 两个档案并发运行时 Cookie、localStorage、缓存、会话与下载文件互不可见；默认下载目录为 `<data-root>/profiles/<id>/downloads`，权限 0700，路径包含校验拒绝越界 |
-| RT-019 | 归档/删除/恢复与清理 | `active <-> archived` 通过 archive/restore 切换且不移动目录；`DELETE permanent=false` 将目录移到 `<data-root>/trash/<id>` 并写入 `deleted_at`，`deleted` 不可启动；恢复后目录回位且 `archived_at` 清空；`permanent=true` 先删目录再删行，失败保留 `deleted` 并写 `deletion_error` 供重试 |
+| RT-019 | 归档/删除/恢复与清理 | `active <-> archived` 通过 archive/restore 切换且不移动目录；`DELETE permanent=false` 将目录移到 `<data-root>/trash/<id>` 并写入 `deleted_at`，`deleted` 不可启动；运行中档案删除返回 `RUNTIME_CONFLICT` 且不移动目录；恢复前检查 trash 目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录；恢复成功时目录回位且 `archived_at` 清空；`permanent=true` 先删目录再删行，目录已缺失时继续删行，失败保留 `deleted` 并写 `deletion_error` 供重试 |
 | RT-020 | 崩溃循环 | 默认不自动重启；启用自动重启时最多 3 次递增退避，稳定运行后计数重置；超过上限进入 `crashed` 并停止重试；事件、退出码与日志尾部足以诊断，无无限重启 |
-| RT-021 | 共享引擎故障与重建失败 | 运行中强杀引擎时全部运行档案网络失败且无直连/其他节点回退，产生 `proxy.engine.failed`；重建成功产生 `proxy.engine.rebuilt` 并恢复原端口；重建失败先转入 `stopping` 并拆除内核与进程组、入站/规则、出站引用、配额与锁，再写 `failed`；teardown 失败保持 `stopping` 与 `last_error`，终态后无残留内核或端口 |
-| RT-022 | 沙箱校验先于资源创建 | 启动事务先校验沙箱，失败返回 `SANDBOX_UNAVAILABLE`，且不创建入站/出站/规则、不拉起进程、不占用配额；显式无沙箱时写入审计与降级标记，`isolation=unsandboxed` |
-| RT-023 | 控制面重启对非终态运行时对账 | 重启后对 `starting`/`stopping` 行终止可归属内核、删除入站/规则/出站引用，再置 `stopped`；仅在拆除全部完成后才允许写 `failed`；不产生重复运行时，不可归属进程按契约记录而不盲杀 |
-| RT-024 | 隔离 proof 状态 | 启动时沙箱探测写入 `runtimes.isolation`（`enforced`/`unsandboxed`/`unknown`）；proof strip 以该字段为唯一数据源派生，Profile payload 暴露同一派生值（取最近一次运行，无记录为 `unknown`）；停止的档案仍显示最近一次运行的 `unsandboxed` 与降低保证；`unknown` 与 `stopped` 不共用同一视觉或语义 |
+| RT-021 | 共享引擎故障与重建失败 | 运行中强杀引擎时全部运行档案网络失败且无直连/其他节点回退，产生 `proxy.engine.failed`；重建成功产生 `proxy.engine.rebuilt` 并恢复原端口；重建失败先转入 `stopping`，拆除内核与进程组、入站/规则，并在同一事务递减出站引用、清空 `proxy_*`、释放配额与锁，再写 `failed`；teardown 失败保持 `stopping` 与 `last_error`，终态后无残留内核或端口 |
+| RT-022 | 沙箱校验先于资源创建 | 启动事务先校验沙箱，失败返回 `SANDBOX_UNAVAILABLE`，且不创建入站/出站/规则、不拉起进程、不占用配额；服务端显式无沙箱且通过包含性探针时写入审计与降级标记，`isolation=unsandboxed`；桌面无法确认时拒绝启动 |
+| RT-023 | 控制面重启对非终态运行时对账 | 重启后对 `starting`/`stopping` 行终止可归属内核、删除入站/规则/出站引用，再置 `stopped`；teardown 失败保留 `stopping` 与 `last_error`；不产生重复运行时，不可归属进程按契约记录而不盲杀 |
+| RT-024 | 隔离 proof 状态 | 启动时沙箱探测写入 `runtimes.isolation`（成功启动只允许 `enforced` 或服务端显式授权的 `unsandboxed`；无记录为 `unknown`）；proof strip 以该字段为唯一数据源派生，Profile payload 暴露同一派生值；停止的档案仍显示最近一次运行的 `unsandboxed`/`unknown` 与降低保证，警告不被 `stopped` 中性样式覆盖；`unknown` 与 `stopped` 不共用同一视觉或语义 |
 | RT-025 | 日志尾部端点 | `GET /api/v1/profiles/{id}/logs?limit=` 从运行时日志环或轮转文件返回有界、脱敏日志；超出上限返回 422，未知档案 404，未认证 401；响应无凭据、Cookie、UUID、完整 URL；桌面 IPC 读取同一日志且无本地 HTTP 端口 |
 
 ## 7. 代理协议与网络泄漏
@@ -205,7 +205,7 @@
 | --- | --- | --- |
 | PROXY-022 | 凭据脱敏 | 进程参数、日志、事件、API 响应和持久化文件均无 UUID/密码/私钥/完整分享链接 |
 | PROXY-023 | 回环边界 | 非回环地址不可连接运行档案入站或 Xray 管理 API；运行时结束后端口关闭；同用户与浏览器网络栈访问回环代理的残余风险有文档，页面不能触达管理 API 或数据库 |
-| PROXY-024 | 直连模式 | 不创建入站/出站；`direct=true`、`reduced_assurance=true` 与风险标记持续可见；服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时拒绝启动，允许时写审计；不声称拥有代理模式的 DNS/DoH/IPv6/UDP 防护 |
+| PROXY-024 | 直连模式 | 不创建入站/出站；`direct=true`、`reduced_assurance=true` 与风险标记持续可见；服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时返回 `DIRECT_EGRESS_DISABLED` 并拒绝启动，允许时写审计；不声称拥有代理模式的 DNS/DoH/IPv6/UDP 防护 |
 | PROXY-025 | 恶意配置/链接 | 配置注入、路径、超长字段、非法端口、未知协议被拒绝；产品不直接透传用户 JSON |
 | PROXY-026 | 脱敏视图 | UI/API 只显示非秘密字段与 `credential_set`；无法读回旧凭据；可替换保存 |
 | PROXY-027 | 共享出站与连接复用 | 相同节点/凭据/传输/TLS/mux 的档案只创建一个出站并复用连接；不同凭据不共享；引用归零删除 |
@@ -251,7 +251,7 @@
 | API-019 | 审计筛选契约 | 审计端点与 `AuditEvent` 支持 `event_type` 与 `profile_id` 筛选，保留 `action` 兼容；非法枚举返回 422；组合筛选与游标分页无重复遗漏；UI 使用同一字段名 |
 | API-020 | 日志端点边界 | `GET /api/v1/profiles/{id}/logs?limit=` 有界且脱敏，来源为运行时日志环或轮转文件；limit 上限生效，未知档案 404，未认证 401；无凭据、Cookie、UUID、完整 URL；桌面 IPC 与 HTTP 同语义 |
 | EXPORT-001 | 明文导出 | 默认导出不含代理凭据、Token、Cookie；schema 可重新校验 |
-| EXPORT-002 | 加密导出/导入 | 正确口令可完整恢复配置；错误或篡改口令被拒绝；密文不可读 |
+| EXPORT-002 | 加密导出/导入 | 正确口令可导入并恢复非敏感配置；代理凭据仍被移除且必须重新输入；错误或篡改口令被拒绝；密文不可读 |
 | EXPORT-003 | 导入冲突 | 冲突项在确认后分配新 ID，否则返回 `PROFILE_IMPORT_CONFLICT` |
 | EXPORT-004 | 导入安全 | 超大、错误 schema、路径穿越、符号链接和恶意代理被拒绝 |
 | EXPORT-005 | 服务端传输 | Docker Web UI 可通过 import/export 端点操作；独立大小上限和 CSRF 生效 |
@@ -283,7 +283,7 @@
 
 | 编号 | 用例 | 通过条件 |
 | --- | --- | --- |
-| PKG-001 | macOS AdHoc 签名 | 应用、嵌套 Chromium 内核、Xray-core 和 frameworks 通过 `codesign --verify --deep --strict`；应用与 Chromium 内核带且只带 JIT 两项 entitlements，Xray/frameworks 不带；`--options runtime` 与 `Signature=adhoc` 已断言；不要求 Developer ID |
+| PKG-001 | macOS AdHoc 签名 | 应用、嵌套 Chromium 内核及其 renderer/GPU/utility helper、Xray-core 和 frameworks 通过 `codesign --verify --deep --strict`；应用、Chromium 内核与全部 helper 带且只带 JIT 两项 entitlements，Xray/frameworks 不带；`--options runtime` 与 `Signature=adhoc` 已断言；不要求 Developer ID |
 | PKG-002 | Gatekeeper 行为 | 从浏览器下载的 DMG 保留 quarantine 后首次启动被阻止；发布说明提供 SHA-256 校验和手动放行步骤；不要求无提示打开 |
 | PKG-003 | 自动更新 | Tauri 更新清单签名有效，拒绝未签名或降级包；不依赖 Apple 签名或公证 |
 | PKG-004 | Docker 构建 | 多阶段构建可复现，镜像非 root，健康检查有效 |
@@ -315,7 +315,7 @@
 - 隔离 proof（`enforced`/`unsandboxed`/`unknown`）与日志尾部端点的脱敏证据存在；停止档案的降低保证可见。
 - 桌面管理 UI 默认无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
 - 已知限制在发布说明和 UI 中可见。
-- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..029`、`EXPORT-001..006`、`UI-001..022`、`RT-017..025`、`API-019..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；P0 非零或 P1 阻断类别非零同样拒绝。
+- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..025`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；`PROXY-007` 为 Tier B，只记录、不作为门禁；P0 非零或 P1 阻断类别非零同样拒绝。
 
 ## 12. 证据与报告
 

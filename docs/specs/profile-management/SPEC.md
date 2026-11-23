@@ -42,7 +42,7 @@
 
 ### REQ-PROFILE-004
 
-- The system MUST treat duplicate as a new profile. Unless explicitly requested, duplication MUST generate a new fingerprint seed and a new browser data directory.
+- The system MUST treat duplicate as a new profile. Duplication MUST generate a new fingerprint seed and a new browser data directory; no copy option may reuse the source seed.
 - Inputs: 源档案标识、可选的配置复制选项 `copy_fingerprint` 与 `copy_proxy`。
 - Outputs: 新档案标识；不得共享运行时、数据目录、下载目录、种子或 Cookie。
 - Defaults: `copy_fingerprint=false`。
@@ -59,7 +59,7 @@
 - The system MUST implement the profile lifecycle as `active <-> archived`、`active|archived -> deleted`、`deleted -> active` 与 `deleted -> purge`，并 MUST 拒绝启动 `deleted` 档案。
 - Transitions: `POST /api/v1/profiles/{id}/archive` 把 `active` 转为 `archived` 并写 `archived_at`；`POST /api/v1/profiles/{id}/restore` 把 `archived` 或 `deleted` 转为 `active` 并清空 `archived_at`；`DELETE /api/v1/profiles/{id}?permanent=false` 把 `active|archived` 转为 `deleted`，把数据目录移动到 `<data-root>/trash/<profile-id>` 并写 `deleted_at`；`DELETE /api/v1/profiles/{id}?permanent=true` 对 `deleted` 档案先删除数据目录、再删除数据库记录。
 - Inputs: 档案标识、`permanent` 删除模式、确认令牌。
-- Outputs: 状态与目录移动同步；软删除或 purge 前必须确认运行时已停止并完成 teardown；运行中档案返回 `RUNTIME_CONFLICT` 或先停止，不得移动/删除其目录。从回收站恢复时目录移回 `<data-root>/profiles/<profile-id>`；`deleted` 档案的启动请求返回 `PROFILE_DELETED`（409）且不得隐式恢复，但 restore、purge、读取与 purge 重试仍可用；purge 目录删除失败时保留 `deleted` 状态、不删除记录、写入并返回稳定 `deletion_error`，修复后可重试 purge。
+- Outputs: 状态与目录移动同步；软删除或 purge 前必须确认运行时已停止并完成 teardown，运行中档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止或移动/删除其目录。从回收站恢复前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409），不得创建空目录，行保持 `deleted`。恢复成功时目录移回 `<data-root>/profiles/<profile-id>`；`deleted` 档案的启动请求返回 `PROFILE_DELETED`（409）且不得隐式恢复，但 restore、purge、读取与 purge 重试仍可用；purge 目录删除失败时保留 `deleted` 状态、不删除记录、写入并返回稳定 `deletion_error`，修复后可重试 purge；目录已缺失时 purge 视为目录删除已完成并继续删除行，行删除失败才保留记录。
 
 ### REQ-PROFILE-007
 
@@ -79,7 +79,8 @@
 - The system MUST validate import input against the declared export schema before writing anything, and MUST expose a dry-run that creates no rows or directories.
 - Inputs: `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy?}`；`format` 为 `plain|encrypted`；`payload` 为明文导出对象或不透明加密容器；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；`conflict_strategy` 为 `new_id|abort`，默认 `new_id`。
 - Outputs: `POST /api/v1/profiles/import/validate` 返回逐项草稿、逐项 `errors` 与冲突项，且不写数据库、不建目录；`POST /api/v1/profiles/import` 返回 `ProfileImportResult`，其 `items[]` 每项包含 `profile`、`status` 和 `errors`。
-- Conflict semantics: `new_id` 为冲突项分配新 ULID 并保留配置；`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`，不产生任何档案、目录、分组或标签。
+- Conflict identity: 档案冲突以导出项的 `source_profile_id` 与目标库 `profiles.import_source_id`（或现有 `profiles.id`）匹配；分组与标签以名称匹配。导出必须携带稳定的 `source_profile_id`，导入不得复用该值作为新档案 ID。
+- Conflict semantics: `new_id` 为冲突项分配新 ULID、保留 `import_source_id` 并保留配置；`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`，不产生任何档案、目录、分组或标签。
 - Validation: 非法 schema、未知 `schema_version`、超大文件、字段超限、代理配置形状、分享链接字段、`../` 与绝对路径、符号链接必须被拒绝；加密导出未提供口令或口令错误时返回字段级错误且不回显口令。
 - Transport: Docker Web UI 先调用 validate，再调用 import 提交；桌面宿主使用同语义的 IPC 命令。
 
@@ -87,7 +88,7 @@
 
 - The system MUST exclude proxy credentials, API tokens, cookies, and browser data from default exports, and MUST support passphrase-encrypted exports using authenticated encryption.
 - Inputs: `POST /api/v1/profiles/{id}/export` 的请求体 `ProfileExportRequest` = `{format, passphrase?}`；`format` 为 `plain|encrypted`；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；口令只允许出现在请求体，禁止出现在 URL、查询串、日志、审计和错误消息中。
-- Outputs: `ProfileExportEnvelope`；明文 `payload` 遵循 [`profile-export.schema.json`](../../contracts/profile-export.schema.json) 的结构；加密 `payload` 是带版本号的不透明字符串容器，使用 Argon2id 派生密钥与认证加密，envelope 版本参与 AAD，错误口令返回字段级错误。
+- Outputs: `ProfileExportEnvelope`；明文 `payload` 遵循 [`profile-export.schema.json`](../../contracts/profile-export.schema.json) 的结构；加密 `payload` 是带版本号的不透明 `profile-encrypted-v1` 字符串容器，Argon2id 参数、salt 与认证密文都位于该不透明值内部，不出现在 envelope 顶层；envelope 版本参与 AAD，错误口令返回字段级错误。
 - Redaction: 导出中的代理只保留 `kind`、`server`、`port`、非秘密 `options` 和 `credential_fields` 名称列表，并固定 `credentials_removed=true`；`options` MUST 拒绝密码、UUID、私钥、Token、Cookie 等秘密键。
 - Canonical fields: 窗口尺寸只存在于指纹规格中；导出不含顶层 `runtime.window`，也不含 `window_json`。
 
@@ -158,7 +159,7 @@
 
 - Method: 依次执行归档、恢复、删除到回收站、从回收站恢复、彻底删除，并在每个阶段尝试启动；单独模拟目录删除失败后重试。
 - covers: `REQ-PROFILE-006`
-- Pass condition: 归档与 `deleted` 档案启动均被拒绝且不隐式恢复，`deleted` 档案返回 `PROFILE_DELETED`；`permanent=false` 后目录位于 `<data-root>/trash/<id>` 且 `deleted_at` 已写；恢复后目录回位、`archived_at` 清空且可启动；`permanent=true` 后记录与目录消失；模拟目录删除失败时档案保持 `deleted`、响应包含 `deletion_error`，修复后重试成功。
+- Pass condition: 归档与 `deleted` 档案启动均被拒绝且不隐式恢复，`deleted` 档案返回 `PROFILE_DELETED`；运行中档案删除返回 `RUNTIME_CONFLICT` 且不移动目录；`permanent=false` 后目录位于 `<data-root>/trash/<id>` 且 `deleted_at` 已写；恢复后目录回位、`archived_at` 清空且可启动；目录缺失时 restore 返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录；`permanent=true` 后记录与目录消失；模拟目录删除失败时档案保持 `deleted`、响应包含 `deletion_error`，修复后重试成功；目录已缺失时 purge 仍可删除行。
 
 ### VER-PROFILE-007
 
@@ -176,7 +177,7 @@
 
 - Method: 分别调用 `POST /api/v1/profiles/import/validate` 与 `POST /api/v1/profiles/import`，使用合法、错误 schema、未知版本、超长字段、`../` 路径、绝对路径、符号链接、加密导出未提供口令和冲突档案。
 - covers: `REQ-PROFILE-009`
-- Pass condition: validate 返回逐项草稿、错误与冲突且数据库和目录零写入；合法提交成功并返回逐项 `status`；`conflict_strategy=abort` 遇冲突返回 `PROFILE_IMPORT_CONFLICT` 且无任何写入；`new_id` 为冲突项分配新 ID；其余非法输入返回字段级错误且不产生越界文件。
+- Pass condition: validate 返回逐项草稿、错误与冲突且数据库和目录零写入；合法提交成功并返回逐项 `status`；`conflict_strategy=abort` 遇同一 `source_profile_id` 或同名分组/标签时返回 `PROFILE_IMPORT_CONFLICT` 且无任何写入；`new_id` 为冲突项分配新 ID 并保留 `import_source_id`；其余非法输入返回字段级错误且不产生越界文件。
 
 ### VER-PROFILE-010
 

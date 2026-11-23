@@ -97,7 +97,7 @@
       "additionalProperties": false,
       "required": ["disable_non_proxied_udp"],
       "properties": {
-        "disable_non_proxied_udp": {"type": "boolean", "default": true, "description": "Defaults to true. Setting false is an advanced unsafe setting requiring explicit confirmation and an audit action before persistence."}
+        "disable_non_proxied_udp": {"type": "boolean", "description": "Stored specs always carry the effective value; false is an advanced unsafe setting requiring explicit confirmation and an audit action before persistence."}
       }
     },
     "network": {

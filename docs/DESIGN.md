@@ -33,9 +33,9 @@ mien-cli     ─┘
 - `ProfileId(Ulid)`、`RuntimeId(Ulid)`、`KernelVersion`、`EngineVersion`。
 - `SpecSchema`、`KernelManifest`、`EngineManifest` 各自独立版本。
 - `RuntimeState`：`Stopped`、`Starting`、`Running`、`Stopping`、`Crashed`、`Failed`。
-- 合法转移：`Stopped → Starting`、`Starting → Running|Stopping|Crashed|Failed`、`Running → Stopping|Crashed`、`Stopping → Stopped|Failed`、`Crashed → Starting|Stopped`、`Failed → Starting|Stopped`。`Starting → Stopping` 用于 cancel 或失败清理，`Running → Stopping` 用于 stop 或共享引擎故障；`Starting → Failed` 只在确认无资源残留时进入，`Stopping → Failed` 只在 teardown 完成后进入；teardown 失败保留 `Stopping` 与 `last_error` 并重试；`Failed → Starting` 仅用于用户显式重试。`Starting → Crashed` 用于内核提前退出。任何终态都不得存在活内核、入站、规则或计入引用计数的出站。
+- 合法转移：`Stopped → Starting`、`Starting → Running|Stopping|Failed`、`Running → Stopping`、`Stopping → Stopped|Failed|Crashed`、`Crashed → Starting|Stopped`、`Failed → Starting|Stopped`。`Starting → Stopping` 用于 cancel 或 post-resource 失败清理，`Running → Stopping` 用于 stop、内核退出或共享引擎故障；`Starting → Failed` 只用于 pre-resource 失败，`Stopping → Failed` 只在 post-resource 启动失败或引擎失败且 teardown 完成后进入，`Stopping → Crashed` 只在内核退出且 teardown 完成后进入；teardown 失败保留 `Stopping` 与 `last_error` 并重试；`Failed → Starting` 仅用于用户显式重试。任何终态都不得存在活内核、入站、规则或计入引用计数的出站。
 - `ProfileStatus`：`Active`、`Archived`、`Deleted`，对外序列化为 `active`/`archived`/`deleted`；`Deleted` 必须携带 `deleted_at`，永久删除失败时携带 `deletion_error` 并保持 `Deleted`，可重试；`Deleted` 不能启动。
-- `Isolation`：`Enforced`、`Unsandboxed`、`Unknown`，对外序列化为 `enforced`、`unsandboxed`、`unknown`；每次启动由沙箱探测写入 `runtimes.isolation`，是 proof strip 的唯一数据源。
+- `Isolation`：`Enforced`、`Unsandboxed`、`Unknown`，对外序列化为 `enforced`、`unsandboxed`、`unknown`；每次启动由沙箱探测写入 `runtimes.isolation`，是 proof strip 的唯一数据源。成功启动只能是 `Enforced` 或服务端显式授权的 `Unsandboxed`；`Unknown` 只用于没有成功运行时记录或历史迁移行。
 - `SandboxKind`：`Namespace`、`Seatbelt`、`Win32RestrictedToken`、`None`，来自内核能力清单 `sandbox_kind`；Windows 普通渲染进程不使用 AppContainer。
 - `RunMode`：`Headful`、`Headless`、`PseudoHeadful`；对外序列化为 `headful`、`headless`、`pseudo_headful`。
 - `ProxyConfig`：`Http`、`Https`、`Socks5`、`Vless`、`Vmess`、`Shadowsocks`、`Trojan`、`Hysteria2`、`Wireguard` 的 tagged enum；秘密字段使用 `SecretString`，`Debug` 输出必须脱敏。TUIC 不进入 v1。
@@ -98,13 +98,13 @@ pub trait EventSink {
 5. 校验指纹规格（含窗口尺寸，唯一来源）、代理配置、内核与协议引擎能力清单；`pseudo_headful` 还要求 `headless_chrome_ua_patch=true`。
 6. 校验内核与引擎可执行文件的 `binary_sha256`（不是清单资产摘要）；失败则不创建任何临时资源。
 7. 在事务内写入 `runtimes(state=starting, isolation=unknown)` 并发布 `runtime.starting`；此后任何失败都能被对账发现。
-8. 沙箱验证：按内核清单 `sandbox_kind` 探测实际生效状态，得出 `isolation=enforced|unsandboxed|unknown`；Docker 中无法确认且未启用 `ALLOW_UNSANDBOXED=1` 时返回 `SANDBOX_UNAVAILABLE`，不创建代理资源、不启动进程；桌面无法确认时不阻断，但写 `unsandboxed` 或 `unknown`。通过后立即持久化 `isolation`。
+- 8. 沙箱验证：按内核清单 `sandbox_kind` 探测实际生效状态，得出 `isolation=enforced`；任何宿主无法确认且未启用服务端 `ALLOW_UNSANDBOXED=1` 时返回 `SANDBOX_UNAVAILABLE`，不创建代理资源、不启动进程。服务端显式无沙箱还必须通过包含性探针与独立 UID/网络边界，之后写 `isolation=unsandboxed` 并审计；桌面无法确认 seatbelt/restricted-token 时直接返回 `SANDBOX_UNAVAILABLE`，不存在桌面无沙箱例外。通过后立即持久化 `isolation`。
 9. 代理模式：分配回环代理端口；确保共享 Xray 引擎运行并连接 gRPC 管理 API；断言 blackhole 是第一个出站；计算 `outbound_key`，添加或复用出站并增加引用计数；添加带稳定 `ruleTag` 的入站和路由（`shouldAppend=true`）。直接模式跳过本步骤。
 10. 生成内核 argv；代理模式注入 `--proxy-server=http://127.0.0.1:<proxy_port>` 并应用 DoH/IPv6/非代理 UDP 防护参数；直接模式不注入代理参数，也不声称这些防护生效；子进程 `env_clear` 后只注入白名单环境。
-11. 启动内核；自动化开启时等待 `DevToolsActivePort`，关闭时等待进程存活、代理入站就绪（如适用）和有界启动宽限。
+- 11. 启动内核；自动化开启时等待 `DevToolsActivePort`，关闭时等待进程存活、代理模式下入站就绪（直连模式跳过入站条件）和有界启动宽限。
 12. 持久化 `runtimes=running` 与 `isolation`，发布 `runtime.running`，返回运行时句柄。
 
-失败回滚顺序与启动相反：终止内核进程组、按 `ruleTag` 删除路由规则与入站、清空 `proxy_*` 字段、递减非终态出站引用、释放端口、释放配额、释放 actor 锁，然后写入 `failed` 与稳定错误码。teardown 失败时保留 `stopping` 与 `last_error` 并重试，不得提前写终态。沙箱失败发生在资源创建之前，因此只需释放配额与锁。共享引擎本身不因单个运行时失败而退出。回滚中的二次失败必须记录，但不得掩盖原始错误；teardown 必须幂等且只执行一次。
+失败回滚顺序与启动相反：终止内核进程组、按 `ruleTag` 删除路由规则与入站、在同一事务中递减非终态出站引用并清空 `proxy_*`、释放端口、释放配额、释放 actor 锁，然后写入 `failed` 与稳定错误码。teardown 失败时保留 `stopping` 与 `last_error` 并重试，不得提前写终态。pre-resource 失败只需释放配额与锁，并可直接写 `failed`。共享引擎本身不因单个运行时失败而退出。回滚中的二次失败必须记录，但不得掩盖原始错误；teardown 必须幂等且只执行一次。
 
 ### 4.2 停止顺序
 
@@ -112,8 +112,8 @@ pub trait EventSink {
 2. 向内核发送正常退出信号，等待数据落盘。
 3. 超时后终止内核进程组。
 4. 按 `ruleTag` 删除该运行时的路由规则与入站。
-5. 清空该行的 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port`。
-6. 递减非终态出站引用；引用归零时删除出站。
+- 5. 在同一事务中按 `proxy_outbound_key` 递减非终态出站引用，并清空该行的 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port`；提交后引用归零时删除 Xray 出站和 `proxy_outbounds` 行。
+- 6. 若引用归零但 Xray 删除失败，保留 `ref_count=0` 的孤儿行供对账重试；运行时的 key 已清空，不再重复递减。
 7. 释放端口、配额与 actor 锁；共享引擎保持运行。
 8. 写入 `stopped`，发布事件；强制终止写入审计事件。
 
@@ -126,7 +126,7 @@ pub trait EventSink {
 - 通过 PID、进程启动时间和 API 端口确认共享 Xray 引擎；通过 PID、命令行和数据目录确认各内核。
 - 对 `starting`/`stopping` 中断行：终止可归属的内核进程组，按 `ruleTag` 删除入站与规则，清空 `proxy_*` 并递减非终态引用计数，然后写 `stopped`；teardown 失败时保留非终态与 `last_error` 并重试。
 - 引擎可接管时通过 gRPC 管理 API 对账入站/出站/规则；不可接管时重启引擎并按 `proxy_port` 重建全部运行配置（原 `ruleTag`、`shouldAppend=true`）。
-- 共享引擎重建失败时，对每个受影响运行时执行第 4.1 节的同一 teardown，完成后才写 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不允许终态背后存在活内核或仍被计数的出站。
+- 共享引擎重建失败时，对每个受影响运行时先转入 `stopping`，执行第 4.1 节的同一 teardown，完成后才写 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不允许终态背后存在活内核或仍被计数的出站。
 - 无法确认归属的进程不盲目杀死，标记为孤儿并按 TTL 清理。
 - 删除过期锁文件和端口引用；未完成操作在 teardown 完成后以 `stopped` 或 `failed` 事件告知 UI，不留 `starting`/`stopping` 残留。
 
@@ -147,18 +147,18 @@ pub trait EventSink {
 | 错误族 | 示例 | HTTP | 说明 |
 | --- | --- | --- | --- |
 | 认证与授权 | `AUTH_REQUIRED`、`AUTH_INVALID`、`AUTH_RATE_LIMITED`、`AUTH_PASSWORD_CHANGE_REQUIRED`、`AUTH_ORIGIN_INVALID`、`EVENT_TICKET_INVALID`、`FORBIDDEN_SCOPE` | 401/403/429 | 缺失、过期或无效凭据；`Origin` 不被信任；已认证但无权限或必须先改密 |
-| 资源与生命周期 | `PROFILE_NOT_FOUND`、`PROXY_NOT_FOUND`、`RUNTIME_NOT_FOUND`、`TOKEN_NOT_FOUND`、`VIEWER_NOT_AVAILABLE`、`PROFILE_ARCHIVED`、`PROFILE_DELETED`、`PROFILE_PURGE_FAILED`、`RUNTIME_CONFLICT`、`RESOURCE_IN_USE`、`IDEMPOTENCY_CONFLICT`、`PROFILE_IMPORT_CONFLICT`、`GROUP_NAME_CONFLICT`、`TAG_NAME_CONFLICT` | 404/409/500 | `*_NOT_FOUND` 为 404；状态、归属、幂等键或命名冲突为 409；软删除未 purge 的档案只在启动或修改时返回 `PROFILE_DELETED`，restore/purge/读取仍可用；purge 目录删除失败为可重试 500 |
+| 资源与生命周期 | `PROFILE_NOT_FOUND`、`PROXY_NOT_FOUND`、`RUNTIME_NOT_FOUND`、`TOKEN_NOT_FOUND`、`GROUP_NOT_FOUND`、`TAG_NOT_FOUND`、`VIEWER_NOT_AVAILABLE`、`PROFILE_ARCHIVED`、`PROFILE_DELETED`、`PROFILE_RESTORE_UNAVAILABLE`、`PROFILE_PURGE_FAILED`、`RUNTIME_CONFLICT`、`RESOURCE_IN_USE`、`IDEMPOTENCY_CONFLICT`、`PROFILE_IMPORT_CONFLICT`、`GROUP_NAME_CONFLICT`、`TAG_NAME_CONFLICT` | 404/409/500 | `*_NOT_FOUND` 通常为资源不存在；状态、归属、幂等键或命名冲突为 409；软删除未 purge 的档案只在启动或修改时返回 `PROFILE_DELETED`，restore/purge/读取仍可用；回收站目录缺失时 restore 返回 `PROFILE_RESTORE_UNAVAILABLE`；purge 目录删除失败为可重试 500 |
 | 输入与能力 | `VALIDATION_FAILED`、`FINGERPRINT_INVALID`、`PROXY_CONFIG_INVALID`、`SHARE_LINK_INVALID`、`RUNTIME_MODE_UNSUPPORTED`、`KERNEL_UNSUPPORTED`、`UNSUPPORTED_PROTOCOL`、`TUIC_NOT_SUPPORTED` | 422 | `*_INVALID`、`*_UNSUPPORTED`、`*_NOT_SUPPORTED` 表达输入或能力不符 |
 | 配额与资源不足 | `QUOTA_EXCEEDED`、`INSUFFICIENT_RESOURCES` | 429/503 | 并发上限可重试；内存、磁盘、描述符不足为 503 |
-| 内核 | `KERNEL_NOT_FOUND`、`KERNEL_CHECKSUM_MISMATCH`、`KERNEL_UNSUPPORTED` | 500/422 | 文件缺失或 `binary_sha256` 不符；不兼容组合在启动前拒绝 |
-| 内核宿主环境 | `SANDBOX_UNAVAILABLE`、`DISPLAY_UNAVAILABLE` | 500/503 | Docker 中沙箱无法确认时拒绝启动；显示环境不可用可重试 |
-| 代理引擎 | `PROXY_ENGINE_NOT_FOUND`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_START_FAILED`、`PROXY_ENGINE_NOT_READY`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_ENGINE_CRASHED`、`PROXY_INBOUND_CONFLICT`、`PROXY_OUTBOUND_REFCOUNT_MISMATCH` | 500/503/409 | 引擎安装、启动、API、端口与引用计数失败 |
+| 内核 | `KERNEL_NOT_FOUND`、`KERNEL_CHECKSUM_MISMATCH`、`KERNEL_VERSION_NOT_FOUND`、`KERNEL_UNSUPPORTED` | 500/404/422 | 已安装文件缺失或 `binary_sha256` 不符；激活不存在的安装版本为 404；不兼容组合在启动前拒绝 |
+| 内核宿主环境 | `SANDBOX_UNAVAILABLE`、`DISPLAY_UNAVAILABLE` | 500/503 | 所有宿主在沙箱无法确认时拒绝启动；服务端无沙箱仅在显式授权与包含性探针后允许；显示环境不可用可重试 |
+| 代理引擎 | `PROXY_ENGINE_NOT_FOUND`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_VERSION_NOT_FOUND`、`PROXY_ENGINE_START_FAILED`、`PROXY_ENGINE_NOT_READY`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_ENGINE_CRASHED`、`PROXY_INBOUND_CONFLICT`、`PROXY_OUTBOUND_REFCOUNT_MISMATCH` | 500/404/503/409 | 引擎安装、启动、API、端口与引用计数失败；激活不存在的安装版本为 404 |
 | 代理节点 | `PROXY_CONNECTION_REFUSED`、`PROXY_AUTH_FAILED`、`PROXY_TLS_FAILED`、`PROXY_TIMEOUT`、`PROXY_DNS_FAILED` | 200 | 节点侧失败一律出现在代理检查的 200 `ProxyCheck.error_code` 与事件中，不用 HTTP 502；引擎未就绪由 `PROXY_ENGINE_NOT_READY` 控制面 503 表达 |
-| 运行时 | `RUNTIME_SPAWN_FAILED`、`RUNTIME_CDP_TIMEOUT`、`RUNTIME_MODE_UNSUPPORTED` | 500/422 | 进程创建或就绪失败；模式不支持在启动前拒绝 |
+| 运行时 | `RUNTIME_SPAWN_FAILED`、`RUNTIME_CDP_TIMEOUT`、`RUNTIME_MODE_UNSUPPORTED`、`DIRECT_EGRESS_DISABLED` | 500/422/403 | 进程创建或就绪失败；模式不支持在启动前拒绝；服务端未授权直连出口时拒绝启动 |
 | 存储 | `STORAGE_BUSY`、`STORAGE_MIGRATION_FAILED`、`STORAGE_INTEGRITY_FAILED` | 503/500 | 忙碌可重试；迁移与完整性失败需人工处理 |
 | 内部 | `INTERNAL_UNEXPECTED` | 500 | 未分类错误，必须带 request_id |
 
-前缀表示错误所属的名词族，不表示 HTTP 状态；状态由后缀决定：`*_NOT_FOUND` 为 404，`*_INVALID`/`*_UNSUPPORTED`/`*_NOT_SUPPORTED` 为 422，状态与幂等冲突为 409。错误码目录在 [`ERROR-CODES.md`](ERROR-CODES.md)，实现以目录与 OpenAPI 枚举为准；CI 校验目录、枚举和代码三方一致。代理检查的节点错误不做 HTTP 502：`POST /api/v1/proxies/{id}/check` 返回 200，失败写在 `ProxyCheck.error_code` 并同时发事件；HTTP 映射另行在契约文档定义。
+前缀表示错误所属的名词族；HTTP 状态以 [`ERROR-CODES.md`](ERROR-CODES.md) 的逐码表为准，不能仅由后缀推导（例如 `AUTH_INVALID` 为 401、`KERNEL_NOT_FOUND` 为 500、`PROFILE_DELETED` 为 409）。实现以目录与 OpenAPI 枚举为准；CI 校验目录、枚举和代码三方一致。代理检查的节点错误不做 HTTP 502：`POST /api/v1/proxies/{id}/check` 返回 200，失败写在 `ProxyCheck.error_code` 并同时发事件。
 
 错误消息不得包含代理凭据、UUID、私钥、完整分享链接、Cookie、Token 或完整启动参数。可重试错误必须返回 `retryable=true` 和重试建议。
 
@@ -174,12 +174,13 @@ pub trait EventSink {
 | `MIEN_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `/data/secrets/master.key` |
 | `MIEN_ADMIN_PASSWORD` | 无 | 首次启动管理员密码引导值；与 `MIEN_ADMIN_PASSWORD_FILE` 二选一；两者都未提供时生成密码写入 `<data-root>/secrets/admin-bootstrap` |
 | `MIEN_ADMIN_PASSWORD_FILE` | 无 | 以 0600 文件提供管理员密码；首次改密后删除应用生成的文件并清除引导标记；外部挂载 Secret 由部署者撤销 |
-| `MIEN_PUBLIC_URL` | 无 | 服务端对外基址；用于生成绝对链接与校验 `Origin` |
+| `MIEN_PUBLIC_URL` | 无；非回环服务端必填 | 服务端对外 https 基址；用于生成绝对链接、校验 `Origin` 和设置 `Secure` Cookie。`MIEN_BIND` 非回环且未设置时启动失败 |
 | `MIEN_TRUSTED_PROXIES` | 空 | 可信反向代理 CIDR/地址列表；仅这些来源的 `X-Forwarded-*` 被采信 |
 | `MIEN_SCREEN` | `1920x1080x24` | Docker Xvfb 分辨率 |
 | `MIEN_MAX_RUNTIMES` | `10` | 最大并发运行档案数 |
 | `MIEN_LOG` | `info` | 日志级别与格式 |
-| `ALLOW_UNSANDBOXED` | `false` | 是否允许无沙箱内核；必须显式开启并审计，开启后启动写入 `isolation=unsandboxed` |
+| `ALLOW_UNSANDBOXED` | `false` | 仅服务端生效。显式允许无沙箱内核；必须通过包含性探针与独立 UID/网络边界并审计，启动写入 `isolation=unsandboxed`；桌面端无此例外 |
+| `MIEN_ALLOW_DIRECT_EGRESS` | `false` | 服务端是否允许直连档案；未设置时返回 `DIRECT_EGRESS_DISABLED`，设置后必须写审计并调整网络策略 |
 | `MIEN_VIEWER` | `false` | 是否启用 noVNC 查看器 |
 | `MIEN_UPDATE_CHECK` | `false` | 是否检查更新；默认不联网 |
 
@@ -212,11 +213,11 @@ macOS 使用 `~/Library/Application Support/Mien` 与 `~/Library/Logs/Mien`；Do
 - 核心不信任宿主输入；所有路径规范化并校验位于数据根内，拒绝符号链接穿越。
 - argv 使用数组，不经过 shell；代理配置由产品生成，不直接透传用户 JSON。
 - 引擎凭据只经回环 gRPC 管理 API 传递，不写入持久化配置；秘密不进入进程参数、日志、事件或 API。
-- 内核与引擎安装时校验 `asset_sha256`，启动前校验 `binary_sha256`；Docker 在资源创建前探测沙箱，无法确认就拒绝，除非显式开启 `ALLOW_UNSANDBOXED`。
+- 内核与引擎安装时校验 `asset_sha256`，启动前校验 `binary_sha256`；所有宿主在资源创建前探测沙箱，桌面无法确认时拒绝，服务端仅在显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时降级。
 - 服务端管理员密码以 Argon2id 存储在 `admin_credentials`，由 `MIEN_ADMIN_PASSWORD`/`MIEN_ADMIN_PASSWORD_FILE` 引导，首次登录强制改密，改密后删除引导来源；API Token 只用 HKDF-peppered 哈希，不用可逆加密。
-- 控制面写操作校验会话/Token、范围、Origin 与 CSRF；服务端模式 Cookie 恒为 `Secure`；只有 `MIEN_TRUSTED_PROXIES` 中声明的来源才可提供 `X-Forwarded-*`，限流按校验后的客户端 IP。
+- 控制面写操作校验会话/Token、范围、Origin 与 CSRF；非回环服务端必须配置 `MIEN_PUBLIC_URL` 并使用 `Secure` Cookie；仅回环开发模式可省略。只有 `MIEN_TRUSTED_PROXIES` 中声明的来源才可提供 `X-Forwarded-*`，限流按校验后的客户端 IP。
 - CDP、noVNC、运行档案 HTTP 入站和 Xray gRPC 管理 API 只绑定回环；桌面自动化 API 拒绝非回环绑定。
-- 渲染进程与无沙箱模式不得获得 `/data/secrets` 或数据库的访问权，也不得触达 Xray 管理 API；子进程 `env_clear` 后只注入白名单变量。
+- 渲染进程与无沙箱模式不得获得 `/data/secrets` 或数据库的访问权，也不得触达 Xray 管理 API；子进程 `env_clear` 后只注入白名单变量。服务端直连档案未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时拒绝启动并写稳定错误，设置后写审计事件。
 - 事件与审计元数据统一脱敏；错误响应带 request_id，不带堆栈。
 
 ## 11. 宿主适配

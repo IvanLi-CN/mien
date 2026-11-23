@@ -21,7 +21,7 @@
 ## Remaining Gaps
 
 - 进程启动、状态机、对账、代理引擎联动、CDP、Xvfb、openbox、noVNC、沙箱探测和日志轮转均未实现。
-- 状态机仍缺 `starting -> crashed` 与 `running -> failed` 的显式处理，以及引擎故障/重建失败时先 teardown 再写终态的保证。
+- 状态机仍缺内核退出（`starting|running -> stopping -> crashed`）与引擎故障/重建失败（`running -> stopping -> failed`）的显式处理，以及先 teardown 再写终态的保证。
 - 启动仍缺“校验安装记录 `binary_sha256`”与 `KERNEL_NOT_FOUND`/`KERNEL_CHECKSUM_MISMATCH` 分流；沙箱校验尚未固定在创建代理资源和 spawn 之前。
 - `runtimes.isolation`、停止时清空 `proxy_*` 并递减非终态引用、控制面重启时清理 `starting`/`stopping` 中间态，以及有界日志尾部端点均未实现。
 - 需要先验证目标容器环境的命名空间沙箱可行性，再确定默认容器安全配置。

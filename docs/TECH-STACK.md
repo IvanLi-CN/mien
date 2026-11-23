@@ -171,7 +171,7 @@
 
 ## 6. 构建与发布
 
-- Rust workspace：`mien-core`、`mien-server`、`mien-desktop`、`mien-cli`、`xtask`。
+- Rust workspace：`mien-core`、`mien-store-sqlite`、`mien-server`、`mien-desktop`、`mien-cli`、`xtask`。
 - 前端：`ui/`，由 Bun 安装依赖，Vite 构建静态资源。
 - 本地检查：`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo nextest run`、`biome check`、`tsc --noEmit`、`vitest run`。
 - 合约检查：OpenAPI 生成差异、JSON Schema 编译、事件 schema、导入导出 fixture；`contracts` CI job 重新生成 OpenAPI 并在有差异时失败。
