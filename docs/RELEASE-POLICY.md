@@ -78,7 +78,7 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 ## 7. 并发
 
 - release workflow 使用固定 `release` concurrency group，`cancel-in-progress: false`。
-- 同一时间只允许一个 release evaluation；新的 manual run 等待或排队，不静默取消在途 release。
+- 同一时间只允许一个 release evaluation；同一 group 只保留一个 pending run，更新的 dispatch 会取消先前 pending 的 run，维护者必须确认自己的 run 仍在排队，不能假定会自动等待。
 - PR、main 和 release 使用独立 namespace；PR 的取消策略不影响 release。
 - 重跑必须复用已绑定的 identity，不创建并行 successor。
 
@@ -95,6 +95,7 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 - Git tag：`vX.Y.Z`，只在 Release 阶段创建或验证；不覆盖已存在 tag。
 - GitHub Release：标题和 tag 使用 canonical version；附 DMG、`SHA256SUMS`、SBOM、许可证、`release-identity.json` 和 Tauri 更新清单。
 - Docker：`ghcr.io/<owner>/mien-server:vX.Y.Z` 和固定 digest；不使用可变 `latest` 作为生产发布映射。
+- Docker 构建先推 `staging-<run_id>` 临时 tag；验证通过后在 `promote-docker` 阶段按 digest 提升为 `vX.Y.Z`，不重复构建。
 - macOS 使用 AdHoc 签名，不公证；Gatekeeper 手动放行说明随 Release 一起发布。Apple 签名不是 publication identity。
 - 每种产物只构建一次；Release 和后续部署消费者复用同一 digest，不重新构建或改写版本。
 
@@ -139,7 +140,7 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 
 - 确认 release target、trusted baseline 来源和首个 `0.1.0` release。
 - 配置 main branch protection、`CI PR / required`、`CI Main / verify` 和 `release` environment 审批。
-- 配置 tag protection：允许 release workflow 在 `release` 阶段创建 `vX.Y.Z`，或由 owner 预创建 exact tag；两者都不能允许改写已有 tag。
+- 配置 tag protection（repository ruleset，目标 `v*`，禁止更新与删除）：把 GitHub Actions app 加入 bypass list，允许 `release` job 用 `GITHUB_TOKEN` 创建 `vX.Y.Z`；或由 owner 预创建 exact tag。先确认仓库计划支持 ruleset；两种方式都不得允许改写已有 tag。
 - 配置 Tauri 更新签名密钥；不配置 Apple Developer ID 或公证凭据。
 - 配置 GitHub Release、GHCR 的权限和 artifact retention。
 - 决定 Release 后的部署目标；部署授权、凭据和 smoke test 不属于本仓库的 release workflow。

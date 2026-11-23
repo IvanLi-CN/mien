@@ -12,7 +12,7 @@
 
 - `session`: 服务端登录后创建的浏览器会话，使用 `HttpOnly`、`SameSite=Strict` Cookie。
 - `API token`: 自动化客户端使用的 Bearer Token，只保存哈希，带授权范围。
-- `scope`: Token 允许执行的操作集合，例如 `profiles:read`、`profiles:write`、`runtime:control`。
+- `scope`: Token 允许执行的操作集合，使用点号形式，例如 `profiles.read`、`profiles.write`、`runtime.control`、`tokens.manage`、`events.read`、`viewer.access`。
 - `event`: 服务端通过 WebSocket 推送的运行时、代理和审计事件，带单调递增标识。
 - `idempotency key`: 客户端为启动/停止等写操作提供的唯一键，用于安全重试。
 - Interface: `/api/v1/*` HTTP JSON；`/api/v1/events` WebSocket；`/healthz`、`/readyz`；服务端同源静态 Web UI；桌面 Tauri IPC 镜像相同命令语义。
@@ -21,7 +21,7 @@
 
 ### REQ-API-001
 
-- The API MUST expose versioned JSON endpoints under `/api/v1`, and breaking changes MUST use a new version path with a documented deprecation window.
+- The API MUST expose versioned JSON endpoints under `/api/v1`, MUST provide `GET /api/v1` for version and deprecation-window discovery, and breaking changes MUST use a new version path with a documented deprecation window.
 - Inputs: HTTP 请求、路径、请求头、JSON 请求体。
 - Outputs: JSON 响应；未知版本返回稳定错误；同一版本内的字段只做向后兼容扩展。
 
@@ -33,7 +33,7 @@
 
 ### REQ-API-003
 
-- The server host MUST require authentication for all non-health endpoints, using a login-created session or a scoped API token.
+- The server host MUST require authentication for all non-health endpoints, using a login-created session or a scoped API token. `GET /api/v1/openapi.json` is the only non-health public exception.
 - Inputs: 登录凭据、Cookie、Bearer Token、请求路径。
 - Outputs: 认证成功时返回资源；缺失或无效认证返回 401；权限不足返回 403；健康端点只暴露最小信息。
 
@@ -45,19 +45,19 @@
 
 ### REQ-API-005
 
-- The system MUST hash API tokens at rest, support revocation and last-used tracking, and MUST enforce token scopes on every operation.
+- The system MUST hash API tokens at rest, support revocation and last-used tracking, and MUST enforce token scopes on every operation. Scope names use the dot form; each operation declares its required scope, and token creation MUST NOT grant scopes the creator does not hold.
 - Inputs: Token 创建、Token 值、请求操作、Token 记录。
 - Outputs: 明文 Token 只在创建时返回一次；数据库只有哈希；撤销后立即失效；越权操作返回 403。
 
 ### REQ-API-006
 
-- The system MUST protect cookie-authenticated writes with CSRF defenses, including `SameSite=Strict`, origin validation, and a per-session CSRF token or equivalent custom header.
+- The system MUST protect cookie-authenticated writes and WebSocket upgrades with CSRF/origin defenses, including `SameSite=Strict`, origin validation on every cookie-authenticated upgrade, and a per-session CSRF token or equivalent custom header.
 - Inputs: 会话 Cookie、`Origin`/`Referer`、CSRF Token、写请求。
 - Outputs: 合法同源请求通过；跨源、缺失或错误 CSRF 的写请求被拒绝；Bearer Token 请求不依赖 Cookie CSRF。
 
 ### REQ-API-007
 
-- The system MUST rate-limit login attempts and MUST apply temporary lockout after repeated failures without revealing whether a username exists.
+- The system MUST rate-limit login attempts and MUST apply temporary lockout after repeated failures without revealing whether a username exists. Lockout responses MUST include `Retry-After` seconds.
 - Inputs: 登录请求、来源地址、失败次数、时间窗口。
 - Outputs: 正常尝试通过；超限返回 429 和重试时间；错误消息不区分“用户不存在”和“密码错误”。
 
@@ -69,27 +69,27 @@
 
 ### REQ-API-009
 
-- The system MUST support cursor-based pagination, bounded page sizes, stable sorting, and filters for profile and audit listings.
+- The system MUST support cursor-based pagination, bounded page sizes, stable sorting, and filters for profile and audit listings, including archived profile status and audit `profile_id`/`type`/`from`/`to`.
 - Inputs: 游标、页大小、筛选、排序。
 - Outputs: 结果页与下一页游标；超出上限的页大小被拒绝或截断并明确说明；重复请求不产生重复或遗漏。
 
 ### REQ-API-010
 
-- The system MUST make start, stop, and other resource-mutating POST requests idempotent when an `Idempotency-Key` is supplied, returning the original result for duplicate keys within a bounded retention window.
+- The system MUST make start, stop, and other non-secret resource-mutating POST requests idempotent when an `Idempotency-Key` is supplied, returning the original result for duplicate keys within a bounded retention window. Token creation is exempt because the plaintext secret is one-time; a duplicate key returns `IDEMPOTENCY_CONFLICT` rather than replaying the secret.
 - Inputs: `Idempotency-Key`、请求体、档案状态。
 - Outputs: 首次请求执行；重复键返回相同状态与结果；结果包含运行时标识、状态、CDP 地址（如启用）和本机代理端口；键冲突且请求体不同返回 409；过期键可重新使用。
 
 ### REQ-API-011
 
-- The system MUST authenticate WebSocket connections without placing long-lived tokens in URLs, and MUST support event replay from a client-provided event identifier.
+- The system MUST authenticate WebSocket connections with a session cookie or a short-lived single-use ticket, MUST reject long-lived tokens in URLs, and MUST validate `Origin` on cookie-authenticated upgrades. It MUST support event replay from a client-provided event identifier.
 - Inputs: 会话 Cookie 或一次性票据、`after` 事件标识、心跳。
 - Outputs: 认证通过后建立连接；断线重连可从最后事件继续；无效认证被拒绝；心跳用于检测死连接。
 
 ### REQ-API-012
 
-- The system MUST provide liveness and readiness endpoints with distinct semantics and MUST NOT require authentication for their minimal response.
+- The system MUST provide liveness and readiness endpoints with distinct semantics and MUST NOT require authentication for their minimal response. Readiness MUST include the display environment only when the configured runtime modes require it; pure headless deployments must be able to become ready without Xvfb.
 - Inputs: 服务进程、数据库、内核目录、共享 Xray 引擎、显示环境。
-- Outputs: `/healthz` 仅表示进程存活；`/readyz` 仅在数据库、内核、共享 Xray 引擎和显示环境可用时成功；响应不包含敏感配置。
+- Outputs: `/healthz` 仅表示进程存活；`/readyz` 在数据库、内核、共享 Xray 引擎以及当前运行模式所需显示环境可用时成功；纯 headless 部署不要求 Xvfb；响应不包含敏感配置。
 
 ### REQ-API-013
 
@@ -99,7 +99,7 @@
 
 ### REQ-API-014
 
-- The system MUST record audit events for authentication, profile mutations, runtime control, proxy changes, token changes, kernel changes, and viewer access.
+- The system MUST record audit events for authentication, profile mutations, runtime control, proxy changes, token changes, kernel changes, and viewer access. Every audit record MUST include the originating `request_id`, actor, target, action, result, and time.
 - Inputs: 已认证操作者、请求标识、目标、结果。
 - Outputs: 审计事件包含操作者、动作、目标、结果、时间和请求标识；敏感值脱敏；审计可通过 API 分页读取。
 
@@ -111,7 +111,7 @@
 
 ### REQ-API-016
 
-- The system MUST NOT expose CDP or noVNC through the control API by default, and when viewer access is enabled it MUST return a short-lived one-time URL rather than a reusable credential.
+- The system MUST NOT expose CDP or noVNC through the control API by default. It MUST expose `POST /api/v1/profiles/{profile_id}/viewer`, protected by the `viewer.access` scope, which returns `VIEWER_NOT_AVAILABLE` by default and a short-lived one-time URL when viewer access is enabled.
 - Inputs: 查看器请求、会话、Token scope、容器网络。
 - Outputs: 默认无查看器端点；启用后返回一次性 URL；URL 过期或使用一次后失效；CDP 仍只绑定回环。
 
@@ -120,6 +120,12 @@
 - The system MUST expose proxy configuration CRUD, single share-link import, and proxy check endpoints, MUST validate inputs against the protocol engine capability manifest, and MUST return only redacted proxy views.
 - Inputs: 代理配置、`vless://`/`vmess://`/`ss://`/`trojan://`/`hysteria2://` 链接、Token scope、引擎能力清单。
 - Outputs: 脱敏代理记录、导入草稿或字段级错误；任何响应不得包含 UUID、密码、私钥、完整分享链接或节点 URL 中的敏感参数；检查通过协议引擎执行。
+
+### REQ-API-018
+
+- The system MUST require a first-login password change for the generated administrator password and MUST expose `POST /api/v1/auth/password` for the authenticated session.
+- Inputs: 当前密码、新密码、会话、CSRF Token。
+- Outputs: 首次登录响应标记 `must_change_password`；未改密前除改密和登出外的写操作返回 `AUTH_PASSWORD_CHANGE_REQUIRED`；改密成功后其他会话失效。
 
 ## Verification
 
@@ -185,9 +191,9 @@
 
 ### VER-API-011
 
-- Method: 建立 WebSocket，断开后带 `after` 重连，使用 URL Token 尝试连接。
+- Method: 申请一次性票据建立 WebSocket，断开后带 `after` 重连，使用 URL 长效 Token 与跨源 Origin 尝试连接。
 - covers: `REQ-API-011`
-- Pass condition: 正常认证成功；重连补齐事件；URL Token 被拒绝；心跳检测死连接。
+- Pass condition: 票据正常升级且只能使用一次；重连补齐事件；URL 长效 Token 被拒绝；Cookie 升级的跨源 Origin 被拒绝；心跳检测死连接。
 
 ### VER-API-012
 
@@ -205,7 +211,7 @@
 
 - Method: 执行登录、档案增删、启动停止、代理变更、Token 变更和查看器访问。
 - covers: `REQ-API-014`
-- Pass condition: 每类操作产生审计事件；字段完整；敏感值脱敏；可分页读取。
+- Pass condition: 每类操作产生审计事件；`request_id`、actor、target 完整；敏感值脱敏；可按 profile/type/时间过滤并分页读取。
 
 ### VER-API-015
 
@@ -224,6 +230,12 @@
 - Method: 创建、更新、删除 HTTP/SOCKS/VLESS/VMess/Shadowsocks/Trojan 代理，导入合法与非法分享链接，执行检查并扫描响应。
 - covers: `REQ-API-017`
 - Pass condition: 合法配置成功；非法协议、传输和参数被拒绝；响应只含脱敏字段；检查结果来自协议引擎；越权 Token 返回 403。
+
+### VER-API-018
+
+- Method: 使用生成的初始密码登录，尝试写操作，改密后重新登录，并尝试复用旧会话。
+- covers: `REQ-API-018`
+- Pass condition: 首次登录返回 `must_change_password=true`；未改密写操作返回 403 `AUTH_PASSWORD_CHANGE_REQUIRED`；改密成功后旧会话失效，新密码可登录。
 
 ## Related ADRs
 

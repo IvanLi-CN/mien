@@ -17,7 +17,8 @@
     "timezone",
     "window",
     "spoof",
-    "webrtc"
+    "webrtc",
+    "network"
   ],
   "properties": {
     "schema_version": {
@@ -94,6 +95,15 @@
       "required": ["disable_non_proxied_udp"],
       "properties": {
         "disable_non_proxied_udp": {"type": "boolean"}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doh_mode", "ipv6_mode"],
+      "properties": {
+        "doh_mode": {"enum": ["disabled"]},
+        "ipv6_mode": {"enum": ["block"]}
       }
     }
   }

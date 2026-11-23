@@ -13,6 +13,7 @@
     "seed_derived",
     "known_issues",
     "sandbox",
+    "network_controls",
     "headless_chrome_ua_patch"
   ],
   "properties": {
@@ -55,6 +56,15 @@
       "required": ["requires_namespace_sandbox"],
       "properties": {
         "requires_namespace_sandbox": {"type": "boolean"}
+      }
+    },
+    "network_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doh_mode", "ipv6_mode"],
+      "properties": {
+        "doh_mode": {"enum": ["disabled"]},
+        "ipv6_mode": {"enum": ["block"]}
       }
     }
   },

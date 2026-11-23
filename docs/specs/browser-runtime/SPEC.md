@@ -36,7 +36,7 @@
 
 - The system MUST make start and stop idempotent per profile and MUST allow at most one supervised runtime per profile.
 - Inputs: 重复的启动/停止请求、并发请求、档案锁。
-- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；已停止时停止返回成功；并发启动不得产生两个内核。
+- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；已停止时停止返回成功；对 `crashed`/`failed` 运行时执行停止必须清理残留资源并转为 `stopped`；并发启动不得产生两个内核。
 
 ### REQ-RUNTIME-004
 
@@ -96,7 +96,7 @@
 
 - The system MUST expose CDP only on loopback by default, obtain the actual port from the kernel's `DevToolsActivePort` file, and MUST NOT publish it to the container network or LAN by default.
 - Inputs: 自动化开关、用户数据目录、内核启动结果。
-- Outputs: `ws://127.0.0.1:<port>/devtools/browser/<id>`；端口未就绪时启动失败；关闭自动化时不创建调试端口。
+- Outputs: 自动化开启时返回 `ws://127.0.0.1:<port>/devtools/browser/<id>`，端口未就绪时启动失败；关闭自动化时不创建调试端口，`starting → running` 改由“进程存活 + 代理入站就绪 + 有界启动宽限”判定。
 
 ### REQ-RUNTIME-014
 

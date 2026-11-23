@@ -78,6 +78,11 @@
           "uniqueItems": true,
           "items": {"type": "string"}
         },
+        "plugins": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string"}
+        },
         "notes": {
           "type": "string"
         }

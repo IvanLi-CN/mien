@@ -17,12 +17,13 @@
     "disable-spoofing": {"values": ["font", "audio", "canvas", "clientrects", "gpu"]}
   },
   "seed_derived": ["canvas", "audio", "webgl", "device_memory", "gpu_model"],
-  "known_issues": ["#102", "#108"],
+  "known_issues": ["#102"],
   "limitations": [
     "Host-bound screen size, devicePixelRatio, color depth and font enumeration remain observable.",
     "Docker uses Xvfb; screen attributes are shared by all profiles.",
     "Headless pseudo_headful mode changes UA only; other Headless characteristics remain."
   ],
   "sandbox": {"requires_namespace_sandbox": true},
+  "network_controls": {"doh_mode": "disabled", "ipv6_mode": "block"},
   "headless_chrome_ua_patch": true
 }

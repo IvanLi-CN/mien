@@ -14,6 +14,8 @@ tags:
   - name: health
   - name: auth
   - name: profiles
+  - name: groups
+  - name: tags
   - name: proxies
   - name: kernels
   - name: engines
@@ -22,6 +24,22 @@ tags:
   - name: events
   - name: contract
 paths:
+  /api/v1:
+    get:
+      tags: [contract]
+      operationId: apiVersion
+      security: []
+      responses:
+        "200":
+          description: 当前 API 版本和弃用窗口
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, deprecation_window_days]
+                properties:
+                  version: {const: v1}
+                  deprecation_window_days: {type: integer, minimum: 90}
   /healthz:
     get:
       tags: [health]
@@ -45,7 +63,7 @@ paths:
       security: []
       responses:
         "200":
-          description: 数据库、内核、共享引擎与显示依赖就绪
+          description: 数据库、内核、共享引擎与当前运行模式所需显示环境就绪；纯 headless 部署不要求显示
           content:
             application/json:
               schema:
@@ -88,6 +106,8 @@ paths:
     post:
       tags: [auth]
       operationId: authLogout
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
@@ -99,6 +119,8 @@ paths:
     get:
       tags: [auth]
       operationId: authSession
+      security:
+        - cookieAuth: []
       responses:
         "200":
           description: 当前会话
@@ -108,10 +130,32 @@ paths:
                 $ref: "#/components/schemas/Session"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/v1/auth/password:
+    post:
+      tags: [auth]
+      operationId: authChangePassword
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeInput"
+      responses:
+        "204": {description: 密码已更新；其他会话失效}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {$ref: "#/components/responses/ValidationError"}
   /api/v1/profiles:
     get:
       tags: [profiles]
       operationId: profilesList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.read]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -128,6 +172,11 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/RuntimeState"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ProfileStatus"
+          description: 默认仅返回 active；可显式查询 archived 或 deleted
         - name: sort
           in: query
           schema:
@@ -149,6 +198,9 @@ paths:
     post:
       tags: [profiles]
       operationId: profilesCreate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
@@ -175,6 +227,9 @@ paths:
     get:
       tags: [profiles]
       operationId: profilesGet
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.read]
       responses:
         "200":
           description: 档案详情
@@ -187,6 +242,9 @@ paths:
     patch:
       tags: [profiles]
       operationId: profilesUpdate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
@@ -210,6 +268,9 @@ paths:
     delete:
       tags: [profiles]
       operationId: profilesDelete
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
@@ -225,6 +286,9 @@ paths:
     post:
       tags: [profiles]
       operationId: profilesDuplicate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
       parameters:
         - $ref: "#/components/parameters/ProfileId"
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -236,7 +300,7 @@ paths:
             schema:
               type: object
               properties:
-                copy_fingerprint: {type: boolean, default: true}
+                copy_fingerprint: {type: boolean, default: false}
                 copy_proxy: {type: boolean, default: true}
       responses:
         "201":
@@ -247,10 +311,15 @@ paths:
                 $ref: "#/components/schemas/Profile"
         "422":
           $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/profiles/{profile_id}/archive:
     post:
       tags: [profiles]
       operationId: profilesArchive
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
       parameters:
         - $ref: "#/components/parameters/ProfileId"
         - $ref: "#/components/parameters/CsrfToken"
@@ -261,16 +330,67 @@ paths:
     post:
       tags: [profiles]
       operationId: profilesRestore
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
       parameters:
         - $ref: "#/components/parameters/ProfileId"
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "204": {description: 已恢复}
         "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/profiles/import:
+    post:
+      tags: [profiles]
+      operationId: profilesImport
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileImportInput"
+      responses:
+        "201":
+          description: 导入后的档案；冲突项使用新 ID
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Profile"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /api/v1/profiles/{profile_id}/export:
+    get:
+      tags: [profiles]
+      operationId: profilesExport
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.read]
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - name: format
+          in: query
+          schema: {type: string, enum: [plain, encrypted], default: plain}
+      responses:
+        "200":
+          description: 明文导出不含代理凭据；加密导出为不透明容器
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileExportEnvelope"
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationError"}
   /api/v1/profiles/{profile_id}/start:
     post:
       tags: [profiles]
       operationId: profilesStart
+      security:
+        - cookieAuth: []
+        - bearerAuth: [runtime.control]
       parameters:
         - $ref: "#/components/parameters/ProfileId"
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -285,10 +405,15 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/ValidationError"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/Unavailable"}
   /api/v1/profiles/{profile_id}/stop:
     post:
       tags: [profiles]
       operationId: profilesStop
+      security:
+        - cookieAuth: []
+        - bearerAuth: [runtime.control]
       parameters:
         - $ref: "#/components/parameters/ProfileId"
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -301,10 +426,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/Runtime"
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+        "503": {$ref: "#/components/responses/Unavailable"}
   /api/v1/profiles/{profile_id}/runtime:
     get:
       tags: [profiles]
       operationId: profilesRuntime
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.read]
       parameters:
         - $ref: "#/components/parameters/ProfileId"
       responses:
@@ -315,10 +446,169 @@ paths:
               schema:
                 $ref: "#/components/schemas/Runtime"
         "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/profiles/{profile_id}/viewer:
+    post:
+      tags: [profiles]
+      operationId: profilesViewer
+      security:
+        - cookieAuth: []
+        - bearerAuth: [viewer.access]
+      parameters:
+        - $ref: "#/components/parameters/ProfileId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: 一次性查看器 URL；之后不可复用
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ViewerSession"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/groups:
+    get:
+      tags: [groups]
+      operationId: groupsList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.read]
+      responses:
+        "200":
+          description: 分组列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Group"}
+    post:
+      tags: [groups]
+      operationId: groupsCreate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GroupInput"}
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Group"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /api/v1/groups/{group_id}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    patch:
+      tags: [groups]
+      operationId: groupsUpdate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/GroupPatch"}
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Group"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    delete:
+      tags: [groups]
+      operationId: groupsDelete
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204": {description: 已删除；档案 group_id 置空}
+  /api/v1/tags:
+    get:
+      tags: [tags]
+      operationId: tagsList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.read]
+      responses:
+        "200":
+          description: 标签列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Tag"}
+    post:
+      tags: [tags]
+      operationId: tagsCreate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TagInput"}
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Tag"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/tags/{tag_id}:
+    parameters:
+      - $ref: "#/components/parameters/TagId"
+    patch:
+      tags: [tags]
+      operationId: tagsUpdate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TagPatch"}
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Tag"}
+        "409": {$ref: "#/components/responses/Conflict"}
+    delete:
+      tags: [tags]
+      operationId: tagsDelete
+      security:
+        - cookieAuth: []
+        - bearerAuth: [profiles.write]
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204": {description: 已删除；档案标签关联移除}
   /api/v1/proxies:
     get:
       tags: [proxies]
       operationId: proxiesList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [proxies.read]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -335,6 +625,9 @@ paths:
     post:
       tags: [proxies]
       operationId: proxiesCreate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [proxies.write]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
@@ -356,6 +649,9 @@ paths:
     post:
       tags: [proxies]
       operationId: proxiesImportLink
+      security:
+        - cookieAuth: []
+        - bearerAuth: [proxies.write]
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       requestBody:
@@ -385,6 +681,9 @@ paths:
     patch:
       tags: [proxies]
       operationId: proxiesUpdate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [proxies.write]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
@@ -405,6 +704,9 @@ paths:
     delete:
       tags: [proxies]
       operationId: proxiesDelete
+      security:
+        - cookieAuth: []
+        - bearerAuth: [proxies.write]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
@@ -415,6 +717,9 @@ paths:
     post:
       tags: [proxies]
       operationId: proxiesCheck
+      security:
+        - cookieAuth: []
+        - bearerAuth: [proxies.read]
       parameters:
         - $ref: "#/components/parameters/ProxyId"
         - $ref: "#/components/parameters/CsrfToken"
@@ -435,6 +740,9 @@ paths:
     get:
       tags: [kernels]
       operationId: kernelsList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [kernels.manage]
       responses:
         "200":
           description: 已安装内核
@@ -447,6 +755,9 @@ paths:
     post:
       tags: [kernels]
       operationId: kernelsActivate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [kernels.manage]
       parameters:
         - name: version
           in: path
@@ -460,6 +771,9 @@ paths:
     get:
       tags: [engines]
       operationId: enginesList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [engines.manage]
       responses:
         "200":
           description: 已安装协议引擎
@@ -472,6 +786,9 @@ paths:
     post:
       tags: [engines]
       operationId: enginesActivate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [engines.manage]
       parameters:
         - name: version
           in: path
@@ -485,6 +802,9 @@ paths:
     get:
       tags: [tokens]
       operationId: tokensList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [tokens.manage]
       responses:
         "200":
           description: API Token（不返回明文）
@@ -496,6 +816,9 @@ paths:
     post:
       tags: [tokens]
       operationId: tokensCreate
+      security:
+        - cookieAuth: []
+        - bearerAuth: [tokens.manage]
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       requestBody:
@@ -515,6 +838,9 @@ paths:
     delete:
       tags: [tokens]
       operationId: tokensRevoke
+      security:
+        - cookieAuth: []
+        - bearerAuth: [tokens.manage]
       parameters:
         - name: token_id
           in: path
@@ -527,12 +853,27 @@ paths:
     get:
       tags: [audit]
       operationId: auditList
+      security:
+        - cookieAuth: []
+        - bearerAuth: [audit.read]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
         - name: action
           in: query
           schema: {type: string}
+        - name: profile_id
+          in: query
+          schema: {type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"}
+        - name: type
+          in: query
+          schema: {type: string}
+        - name: from
+          in: query
+          schema: {type: string, format: date-time}
+        - name: to
+          in: query
+          schema: {type: string, format: date-time}
       responses:
         "200":
           description: 审计事件
@@ -547,11 +888,29 @@ paths:
                     items: {$ref: "#/components/schemas/AuditEvent"}
                   next_cursor:
                     type: [string, "null"]
+  /api/v1/events/ticket:
+    post:
+      tags: [events]
+      operationId: eventsTicket
+      security:
+        - cookieAuth: []
+        - bearerAuth: [events.read]
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "201":
+          description: 一次性 WebSocket 票据；短 TTL，单次使用
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EventTicket"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/events:
     get:
       tags: [events]
       operationId: eventsWebSocket
       x-websocket: true
+      security: []
       description: |
         WebSocket 事件流；使用 `after` 查询参数补齐断线期间事件。
         事件结构见 `docs/contracts/events.schema.json`。
@@ -559,13 +918,15 @@ paths:
         - name: after
           in: query
           schema: {type: string}
-        - name: token
+        - name: ticket
           in: query
-          description: 仅用于自动化 Token；浏览器会话使用 Cookie
+          description: 一次性票据；浏览器会话也可使用 Cookie。禁止长期 Bearer Token 放在 URL
           schema: {type: string}
       responses:
         "101":
           description: WebSocket 升级
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/openapi.json:
     get:
       tags: [contract]
@@ -573,7 +934,7 @@ paths:
       security: []
       responses:
         "200":
-          description: 运行时 OpenAPI 文档
+          description: 运行时 OpenAPI 文档；这是 REQ-API-003 的唯一非健康公开例外
           content:
             application/json:
               schema: {type: object}
@@ -597,6 +958,16 @@ components:
       schema: {type: integer, minimum: 1, maximum: 200, default: 50}
     ProfileId:
       name: profile_id
+      in: path
+      required: true
+      schema: {type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"}
+    GroupId:
+      name: group_id
+      in: path
+      required: true
+      schema: {type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"}
+    TagId:
+      name: tag_id
       in: path
       required: true
       schema: {type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"}
@@ -637,8 +1008,27 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
+    Forbidden:
+      description: 权限或 scope 不足
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    InternalError:
+      description: 内部错误
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unavailable:
+      description: 依赖或资源暂不可用
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
     TooManyRequests:
       description: 登录或请求限流
+      headers:
+        Retry-After:
+          description: 建议等待秒数
+          schema: {type: integer, minimum: 1}
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
@@ -662,12 +1052,20 @@ components:
       additionalProperties: false
       properties:
         password: {type: string, minLength: 1, maxLength: 1024, writeOnly: true}
+    PasswordChangeInput:
+      type: object
+      required: [current_password, new_password]
+      additionalProperties: false
+      properties:
+        current_password: {type: string, minLength: 1, maxLength: 1024, writeOnly: true}
+        new_password: {type: string, minLength: 12, maxLength: 1024, writeOnly: true}
     Session:
       type: object
-      required: [authenticated, csrf_token]
+      required: [authenticated, csrf_token, must_change_password]
       properties:
         authenticated: {type: boolean}
         csrf_token: {type: string, description: 会话 CSRF Token，可返回给同源 UI}
+        must_change_password: {type: boolean}
         user: {type: string}
     Error:
       type: object
@@ -687,6 +1085,9 @@ components:
     RuntimeMode:
       type: string
       enum: [headful, headless, pseudo_headful]
+    ProfileStatus:
+      type: string
+      enum: [active, archived, deleted]
     ProxyKind:
       type: string
       enum: [http, https, socks5, vless, vmess, shadowsocks, trojan, hysteria2, wireguard]
@@ -699,31 +1100,41 @@ components:
       required: [id, name, status, mode, created_at, updated_at]
       properties:
         id: {type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"}
-        name: {type: string, maxLength: 200}
+        name: {type: string, maxLength: 120}
         group_id: {type: [string, "null"]}
-        tags: {type: array, items: {type: string}}
+        tags: {type: array, items: {type: string, maxLength: 64}, uniqueItems: true}
         notes: {type: [string, "null"]}
         fingerprint: {$ref: "#/components/schemas/Fingerprint"}
         kernel_version: {type: string}
         proxy_id: {type: [string, "null"]}
         mode: {$ref: "#/components/schemas/RuntimeMode"}
-        status: {$ref: "#/components/schemas/RuntimeState"}
+        status: {$ref: "#/components/schemas/ProfileStatus"}
         runtime: {$ref: "#/components/schemas/Runtime"}
+        start_url: {type: [string, "null"], pattern: "^(https?://|about:)"}
+        window:
+          type: object
+          additionalProperties: false
+          properties:
+            width: {type: integer, minimum: 320, maximum: 7680}
+            height: {type: integer, minimum: 240, maximum: 4320}
+        automation_api: {type: boolean}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
         archived_at: {type: [string, "null"], format: date-time}
+        deleted_at: {type: [string, "null"], format: date-time}
     ProfileInput:
       type: object
       required: [name, mode, fingerprint]
       additionalProperties: false
       properties:
-        name: {type: string, minLength: 1, maxLength: 200}
+        name: {type: string, minLength: 1, maxLength: 120}
         group_id: {type: [string, "null"]}
-        tags: {type: array, items: {type: string}, maxItems: 32}
+        tags: {type: array, items: {type: string, maxLength: 64}, maxItems: 32, uniqueItems: true}
         notes: {type: [string, "null"], maxLength: 4000}
         fingerprint: {$ref: "#/components/schemas/Fingerprint"}
         proxy_id: {type: [string, "null"]}
         mode: {$ref: "#/components/schemas/RuntimeMode"}
+        automation_api: {type: boolean, default: false}
         start_url: {type: string, pattern: "^(https?://|about:)"}
         window:
           type: object
@@ -736,13 +1147,14 @@ components:
       additionalProperties: false
       description: 可只提交需要修改的字段
       properties:
-        name: {type: string, minLength: 1, maxLength: 200}
+        name: {type: string, minLength: 1, maxLength: 120}
         group_id: {type: [string, "null"]}
-        tags: {type: array, items: {type: string}, maxItems: 32}
+        tags: {type: array, items: {type: string, maxLength: 64}, maxItems: 32, uniqueItems: true}
         notes: {type: [string, "null"], maxLength: 4000}
         fingerprint: {$ref: "#/components/schemas/Fingerprint"}
         proxy_id: {type: [string, "null"]}
         mode: {$ref: "#/components/schemas/RuntimeMode"}
+        automation_api: {type: boolean}
         start_url: {type: string, pattern: "^(https?://|about:)"}
         window:
           type: object
@@ -758,6 +1170,87 @@ components:
           type: array
           items: {$ref: "#/components/schemas/Profile"}
         next_cursor: {type: [string, "null"]}
+    Group:
+      type: object
+      required: [id, name, sort_order, created_at, updated_at]
+      properties:
+        id: {type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"}
+        name: {type: string, maxLength: 120}
+        sort_order: {type: integer, minimum: 0}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    GroupInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        sort_order: {type: integer, minimum: 0, default: 0}
+    GroupPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        sort_order: {type: integer, minimum: 0}
+    Tag:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id: {type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"}
+        name: {type: string, maxLength: 64}
+        color: {type: [string, "null"], pattern: "^#[0-9A-Fa-f]{6}$"}
+        created_at: {type: string, format: date-time}
+    TagInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 64}
+        color: {type: [string, "null"], pattern: "^#[0-9A-Fa-f]{6}$"}
+    TagPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 64}
+        color: {type: [string, "null"], pattern: "^#[0-9A-Fa-f]{6}$"}
+    ProfileExport:
+      type: object
+      additionalProperties: true
+      description: 结构由 docs/contracts/profile-export.schema.json 定义；不含代理凭据、Token、Cookie
+    ProfileExportEnvelope:
+      type: object
+      required: [schema_version, format, exported_at, payload]
+      additionalProperties: false
+      properties:
+        schema_version: {const: 1}
+        format: {type: string, enum: [plain, encrypted]}
+        exported_at: {type: string, format: date-time}
+        payload:
+          oneOf:
+            - $ref: "#/components/schemas/ProfileExport"
+            - {type: string, minLength: 1, description: 不透明加密容器}
+    ProfileImportInput:
+      type: object
+      required: [format, payload]
+      additionalProperties: false
+      properties:
+        format: {type: string, enum: [plain, encrypted]}
+        payload:
+          oneOf:
+            - $ref: "#/components/schemas/ProfileExport"
+            - {type: string, minLength: 1, description: 不透明加密容器}
+    ViewerSession:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url: {type: string, format: uri}
+        expires_at: {type: string, format: date-time}
+    EventTicket:
+      type: object
+      required: [ticket, expires_at]
+      properties:
+        ticket: {type: string, writeOnly: true}
+        expires_at: {type: string, format: date-time}
     Proxy:
       type: object
       required: [id, name, kind, server, port, credential_set, created_at, updated_at]
@@ -845,28 +1338,35 @@ components:
         error_code: {type: [string, "null"]}
     Kernel:
       type: object
-      required: [version, platform, sha256, active]
+      required: [version, platform, sha256, active, flags, headless_chrome_ua_patch]
       properties:
         version: {type: string}
         platform: {type: string}
         sha256: {type: string}
         active: {type: boolean}
+        flags: {type: object, additionalProperties: true}
+        headless_chrome_ua_patch: {type: boolean}
         known_issues: {type: array, items: {type: string}}
         limitations: {type: array, items: {type: string}}
     Engine:
       type: object
-      required: [engine, version, platform, sha256, active]
+      required: [engine, version, platform, sha256, active, license, source_url]
       properties:
         engine: {type: string, const: xray-core}
         version: {type: string}
         platform: {type: string}
         sha256: {type: string}
         active: {type: boolean}
+        license: {const: MPL-2.0}
+        source_url: {type: string, format: uri}
         connection_reuse: {type: boolean}
         protocols:
           type: array
           items: {type: string}
         limitations: {type: array, items: {type: string}}
+    TokenScope:
+      type: string
+      enum: [profiles.read, profiles.write, runtime.control, proxies.read, proxies.write, audit.read, events.read, tokens.manage, kernels.manage, engines.manage, viewer.access]
     Token:
       type: object
       required: [id, name, scopes, created_at]
@@ -875,24 +1375,21 @@ components:
         name: {type: string}
         scopes:
           type: array
-          items:
-            type: string
-            enum: [profiles.read, profiles.write, runtime.control, proxies.read, proxies.write, audit.read]
+          items: {$ref: "#/components/schemas/TokenScope"}
         created_at: {type: string, format: date-time}
         last_used_at: {type: [string, "null"], format: date-time}
         revoked_at: {type: [string, "null"], format: date-time}
     TokenInput:
       type: object
       required: [name, scopes]
+      description: 创建时授予的 scope 不得超出创建者；否则返回 FORBIDDEN_SCOPE
       properties:
         name: {type: string, minLength: 1, maxLength: 120}
         scopes:
           type: array
           minItems: 1
           uniqueItems: true
-          items:
-            type: string
-            enum: [profiles.read, profiles.write, runtime.control, proxies.read, proxies.write, audit.read]
+          items: {$ref: "#/components/schemas/TokenScope"}
     TokenCreated:
       allOf:
         - $ref: "#/components/schemas/Token"
@@ -905,12 +1402,13 @@ components:
               description: 只在创建响应中返回一次
     AuditEvent:
       type: object
-      required: [id, action, result, created_at]
+      required: [id, actor, action, target, result, request_id, created_at]
       properties:
         id: {type: string}
         actor: {type: string}
         action: {type: string}
         target: {type: string}
         result: {type: string, enum: [success, failure, denied]}
+        request_id: {type: string}
         metadata: {type: object, additionalProperties: true}
         created_at: {type: string, format: date-time}

@@ -3,7 +3,7 @@
 - 状态：被 [ADR-0007](0007-protocol-engine-forward-proxy.md) 取代
 - 决策范围：代理认证、DNS 解析、泄漏防护与失败行为
 
-> 本决策的本地中继不再作为数据面。VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与认证由 ADR-0007 的协议引擎处理；本文件保留为历史背景，当前契约以 `docs/specs/proxy-gateway/SPEC.md` 为准。
+> 本决策的本地中继不再作为数据面。当前链路是 `ADR-0004 → ADR-0007 → ADR-0009`：VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议由 ADR-0009 的单实例 Xray 共享引擎处理；ADR-0007 的 sing-box 方案也已被取代。本文件保留为历史背景，当前契约以 `docs/specs/proxy-gateway/SPEC.md` 为准。
 
 ## 背景
 

@@ -23,6 +23,8 @@
 | `AUTH_RATE_LIMITED` | 429 | 是 | 登录或认证尝试超过限流 |
 | `AUTH_CSRF_INVALID` | 403 | 否 | Cookie 会话写操作缺少或使用了错误 CSRF Token |
 | `FORBIDDEN_SCOPE` | 403 | 否 | Token scope 不允许该操作 |
+| `AUTH_PASSWORD_CHANGE_REQUIRED` | 403 | 否 | 首次登录必须先修改初始密码 |
+| `EVENT_TICKET_INVALID` | 401 | 否 | WebSocket 一次性票据缺失、过期或已使用 |
 
 ## 2. 资源与状态
 
@@ -36,6 +38,11 @@
 | `RUNTIME_CONFLICT` | 409 | 否 | 同一档案已有其他启动/停止事务 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 否 | 相同幂等键携带了不同请求 |
 | `RESOURCE_IN_USE` | 409 | 否 | 代理或引擎仍被运行档案引用 |
+| `FINGERPRINT_SEED_CONFLICT` | 409 | 否 | 指纹种子已被其他档案使用 |
+| `GROUP_NAME_CONFLICT` | 409 | 否 | 分组名称重复 |
+| `TAG_NAME_CONFLICT` | 409 | 否 | 标签名称重复 |
+| `PROFILE_IMPORT_CONFLICT` | 409 | 否 | 导入档案与现有档案冲突且未选择新 ID |
+| `VIEWER_NOT_AVAILABLE` | 404 | 否 | 查看器未启用或运行时没有可查看显示 |
 
 ## 3. 输入与能力
 
@@ -70,7 +77,11 @@
 | `PROXY_ENGINE_CRASHED` | 503 | 是 | 共享引擎异常退出，正在重启 |
 | `PROXY_INBOUND_CONFLICT` | 409 | 是 | 运行档案入站端口或标签已被占用 |
 | `PROXY_OUTBOUND_REFCOUNT_MISMATCH` | 500 | 否 | 共享出站引用计数对账失败 |
-| `PROXY_CONNECTION_FAILED` | 502 | 是 | 节点不可达、认证失败、TLS/REALITY 失败或超时 |
+| `PROXY_CONNECTION_REFUSED` | 502 | 是 | 节点拒绝连接或端口不可达 |
+| `PROXY_AUTH_FAILED` | 502 | 否 | 节点认证失败 |
+| `PROXY_TLS_FAILED` | 502 | 否 | TLS/REALITY 握手或证书校验失败 |
+| `PROXY_TIMEOUT` | 502 | 是 | 连接或请求超时 |
+| `PROXY_CONNECTION_FAILED` | 502 | 是 | 未归类的连接失败；不得替代上述稳定分类 |
 | `PROXY_DNS_FAILED` | 502 | 是 | 目标域名或节点解析失败 |
 | `PROXY_NOT_READY` | 503 | 是 | 代理检查未完成或未通过 |
 

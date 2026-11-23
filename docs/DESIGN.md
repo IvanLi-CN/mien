@@ -91,12 +91,11 @@ pub trait EventSink {
 4. 获取全局运行时配额；检查可用内存、磁盘和并发上限。
 5. 校验指纹规格、代理配置、内核与协议引擎能力清单；`pseudo_headful` 还要求 `headless_chrome_ua_patch=true`。
 6. 校验内核与引擎二进制 SHA-256；失败则不创建任何临时资源。
-7. 分配回环代理端口；确保共享 Xray 引擎运行并连接管理 API。
-8. 计算 `outbound_key`，添加或复用出站，并增加引用计数。
-9. 添加本运行时的回环 HTTP 入站和入站到出站的路由规则。
-10. 生成内核 argv，注入 `--proxy-server=http://127.0.0.1:<proxy_port>`、数据目录、CDP 和显示参数。
-11. 启动内核；等待 `DevToolsActivePort` 与 CDP 探测（如启用）。
-12. 持久化 `runtimes=running`，发布 `runtime.running`，返回运行时句柄。
+7. 在事务内写入 `runtimes(state=starting)` 并发布 `runtime.starting`；此后任何失败都能被对账发现。
+8. 代理模式：分配回环代理端口；确保共享 Xray 引擎运行并连接管理 API；计算 `outbound_key`，添加或复用出站并增加引用计数；添加入站和路由。直接模式跳过本步骤。
+9. 生成内核 argv；代理模式注入 `--proxy-server=http://127.0.0.1:<proxy_port>`，直接模式不注入代理参数；保留 DoH/IPv6/UDP 防护参数。
+10. 启动内核；自动化开启时等待 `DevToolsActivePort`，关闭时等待进程存活、代理入站就绪（如适用）和有界启动宽限。
+11. 持久化 `runtimes=running`，发布 `runtime.running`，返回运行时句柄。
 
 失败回滚顺序与启动相反：终止内核进程组、删除路由规则与入站、释放出站引用、释放端口、释放配额、释放 actor 锁、写入 `failed` 与稳定错误码。共享引擎本身不因单个运行时失败而退出。回滚中的二次失败必须记录，但不得掩盖原始错误。
 
@@ -157,7 +156,8 @@ pub trait EventSink {
 | 变量 | 默认 | 作用 |
 | --- | --- | --- |
 | `MIEN_DATA_DIR` | 平台数据目录或 `/data` | 数据库、档案、内核、引擎和日志根 |
-| `MIEN_BIND` | 服务端 `0.0.0.0:8080`；桌面回环随机端口 | 控制面监听地址 |
+| `MIEN_BIND` | 服务端 `0.0.0.0:8080`；桌面未设置 | 服务端控制面监听地址；桌面不监听 |
+| `MIEN_DESKTOP_AUTOMATION_BIND` | 未设置 | 桌面可选自动化回环地址；显式设置后才监听 |
 | `MIEN_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `/data/secrets/master.key` |
 | `MIEN_SCREEN` | `1920x1080x24` | Docker Xvfb 分辨率 |
 | `MIEN_MAX_RUNTIMES` | `10` | 最大并发运行档案数 |
@@ -276,7 +276,7 @@ tauri::Builder::default()
 
 ### 11.3 事件与重载补齐
 
-- 核心先把事件写入 `event_log`，再调用 Tauri `Emitter` 发送 `mien://event`。
+- 核心通过注入的 `EventSink` 先把事件写入 `event_log`；桌面宿主适配器订阅已持久化事件并调用 Tauri `Emitter`，核心不依赖 Tauri。
 - UI 先订阅事件频道，再调用 `events_after(last_event_id)` 补齐；按事件标识去重。
 - WebView 刷新后从内存或 `sessionStorage` 恢复最后标识；没有标识时先拉取档案与运行时快照，再从最新事件继续。
 - 服务端使用 `/api/v1/events?after=<id>` WebSocket，复用同一事件 DTO 与去重逻辑。
@@ -284,12 +284,12 @@ tauri::Builder::default()
 
 ### 11.4 文件、安全与开发模式
 
-- 导入导出使用 Tauri dialog 插件选择文件；命令接受用户选定路径后仍校验数据根、大小、schema 和符号链接。
+- 桌面导入导出使用 Tauri dialog 插件选择文件；服务端使用 `POST /api/v1/profiles/import` 与 `GET /api/v1/profiles/{id}/export`，两者都校验大小、schema 和符号链接。
 - WebView 不直接读取任意路径；外部链接通过 opener 插件交给系统浏览器，不在主 WebView 导航到远程页面。
 - Tauri capabilities 只授权主窗口调用所需命令；生产 CSP 禁止远程脚本和内联脚本。
 - 服务端适配器使用 `fetch` 与 `credentials: "same-origin"`，写操作带 CSRF Token；WebSocket 使用会话 Cookie 或一次性票据。
 - 开发模式由 Vite dev server 提供页面，Tauri IPC 仍然可用；生产构建使用打包后的静态资源与严格 CSP。
-- 合同测试覆盖：命令名与 DTO 一致、错误结构一致、事件回放、桌面无 HTTP 监听端口、远程内容不能获得 IPC 能力。
+- 合同测试覆盖：命令名与 DTO 一致、错误结构一致、事件回放、桌面默认无 HTTP 监听端口、远程内容不能获得 IPC 能力。
 
 ## 12. 测试缝
 
@@ -305,7 +305,7 @@ tauri::Builder::default()
 
 - macOS 应用包含内核与 Xray-core 二进制、MPL-2.0 许可与更新清单；数据目录不随应用卸载删除。
 - Docker 镜像使用非 root 用户、只读根文件系统、`/data` 唯一可写卷；入口脚本管理 Xvfb、openbox、可选 noVNC 和信号转发。
-- Docker 端口：控制面 8080、noVNC 6080（默认关闭）、CDP、Xray 管理 API 与每运行档案 HTTP 入站均不映射。
+- Docker 端口：控制面 8080 映射；noVNC 6080 仅在启用查看器时映射；CDP、Xray 管理 API 与每运行档案 HTTP 入站永不映射。
 - Hysteria2 需要容器允许 UDP 出站；不满足时明确报错，不回退其他协议；TUIC 不进入 v1。
 - Apple Silicon 运行 `linux/amd64` 镜像时记录模拟性能；原生 ARM64 不在首个发布范围。
 

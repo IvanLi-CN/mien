@@ -39,6 +39,7 @@ Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动
 - 运行模式包括有头、无头和伪有头；后两者为显式降低保证，伪有头需要内核能力清单声明 UA 补丁。
 - 失败关闭网络、目标域名远程 DNS、默认阻止 WebRTC 非代理 UDP、禁用 DoH 绕过、显式处理 IPv6。
 - 仅支持 macOS Apple Silicon 与 macOS 13+；仅支持 Docker `linux/amd64`。macOS Intel 与原生 Linux ARM64 不在首个发布范围。
+- macOS 应用使用 AdHoc 签名、不公证；首次启动会被 Gatekeeper 阻止，用户必须先校验 SHA-256 或 artifact attestation 并手动放行，产品不提供可验证的发布者身份。
 - Apple Silicon 上的 Docker 通过模拟运行 amd64 镜像；Hysteria2 需要 UDP 出站。
 - 固定 fingerprint-chromium `148.0.7778.215`。已知内核限制，包括 canvas 与字体行为，必须披露而不能隐藏。
 - 屏幕尺寸、设备像素比、颜色深度和字体枚举受宿主约束，不能承诺按档案伪造。

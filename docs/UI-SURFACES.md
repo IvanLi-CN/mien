@@ -6,10 +6,10 @@
 
 | 路径 | Surface | 主要动作 |
 | --- | --- | --- |
-| `/profiles` | Profiles 首屏 / Space 工作区 | 浏览空间、打开/停止运行档案、创建档案 |
+| `/profiles` | Profiles 首屏 / Space 工作区 | 浏览空间、打开/停止运行档案、创建档案、导入档案 |
 | `/profiles/new` | 创建档案 | 选择预设、配置指纹、代理和运行模式 |
 | `/profiles/:id` | 档案详情 | 查看 proof、运行时、日志、代理和限制 |
-| `/profiles/:id/edit` | 编辑档案 | 修改指纹、代理、启动地址和运行偏好 |
+| `/profiles/:id/edit` | 编辑档案 | 修改指纹、代理、启动地址和运行偏好；导出档案 |
 | `/proxies` | 代理库 | 创建、编辑、检查、导入分享链接 |
 | `/kernels` | 内核与引擎 | 查看已安装版本、能力清单、已知缺陷、切换 active |
 | `/activity` | 活动与审计 | 查看运行事件、代理检查、登录和配置变更 |
@@ -48,6 +48,7 @@
 - 选择 `pseudo_headful` 时，UI 与 API 返回 `mode=pseudo_headful`、`reduced_assurance=true`、`ua_scope=chrome`。
 - 运行中的档案不允许无确认切换模式；必须先停止。
 - 表单失败显示字段级错误；不得把代理凭据回显到表单。
+- 导入使用 `/profiles` 命令栏的 Import 入口：选择明文或加密文件，显示凭据移除提示和冲突处理；导出从 `/profiles/:id/edit` 或详情动作触发，明确明文/加密与口令。
 
 ### 交互状态
 
@@ -97,11 +98,11 @@
 
 ## 6. 活动与审计
 
-- 运行事件：starting/running/stopping/stopped/crashed/failed。
-- 代理事件：engine.failed、engine.rebuilt、check.completed。
-- 配置事件：profile、proxy、kernel、engine、token。
+- 运行事件：`runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`。
+- 代理事件：`proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
+- 配置事件：`profile.*`、`kernel.*`、`engine.*`、`token.*`；代理配置变更只通过审计事件展示，不伪造不存在的 `proxy.created/updated` 事件。
 - 审计事件只显示非敏感元数据；不显示 Cookie、Token、UUID、私钥或完整分享链接。
-- 支持按档案、事件类型和时间筛选；空状态说明没有事件，而不是显示空白列表。
+- 支持按 `profile_id`、事件 `type` 和 `from`/`to` 时间筛选；空状态说明没有事件，而不是显示空白列表。
 
 ## 7. 响应式与可访问性
 

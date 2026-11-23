@@ -12,9 +12,10 @@
 
 - `profile`: 一个可独立启动的浏览器环境，拥有唯一 ULID、独立数据目录、指纹规格、可选代理和运行偏好。
 - `archive`: 软删除状态；档案不再出现在默认列表，但数据在保留窗口内可恢复。
+- `profile status`: `active`、`archived` 或 `deleted`；与运行时 `state` 分离。
 - `hard delete`: 永久删除元数据和浏览器数据目录；不可恢复。
 - `data root`: macOS 的 `~/Library/Application Support/Mien` 或 Docker 的 `/data`。
-- Interface: 控制面 `/api/v1/profiles` 系列端点；SQLite `profiles`、`groups`、`tags`、`profile_tags` 表；导入导出 JSON schema。
+- Interface: 控制面 `/api/v1/profiles`、`/api/v1/groups`、`/api/v1/tags` 系列端点，以及 `/api/v1/profiles/import` 和 `/api/v1/profiles/{id}/export`；SQLite `profiles`、`groups`、`tags`、`profile_tags` 表；导入导出 JSON schema。
 - 导入导出 schema 版本独立于应用版本，至少包含 `schema_version`、`profiles`、`groups`、`tags`。
 
 ## Requirements
@@ -22,7 +23,7 @@
 ### REQ-PROFILE-001
 
 - The system MUST assign every profile an immutable ULID at creation and MUST allow human-readable names to repeat.
-- Inputs: 名称、可选分组、可选标签、初始指纹规格、可选代理、可选启动地址。
+- Inputs: 名称（最多 120 字符）、可选分组、可选标签（每个最多 64 字符）、初始指纹规格、可选代理、可选启动地址。
 - Outputs: 持久化档案记录与唯一 `profile_id`；名称重复不构成错误，标识缺失或非法构成错误。
 
 ### REQ-PROFILE-002
@@ -42,6 +43,7 @@
 - The system MUST treat duplicate as a new profile. Unless explicitly requested, duplication MUST generate a new fingerprint seed and a new browser data directory.
 - Inputs: 源档案标识、可选的配置复制选项。
 - Outputs: 新档案标识；不得共享运行时、数据目录、种子或 Cookie。
+- Defaults: `copy_fingerprint=false`；显式请求复制指纹时仍必须检查种子冲突并返回 `FINGERPRINT_SEED_CONFLICT`。
 
 ### REQ-PROFILE-005
 
@@ -66,18 +68,21 @@
 - The system MUST enforce unique group names and unique tag names, while allowing a profile to belong to multiple tags.
 - Inputs: 分组名称、标签名称、档案标签集合。
 - Outputs: 冲突时返回稳定错误码；非冲突时返回规范化后的集合。
+- Error mapping: 分组返回 `GROUP_NAME_CONFLICT`，标签返回 `TAG_NAME_CONFLICT`。
 
 ### REQ-PROFILE-009
 
 - The system MUST validate import files against the declared schema, including field types, size limits, proxy configuration shape, share-link fields, and path fields.
 - Inputs: JSON 导入文件、可选口令。
 - Outputs: 通过校验的档案草稿或逐项错误；非法 schema、超大文件、未知版本、路径穿越和符号链接必须被拒绝。
+- Transport: Docker Web UI 使用 `POST /api/v1/profiles/import`；冲突项在用户确认后分配新 ID，否则返回 `PROFILE_IMPORT_CONFLICT`。
 
 ### REQ-PROFILE-010
 
 - The system MUST exclude proxy credentials, API tokens, cookies, and browser data from default exports, and MUST support passphrase-encrypted exports using authenticated encryption.
 - Inputs: 档案集合、导出模式、可选口令。
 - Outputs: 带 schema 版本的导出文件；默认导出不含秘密；加密导出只包含口令派生密钥可解开的密文。
+- Transport: Docker Web UI 使用 `GET /api/v1/profiles/{id}/export?format=plain|encrypted`；加密 payload 是不透明容器。
 
 ### REQ-PROFILE-011
 

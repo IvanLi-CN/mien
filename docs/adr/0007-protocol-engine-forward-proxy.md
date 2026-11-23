@@ -4,6 +4,8 @@
 - 决策范围：VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等正向代理协议、认证、DNS 与进程边界
 - 取代：[ADR-0004](0004-local-proxy-relay.md)
 
+> 本 ADR 是历史决策。当前数据面是 ADR-0009 的单实例 Xray-core 共享引擎；下文关于 sing-box、每档案独立引擎与 GPL 合规的内容只用于解释演进，不得作为实现依据。
+
 ## 背景
 
 产品最初把代理边界设计成自建本地 HTTP 中继：Chromium 只支持 HTTP、HTTPS、SOCKS 代理，且 `--proxy-server` 不能携带认证凭据，中继负责注入上游认证。该方案足以覆盖 HTTP/SOCKS 代理，但无法覆盖 VLESS、VMess、Shadowsocks、Trojan、Hysteria2、TUIC 等主流正向代理协议。自行实现这些协议意味着长期维护 TLS、REALITY、WebSocket、gRPC、QUIC、AEAD、mux 和多种传输组合，安全与兼容成本远高于产品核心价值。

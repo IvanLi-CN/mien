@@ -83,7 +83,7 @@
 
 - The system MUST pass `--disable-non-proxied-udp` by default for every proxied profile and MUST require explicit advanced confirmation with an audit event to omit it.
 - Inputs: WebRTC 策略、档案配置、审计上下文。
-- Outputs: 默认阻止非代理 UDP；高级关闭时记录操作者、时间和档案；UI 持续显示风险标记；Hysteria2 的 QUIC 仅用于引擎到节点，不改变浏览器非代理 UDP 策略。
+- Outputs: 默认阻止非代理 UDP；关闭只能通过指纹规格 `webrtc.disable_non_proxied_udp=false` 的高级确认写入，并记录审计动作 `proxy.non_proxied_udp.disable`、操作者、时间和档案；UI 持续显示风险标记；Hysteria2 的 QUIC 仅用于引擎到节点，不改变浏览器非代理 UDP 策略。
 
 ### REQ-PROXY-011
 
@@ -95,19 +95,19 @@
 
 - The system MUST disable DNS-over-HTTPS bypass for proxied profiles and MUST verify the effective configuration during startup or acceptance testing.
 - Inputs: 内核能力清单、浏览器策略、测试探针。
-- Outputs: DoH 不绕过代理；无法禁用或无法验证时必须阻止启动或显示明确限制，不得静默忽略。
+- Outputs: 指纹规格 `network.doh_mode=disabled` 且内核能力清单声明对应开关；DoH 不绕过代理；无法禁用或无法验证时必须阻止启动或显示明确限制，不得静默忽略。
 
 ### REQ-PROXY-013
 
 - The system MUST provide a proxy check through temporary inbound, route and outbound resources in the shared engine, then remove those resources; it MUST NOT start a second engine for the check.
 - Inputs: 代理配置、共享引擎管理 API、可选回显端点、超时。
-- Outputs: 成功/失败、延迟、可选出口 IP 与地区、稳定错误类；检查不记录凭据、UUID、完整节点 URL 或目标 URL；临时资源在成功或失败后都被删除。
+- Outputs: 成功/失败、延迟、可选出口 IP 与地区、稳定错误类；检查使用独立 `chk:<check_id>:out` 临时出站，不写入 `proxy_outbounds`、不改变 `ref_count`；检查不记录凭据、UUID、完整节点 URL 或目标 URL；临时资源在成功或失败后都被删除。
 
 ### REQ-PROXY-014
 
 - The system MUST map engine and upstream failures to stable error classes, including configuration invalid, engine unavailable, authentication failure, TLS/REALITY failure, DNS failure, connection refused, timeout, and protocol unsupported.
 - Inputs: 配置检查、引擎退出、出站错误、超时。
-- Outputs: 稳定错误码与可读消息；UI 可区分配置、引擎、节点和目标站点问题；不泄露秘密。
+- Outputs: 稳定错误码与可读消息：`PROXY_CONFIG_INVALID`、`PROXY_ENGINE_*`、`PROXY_AUTH_FAILED`、`PROXY_TLS_FAILED`、`PROXY_DNS_FAILED`、`PROXY_CONNECTION_REFUSED`、`PROXY_TIMEOUT`、`UNSUPPORTED_PROTOCOL`；UI 可区分配置、引擎、节点和目标站点问题；不泄露秘密。
 
 ### REQ-PROXY-015
 

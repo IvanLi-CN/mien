@@ -20,7 +20,7 @@ Mien 同时发布 macOS DMG 和 Docker 镜像，未来还需要让多个消费�
 - `Version Policy` 为 `mien-semver-v1`：SemVer stable，trusted baseline 来自最新公开、非 draft、非 prerelease GitHub Release；首个 release 只允许 explicit `0.1.0`。
 - workflow 在 reservation 前解析 canonical version，并绑定 `policy_id`、`release_target`、`canonical_version`、`source_sha`、`reservation_id`、artifact digest 和 publication target。
 - 在构建前创建 GitHub Release draft 作为 durable reservation；draft 使用 `vX.Y.Z` 作为 tag name，但不创建公开 tag。同 version、同 source 复用；同 version、不同 source 冲突。
-- `CI Main / verify` 和 `CI PR / required` 是发布前置条件；release source 必须是 `main` 上的正常 PR 合并结果。release workflow 不直接写 `main`。
+- 产生目标 `main` SHA 的 merged PR 必须通过 `CI PR / required`，目标 SHA 本身必须通过 `CI Main / verify`；release source 必须是 `main` 上的正常 PR 合并结果。release workflow 不直接写 `main`。
 - Release 是独立阶段：draft 只接收已验证产物；所有 digest、checksum、SBOM、AdHoc 签名和更新清单通过后，才创建或验证 tag 并公开 GitHub Release。
 - tag 只在 Release 阶段创建或验证；已存在 tag 时必须验证 peeled commit，指向不同 source 则停止，不改写。
 - 失败重跑使用相同 `release_target` 和相同 `source_sha`，读取已有 reservation，补齐缺失步骤；不重新计算 baseline，不创建 successor，不改变版本或 channel。

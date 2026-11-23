@@ -26,7 +26,7 @@ CREATE TABLE schema_migrations (
 
 CREATE TABLE groups (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -62,7 +62,10 @@ CREATE TABLE profiles (
   kernel_version TEXT NOT NULL,
   proxy_id TEXT REFERENCES proxies(id) ON DELETE SET NULL,
   mode TEXT NOT NULL DEFAULT 'headful' CHECK (mode IN ('headful','headless','pseudo_headful')),
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived','deleted')),
+  start_url TEXT,
+  window_json TEXT,
+  automation_api INTEGER NOT NULL DEFAULT 0 CHECK (automation_api IN (0,1)),
   runtime_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -171,6 +174,18 @@ CREATE TABLE sessions (
 
 CREATE INDEX idx_sessions_expires ON sessions(expires_at);
 
+CREATE TABLE event_tickets (
+  ticket_hash TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+  token_id TEXT REFERENCES api_tokens(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL,
+  CHECK (session_id IS NOT NULL OR token_id IS NOT NULL)
+);
+
+CREATE INDEX idx_event_tickets_expires ON event_tickets(expires_at);
+
 CREATE TABLE event_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id TEXT NOT NULL UNIQUE,
@@ -199,12 +214,14 @@ CREATE TABLE audit_events (
   action TEXT NOT NULL,
   target TEXT NOT NULL,
   result TEXT NOT NULL CHECK (result IN ('success','failure','denied')),
+  request_id TEXT NOT NULL,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX idx_audit_created ON audit_events(created_at DESC);
 CREATE INDEX idx_audit_action_created ON audit_events(action, created_at DESC);
+CREATE INDEX idx_audit_request ON audit_events(request_id);
 
 CREATE TABLE settings (
   key TEXT PRIMARY KEY,
@@ -219,12 +236,15 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 ## 3. 约束与事务
 
 - 删除档案默认是软删除：写入 `archived_at`/`deleted_at`，不立即删除浏览器目录；永久删除必须是显式操作。
+- 档案生命周期使用 `profiles.status` 的 `active`/`archived`/`deleted`，运行状态只保存在 `runtimes`/`runtime_json`；`start_url`、`window_json` 和 `automation_api` 持久化启动偏好。
 - `runtimes.profile_id` 唯一，保证一个档案最多一个受监督运行时；启动/停止通过事务和档案锁串行化。
 - `proxy_outbounds.ref_count` 必须与 `runtimes` 中引用该 key 的行数一致；启动时对账并修复，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
 - 共享引擎状态是单例；`proxy_engine_state.id=1` 固定。
 - 一个平台最多一个 active 内核和一个 active 引擎；切换 active 必须在事务中完成。
 - `event_log`、`idempotency_keys`、`sessions` 和审计事件按保留策略清理；清理不得删除当前运行时所需的行。
+- `event_tickets` 只保存一次性 WebSocket 票据哈希；过期或已使用票据不得复用，按保留策略清理。
 - 幂等响应只保存非敏感响应体；如果响应包含一次性 Token 或凭据，不写入 `response_json`。
+- `groups.name` 和 `tags.name` 唯一；冲突分别返回 `GROUP_NAME_CONFLICT`/`TAG_NAME_CONFLICT`。审计记录必须带 `request_id`，用于与请求和事件关联。
 
 ## 4. 加密与数据边界
 

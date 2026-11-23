@@ -24,5 +24,6 @@
     "Headless pseudo_headful mode changes UA only; other Headless characteristics remain."
   ],
   "sandbox": {"requires_namespace_sandbox": true},
+  "network_controls": {"doh_mode": "disabled", "ipv6_mode": "block"},
   "headless_chrome_ua_patch": true
 }

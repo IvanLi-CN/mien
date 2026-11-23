@@ -2,6 +2,14 @@
 
 本文列出编码与验证前必须建立的 fixture。fixture 不提交真实代理凭据、客户数据或第三方站点截图；测试报告与二进制产物不进入代码仓库。
 
+## 0. 根目录、所有权与供应
+
+- Fixture 根目录固定为 `fixtures/`；路径按本文的 `kernel/`、`proxy/`、`network/`、`xray/`、`runtime/`、`api/`、`events/`、`db/`、`ui/` 分类。
+- 可提交：JSON、schema、探针页、期望输出和 README。
+- 不提交：内核、Xray 二进制、容器镜像、代理凭据、浏览器用户数据和测试报告。
+- 二进制和镜像由 `xtask fixtures fetch` 按 manifest SHA-256 下载或构建；缓存目录不进入 Git。
+- 每个目录的 owner 在 README 中标注；变更 fixture 必须同时更新 manifest、期望输出和引用测试。
+
 ## 1. 内核与指纹
 
 | Fixture | 内容 | 用途 |
@@ -12,6 +20,7 @@
 | `fingerprint/golden-argv/*.json` | 规格 → 确定性 argv | 纯函数 golden 测试 |
 | `fingerprint/probe/` | 本地探针页；采集 UA、UA-CH、canvas、audio、WebGL、字体、WebRTC | 稳定性与差异测试 |
 | `fingerprint/headless-ua/` | 有头、无头、伪有头的探针快照 | 验证伪有头仅改 UA |
+| `profile/export/` | 明文、加密、错误口令、篡改容器、冲突导入样例 | 导入导出与凭据移除 |
 
 ## 2. 代理节点
 
@@ -25,6 +34,8 @@
 | `proxy/trojan/` | TLS、WS 变体 | Trojan 矩阵 |
 | `proxy/hysteria2/` | QUIC、TLS、认证；允许/阻止 UDP 出站 | Hysteria2 与容器 UDP |
 | `proxy/tuic/` | 仅用于负向测试 | v1 必须拒绝 TUIC |
+| `proxy/links/` | 五种合法分享链接、错误 base64、超大和非法参数 | 分享链接导入 |
+| `proxy/wireguard/` | WireGuard peer、隧道内 DNS 和缺失 DNS 变体 | Tier B 与 DNS 限制 |
 | `proxy/invalid/` | 错误凭据、错误 TLS/REALITY、超时、不可达 | 错误分类与失败关闭 |
 | `proxy/echo/` | 返回出口 IP 与地区标记 | 代理检查 |
 
@@ -52,6 +63,7 @@
 | `xray/refcount/` | 三档案共享同一出站、不同凭据不共享 | 引用计数与连接复用 |
 | `xray/crash/` | 强杀引擎、原端口重建、重建失败 | 故障关闭与恢复 |
 | `xray/api-boundary/` | 非回环 API/入站探测 | API 与入站只绑定回环 |
+| `engine/xray-core/` | 锁定的 Xray 二进制与 SHA-256/manifest | 引擎校验与历史版本 |
 
 ## 5. 运行模式
 
@@ -74,6 +86,7 @@
 | `events/*.json` | 每个事件类型的合法/非法实例 | 事件 schema 与回放 |
 | `db/migrations/` | 空库、旧 schema、迁移中断、恢复 | 迁移与完整性 |
 | `db/restore/` | 备份、恢复、主密钥缺失 | 数据恢复 |
+| `ui/` | viewport、locale、视觉基线、axe 配置 | UI、可访问性与响应式 |
 
 ## 7. 证据与命名
 

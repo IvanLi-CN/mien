@@ -37,7 +37,7 @@ Mien 的操作表面是一个深色、空间化的工作环境，不是后台管
 | `--raised` | `#171C25` | 浮层、选中项、需要再抬一层的表面 |
 | `--ink` | `#F4F7FC` | 主文本、标题 |
 | `--muted` | `#8E97A8` | 次要文本、说明 |
-| `--faint` | `#6E7889` | 证据标签、页脚、低优先级元数据 |
+| `--faint` | `#7C8696` | 证据标签、页脚、低优先级元数据；在 8–10px 下仍满足 AA |
 | `--line` | `rgba(255,255,255,.09)` | 卡片与结构边界 |
 | `--line-soft` | `rgba(255,255,255,.055)` | 分隔线、内部分区 |
 
@@ -116,7 +116,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 - 侧轨从上到下：品牌、Spaces 列表、底部工具、全局状态。
 - 当前 Space 使用身份渐变底，不增加粗色条或外发光边框。
 - 每个 Space 显示身份 orb、名称与档案计数；不显示运行中数量，避免与全局状态重复。
-- 底部工具为 Proxies、Kernels、Activity、Settings；全局状态只出现一次。
+- 底部工具为 Proxies、Kernels、Activity、Settings；侧轨底部是唯一可交互全局状态入口，页脚只显示只读聚合计数与 fail-closed 摘要。
 
 ### Live sessions
 
@@ -181,7 +181,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 **Seed aura.** 每个 profile 根据种子与 Space 生成确定性的 orb 与角部 aura。Aura 让档案可辨认，不表示运行状态；同一档案的 aura 必须跨列表、详情与重开应用保持一致。
 
-**Proof strip.** 四段小条对应 fingerprint、proxy、runtime、isolation。已验证为 `--verified`，降级为 `--warning`，失败为 `--failed`，未运行或未知使用低透明中性色；标签必须可读。
+**Proof strip.** 四段小条对应 fingerprint、proxy、runtime、isolation，并始终显示 `FP`/`PX`/`RT`/`IS` 标签或同等持久图例。已验证为 `--verified`，降级为 `--warning`，失败为 `--failed`，未运行或未知使用低透明中性色；标签必须可读，不能只靠位置或颜色区分。
 
 **Live slab.** 大尺寸会话卡把“正在发生什么”放在第一层：名称、线路、延迟、运行时长、fingerprint、route、uptime、sparkline 与 fail-closed 文案。
 

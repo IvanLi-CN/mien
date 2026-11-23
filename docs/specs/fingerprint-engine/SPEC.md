@@ -21,7 +21,7 @@
 
 ### REQ-FP-001
 
-- The system MUST define a versioned fingerprint spec schema containing `schema_version`, `seed`, `platform`, `platform_version`, `brand`, `brand_version`, `hardware_concurrency`, `languages`, `timezone`, `window`, `spoof`, and `webrtc` fields.
+- The system MUST define a versioned fingerprint spec schema containing `schema_version`, `seed`, `platform`, `platform_version`, `brand`, `brand_version`, `hardware_concurrency`, `languages`, `timezone`, `window`, `spoof`, `webrtc`, and `network` fields.
 - Inputs: 用户编辑、预设、导入文件或复制操作。
 - Outputs: 通过 schema 校验的规格；未知字段、缺失必填字段、错误类型和越界值必须被拒绝。
 
@@ -114,6 +114,18 @@
 - The system MUST classify probe-observable traits as explicit, derived, or host-bound and MUST NOT claim control over host-bound traits.
 - Inputs: 指纹探针结果、规格、宿主环境。
 - Outputs: 测试报告按三类归因；宿主绑定字段的差异不得被误报为规格失败。
+
+### REQ-FP-017
+
+- The system MUST require `network.doh_mode=disabled` and `network.ipv6_mode=block` for proxied profiles, and MUST verify that the selected kernel manifest declares the corresponding controls before launch.
+- Inputs: 指纹规格、内核能力清单、启动参数、启动探针。
+- Outputs: 有效配置中 DoH 不绕过代理且 IPv6 直连被阻止；能力缺失或探针失败时返回稳定错误并阻止启动。
+
+### REQ-FP-018
+
+- The system MUST treat `webrtc.disable_non_proxied_udp=false` as an advanced unsafe setting, requiring explicit confirmation and an audit action before persistence.
+- Inputs: 指纹规格、确认令牌、操作者、审计上下文。
+- Outputs: 默认值为 `true`；关闭时写入 `proxy.non_proxied_udp.disable` 审计事件并在 UI 持续显示风险。
 
 ## Verification
 
@@ -212,6 +224,18 @@
 - Method: 对同一档案执行探针，按 explicit、derived、host-bound 分类比较结果。
 - covers: `REQ-FP-016`
 - Pass condition: 显式字段稳定且符合规格；派生字段在同一内核与种子下稳定；宿主绑定字段差异被正确归因。
+
+### VER-FP-017
+
+- Method: 使用声明和未声明 DoH/IPv6 控制的内核清单启动，运行 DNS/IPv6 探针，检查启动结果与错误。
+- covers: `REQ-FP-017`
+- Pass condition: 声明并生效时启动成功且无 DoH/IPv6 绕过；未声明或探针失败时拒绝启动。
+
+### VER-FP-018
+
+- Method: 尝试直接 PATCH 关闭非代理 UDP 保护，再使用高级确认写入，检查审计和 UI。
+- covers: `REQ-FP-018`
+- Pass condition: 无确认时被拒绝；确认后写入审计事件并显示风险；默认值始终为 `true`。
 
 ## Related ADRs
 

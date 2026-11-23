@@ -13,15 +13,17 @@ Mien 是一个基于 [fingerprint-chromium](https://github.com/adryfish/fingerpr
 
 Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行服务镜像；原生 `linux/arm64` 需要自行从源码构建指纹内核，不在首个发布范围内。
 
+macOS 应用使用 AdHoc 签名、不公证；首次启动会被 Gatekeeper 阻止。用户应先校验 SHA-256 或 artifact attestation，再按 [`docs/RELEASE.md`](docs/RELEASE.md) 手动放行。
+
 ## 浏览器内核基线
 
 首个发布固定使用 fingerprint-chromium `148.0.7778.215`：macOS ARM64 DMG、Linux x86_64 TAR.XZ、Windows x64 ZIP 均由上游提供。选择该版本而不是更新的 `150.0.7871.186`，原因包括上游尚无可用的 macOS 构建，以及 150 在启用 canvas 伪装时存在已复现的渲染进程崩溃与站点加载失败；148 同时具备已公开源码，便于安全审计。
 
-内核不修改、不分叉。产品通过命令行开关、能力清单、校验和与版本绑定来使用上游二进制，升级必须经过独立内核准入测试。
+首个发布不修改、不分叉内核。产品通过命令行开关、能力清单、校验和与版本绑定来使用上游二进制，升级必须经过独立内核准入测试；补丁分支只作为后续安全兜底，不属于首个发布。
 
 ## 协议引擎基线
 
-正向代理由每宿主一个共享的 [Xray-core](https://github.com/XTLS/Xray-core) 协议引擎承载，首个发布覆盖 VLESS、VMess、Shadowsocks、Trojan，并按能力清单支持 Hysteria2、WireGuard；TUIC 不进入 v1。每个运行档案有独立回环 HTTP 入站和路由，相同节点/凭据共享出站与连接池；Chromium 不接触代理凭据。Xray-core 以 MPL-2.0 分发，发布物必须保留许可证与来源信息。
+正向代理由每宿主一个共享的 [Xray-core](https://github.com/XTLS/Xray-core) 协议引擎承载，首个发布覆盖 HTTP、HTTPS、SOCKS5、VLESS、VMess、Shadowsocks、Trojan，并按能力清单支持 Hysteria2、WireGuard；TUIC 不进入 v1。每个运行档案有独立回环 HTTP 入站和路由，相同节点/凭据共享出站与连接池；Chromium 不接触代理凭据。Xray-core 以 MPL-2.0 分发，发布物必须保留许可证与来源信息。
 
 ## 当前状态
 
@@ -72,7 +74,7 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 - 指纹内核不能凭空创造宿主不存在的显示属性。`screen.width`、`screen.height`、`devicePixelRatio` 与字体枚举仍受宿主显示器和已安装字体影响；跨操作系统画像只能做到尽力对齐，不能承诺与真实设备完全一致。
 - 无头模式不是有头模式的等价替代。fingerprint-chromium 只处理了部分 Headless 特征，其余特征仍可能暴露；无头档案会被标记为“降低保证”。伪有头只把 `HeadlessChrome` UA 改为 `Chrome`，其他 Headless 特征仍保留。
-- Chromium 不支持代理认证和 VLESS/VMess/Shadowsocks 等协议。产品运行单实例共享 Xray 引擎，为每个运行档案创建回环 HTTP 入站和路由；相同节点/凭据复用出站与连接池，凭据不进入浏览器进程。
+- Chromium 的 `--proxy-server` 不能携带代理认证凭据，也不支持 VLESS/VMess/Shadowsocks 等协议。产品运行单实例共享 Xray 引擎，为每个运行档案创建回环 HTTP 入站和路由；相同节点/凭据复用出站与连接池，凭据不进入浏览器进程。
 - Xray-core 以 MPL-2.0 分发。产品将其作为独立进程使用，发布物保留许可证与来源信息；共享引擎是网络单点，必须失败关闭并在崩溃后按原端口重建。
 - 指纹浏览器提供环境隔离与指纹一致性，不提供匿名性保证，也不承诺绕过任何平台的风控或服务条款。
 - 上游项目明确不提供技术支持，源码按延迟策略发布。内核缺陷只能通过版本准入、沙箱、功能降级或自建补丁分支应对。

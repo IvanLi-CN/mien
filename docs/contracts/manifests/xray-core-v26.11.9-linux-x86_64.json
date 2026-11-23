@@ -8,10 +8,11 @@
   "connection_reuse": true,
   "protocols": {
     "http": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none", "tls"]},
+    "https": {"tier": "A", "transports": ["tcp"], "tls_modes": ["tls"]},
     "socks5": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"]},
     "vless": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls", "reality"]},
     "vmess": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls"]},
-    "shadowsocks": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"]},
+    "shadowsocks": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"], "methods": ["aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm"], "plugins": []},
     "trojan": {"tier": "A", "transports": ["tcp", "ws"], "tls_modes": ["tls"]},
     "hysteria2": {"tier": "B", "transports": ["quic"], "tls_modes": ["tls"], "notes": "Requires UDP egress."},
     "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"]}

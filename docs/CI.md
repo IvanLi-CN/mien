@@ -71,7 +71,8 @@ flowchart TD
   Docker --> S
   S --> A[attest]
   A --> P[release: tag + 公开 GitHub Release]
-  P --> X[verify-release]
+  P --> PD[promote-docker]
+  PD --> X[verify-release]
 ```
 
 | Job | 内容 | 失败处理 |
@@ -80,10 +81,11 @@ flowchart TD
 | `reserve` | 创建或复用 draft GitHub Release，写入 policy、target、version、source SHA 和 run ID | 不构建；同 version 不同 source 直接冲突 |
 | `test` | 调用 `ci-reusable.yml`，`profile=release`，运行全量测试与 e2e | 不构建发布物 |
 | `macos-arm64` | 在 `release` environment 中构建 Tauri 应用，下载并校验内核/Xray，AdHoc 签名，生成 DMG、SBOM、许可证与更新清单 | 上传失败诊断；不进入 stage-release |
-| `docker-amd64` | `buildx` 构建 `linux/amd64`，Trivy，SBOM，推送 GHCR digest，cosign keyless 签名 | 不进入 stage-release |
+| `docker-amd64` | `buildx` 构建 `linux/amd64`，以 `staging-<run_id>` 临时 tag 推送并记录 digest；Trivy、SBOM、cosign keyless 签名 | 不进入 stage-release |
 | `stage-release` | 汇总产物到 draft，校验 SHA-256/digest，写入 `release-identity.json` | draft 保持未公开；不创建 tag |
 | `attest` | 对 DMG 和容器 digest 生成 GitHub artifact attestation；仓库计划不支持时显式跳过并记录，退回 SHA-256 校验 | attestation 已启用但失败则不公开 release |
 | `release` | 校验 draft identity 后创建或验证 tag，公开 GitHub Release | 不公开；保留 draft 供同 identity recovery |
+| `promote-docker` | 把已验证 digest 提升为 `ghcr.io/<owner>/mien-server:vX.Y.Z` 并记录最终 digest | 不公开 release，或标记 release 无效 |
 | `verify-release` | 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity | 标记 release 无效；不得静默忽略 |
 
 tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑；先读取已有 reservation，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
@@ -99,7 +101,7 @@ macOS job 的顺序固定为：
 3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。
 4. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`。
 5. 生成 DMG、`SHA256SUMS`、SBOM、许可证和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
-6. 在干净的 macOS 13+ 机器下载发布资产，先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级。
+6. 在 `release` job 之前，由维护者在干净的 macOS 13+ 机器下载同一 run 的 DMG 和 `SHA256SUMS`（Actions artifact），先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级；结果写入 draft 正文，未通过不得公开。
 
 `spctl --assess` 在 AdHoc 应用上预期失败，不作为 release gate 的成功条件；CI 记录这个预期结果。禁止在应用、安装器或发布脚本中自动移除 `com.apple.quarantine`，也禁止建议用户关闭系统级 Gatekeeper。
 
@@ -136,13 +138,14 @@ PR workflow 默认 `permissions: contents: read`；release workflow 按 job 最�
 | `macos-arm64` | `contents: read`；使用 `release` environment 读取更新签名密钥 |
 | `docker-amd64` | `contents: read`、`packages: write`、`id-token: write` |
 | `stage-release` | `contents: write` |
-| `attest` | `contents: read`、`attestations: write`、`id-token: write` |
-| `release` | `contents: write` |
-| `verify-release` | `contents: read` |
+| `attest` | `contents: read`、`packages: write`、`attestations: write`、`id-token: write` |
+| `release` | `contents: write`；绑定 `release` environment |
+| `promote-docker` | `contents: read`、`packages: write`、`id-token: write` |
+| `verify-release` | `contents: write`、`issues: write` |
 
-`release` environment 的人工批准在 `macos-arm64` 入口执行；`release` job 依赖该 job，因此公开 release 前必然经过批准。
+`release` environment 的人工批准在 `macos-arm64` 入口执行；`release` job 也绑定同一 `release` environment，确保单独 re-run 不能绕过批准。
 
-实现时必须验证单独 re-run `release` job 仍受 `release` environment 或等价保护规则约束；若 GitHub 的 re-run 路径可以绕过环境审批，则把 `release` job 也绑定到受保护 environment，不能只依赖上游 job 的历史批准。
+`verify-release` 失败时把 release 标记为 `prerelease` 并在正文追加 `RELEASE_INVALID`，同时创建维护者 issue；不得删除资产或静默成功。
 
 release environment 仅保存：
 
@@ -173,7 +176,7 @@ fork PR 不获得任何 release secret；不使用 `pull_request_target` 执行�
 - 只有已确认的瞬态网络故障可以重试；flaky 测试、锁竞争和超时按缺陷处理。
 - release 在 `release` job 前失败时，draft reservation 保留，不创建公开 release；用同一 target、同一 source SHA 重跑，复用已绑定 canonical version，不重新计算 successor。
 - `stage-release` 只写 draft；全部资产、identity 和 attestation 验证通过后，`release` 才创建或验证 tag 并公开。公开后 `verify-release` 失败时，立即标记 release 无效并通知维护者。
-- 回滚使用上一版本 release 或同 identity 的修正构建；不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
+- 回滚只使用上一版本 release；需要修正构建时必须选择新的 `release_target`，产生新的 version 和 identity。不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
 
 ## 10. 实施顺序
 

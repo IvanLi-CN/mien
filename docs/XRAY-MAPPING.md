@@ -120,7 +120,7 @@ Chromium 参数：
 | Shadowsocks | `shadowsocks` | server、port、method、password | 2022 方法按清单 |
 | Trojan | `trojan` | server、port、password；TLS、WS | TLS 必须 |
 | Hysteria2 | `hysteria` | `version: 2`、address、port；hysteria transport、auth、TLS | 需要 UDP 出站 |
-| WireGuard | `wireguard` | peer 公钥、私钥、endpoint、allowed IPs | Tier B，按清单 |
+| WireGuard | `wireguard` | peer 公钥、私钥、endpoint、allowed IPs；隧道内 DNS | Tier B；无隧道 DNS 时必须标注 `LIMITATION_LOCAL_DNS` |
 
 共享 constraints：
 
@@ -131,11 +131,12 @@ Chromium 参数：
 
 ## 6. 路由与 DNS
 
-- 每个运行档案一条路由规则：`inboundTag: ["rt:<id>:in"]` → `outboundTag: "out:<key>"`。
+- 每个运行档案一条路由规则：`inboundTag: ["rt:<id>:in"]` → `outboundTag: <outbound_key>`；出站 tag 与 `proxy_outbounds.outbound_key` 完全相同，不重复添加 `out:` 前缀。
 - 路由规则使用 `shouldAppend=false`，确保运行档案规则在默认 block 之前；准入确认 Xray v26.11.9 的 `AddRule` 顺序。
 - 默认路由为 `block`；未匹配、引擎故障或规则缺失时必须断网，不回退直连。
 - 目标域名由 Xray 出站或代理内 DNS 解析；只有代理节点主机名允许本地 bootstrap 解析。
-- DNS-over-HTTPS 绕过被禁用；IPv6 无法代理时阻止；WebRTC 非代理 UDP 由浏览器 `--disable-non-proxied-udp` 阻止。
+- DoH 由 `network.doh_mode=disabled` 和内核能力清单声明的启动开关关闭；IPv6 由 `network.ipv6_mode=block` 和引擎路由/浏览器策略阻止；启动探针验证生效值。
+- WebRTC 非代理 UDP 由浏览器 `--disable-non-proxied-udp` 阻止；关闭该保护必须经过高级确认并写入 `proxy.non_proxied_udp.disable` 审计事件。
 - Hysteria2 的 QUIC/UDP 仅用于引擎到节点，不放宽浏览器非代理 UDP 策略。
 
 ## 7. 代理检查
@@ -143,10 +144,12 @@ Chromium 参数：
 代理检查不得启动第二个 Xray 进程。网关在共享引擎中临时创建：
 
 1. 一个回环 HTTP 检查入站；
-2. 一个临时出站（或复用相同 key 的出站，并临时增加引用）；
+2. 一个独立 `chk:<check_id>:out` 临时出站，不写入 `proxy_outbounds`、不增加 `ref_count`；
 3. 一条检查路由规则；
 4. 通过 HTTP 请求访问配置的回显端点；
-5. 无论成功或失败都删除临时规则和入站，并释放出站引用。
+5. 无论成功或失败都删除临时规则、入站和临时出站。
+
+检查路径不得修改运行档案的 `proxy_outbounds.ref_count`；该计数只表示引用该出站的运行档案数。
 
 检查结果只返回延迟、出口 IP（配置回显时）、地区、错误类和稳定错误码。
 
@@ -175,6 +178,8 @@ Chromium 参数：
 - [ ] `AddInbound` / `RemoveInbound` / `AddOutbound` / `RemoveOutbound` 在 v26.11.9 上可用。
 - [ ] `AddRule` / `RemoveRule` 可用，且 `shouldAppend=false` 的规则顺序符合默认 block 预期。
 - [ ] 每运行档案 HTTP 入站只绑定回环；不同档案端口/标签隔离。
+- [ ] DoH 关闭和 IPv6 阻止的实际开关、能力清单字段与启动探针一致。
+- [ ] WireGuard 目标域名在隧道内解析，或明确标注 `LIMITATION_LOCAL_DNS`。
 - [ ] 相同 `outbound_key` 的档案共享出站，连接数明显低于每档案独立出站。
 - [ ] mux/QUIC 复用能力与协议矩阵一致。
 - [ ] Hysteria2 通过 Xray `hysteria` v2 配置可连接；TUIC 被拒绝。

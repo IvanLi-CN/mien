@@ -10,7 +10,7 @@
 
 ## Implementation Coverage
 
-- Requirement coverage: 计划由 `mien-core` 的 fingerprint 模块覆盖 `REQ-FP-001` 至 `REQ-FP-016`；能力清单由内核注册表提供，探针由测试工具提供。
+- Requirement coverage: 计划由 `mien-core` 的 fingerprint 模块覆盖 `REQ-FP-001` 至 `REQ-FP-018`；能力清单由内核注册表提供，探针由测试工具提供。
 - Verification commands: 尚未建立；实现后使用 golden argv fixture、schema 属性测试、种子冲突测试和内核准入探针。
 - Rollout facts: 首个实现基于 fingerprint-chromium 148 的能力清单；宿主绑定字段不进入规格。
 

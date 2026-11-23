@@ -32,7 +32,7 @@
 发布门禁：
 
 - `PRD-ACC-001` 至 `PRD-ACC-010` 有当前证据。
-- `CI PR / required` 在目标提交上通过；目标 `main` SHA 存在成功的 `CI Main / verify`。
+- 产生目标 `main` SHA 的 merged PR 已通过 `CI PR / required`；目标 SHA 本身存在成功的 `CI Main / verify`。
 - `release_target` 合法，trusted baseline 可读取，canonical version 严格大于 baseline。
 - draft reservation 的 version/source 与本次 target 一致；同 version 不同 source 必须冲突。
 - 内核准入 `KERNEL-001` 至 `KERNEL-010` 通过。
@@ -41,7 +41,7 @@
 - Docker 非 root、只读根、无 Docker socket、沙箱状态可确认。
 - 管理 API、运行档案入站、CDP 和 noVNC 不暴露到非必要网络。
 - 错误码、事件 schema、OpenAPI、数据库迁移与导出 schema 校验通过。
-- macOS 应用、嵌套内核与 Xray-core 的 AdHoc 签名通过 `codesign --verify`；`Signature=adhoc`；不要求公证或 Gatekeeper 成功。
+- macOS 应用、嵌套内核、Xray-core 和 frameworks 的 AdHoc 签名通过 `codesign --verify --deep --strict`；`--options runtime` 与 `Signature=adhoc` 已断言；不要求公证或 Gatekeeper 成功。
 - `SHA256SUMS`、SBOM、许可证、更新清单和 attestation（支持时）完整。
 - Docker 镜像扫描无未接受的高危/严重漏洞；镜像 digest 固定并签名。
 - MPL-2.0、BSD-3-Clause 与容器内 GPL 组件许可复核通过。
@@ -54,9 +54,9 @@
 2. 下载并校验 fingerprint-chromium 148 DMG；解压内核；计算最终二进制 SHA-256。
 3. 下载并校验 Xray-core v26.11.9 macOS ARM64；计算最终二进制 SHA-256。
 4. 先对内核、Xray 和 frameworks 做 AdHoc 签名，再签应用：`codesign --force --sign - --timestamp=none --options runtime`；不使用 `--deep` 代替逐个签名。
-5. 运行 `codesign --verify --deep --strict --verbose=2`；用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`。`spctl --assess` 预期拒绝，不作为失败条件。
+5. 运行 `codesign --verify --deep --strict --verbose=2`；用 `codesign -dv --verbose=4` 断言 `Signature=adhoc` 和 `--options runtime`。`spctl --assess` 预期拒绝，不作为失败条件。
 6. 生成 DMG、`SHA256SUMS`、SBOM、许可证、来源信息和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
-7. 在干净 macOS 13+ 机器下载发布资产，先校验 SHA-256 或 attestation，再按发布说明手动放行；测试首次启动和升级。
+7. 在 `release` job 前，在干净 macOS 13+ 机器下载同一 run 的 DMG 与 `SHA256SUMS`，先校验 SHA-256，再按发布说明手动放行；测试首次启动和升级，结果写入 draft 正文，未通过不得公开。
 8. 不执行 `notarytool`、`stapler` 或开发者证书签名；不保存 Apple 证书、Apple ID、Team ID 或 App-Specific Password。
 9. 保留上一版本用于回滚。
 
@@ -89,9 +89,10 @@
 5. `stage-release` 把产物写入 draft，校验 SHA-256/digest，写入 `release-identity.json`。
 6. `attest` 为 DMG 和容器 digest 生成 GitHub artifact attestation（计划支持时）。
 7. `release` 校验 identity 后创建或验证 tag，公开 release。
-8. `verify-release` 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity。
+8. `promote-docker` 把 staging digest 提升为 `vX.Y.Z` GHCR tag。
+9. `verify-release` 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity；失败时标记 release 无效。
 
-失败后用相同 `release_target` 和相同 `source_sha` 重跑，复用已绑定 canonical version、draft reservation 和已记录 digest；不重新分配版本，不创建 successor，不改写已有 tag。release 资产不可变，回滚使用上一版本 release，不覆盖已发布文件。
+失败后用相同 `release_target` 和相同 `source_sha` 重跑，复用已绑定 canonical version、draft reservation 和已记录 digest；不重新分配版本，不创建 successor，不改写已有 tag。需要修正构建时选择新的 `release_target`，产生新 version；release 资产不可变，回滚使用上一版本 release，不覆盖已发布文件。
 
 ## 6. 回滚与安全响应
 

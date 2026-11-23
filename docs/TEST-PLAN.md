@@ -56,6 +56,13 @@
 | UI-006 | 限制披露 | host-bound 显示与字体限制、无头降级与 fail-closed 状态在界面可见；不出现“不可检测”“绝对安全”等承诺 |
 | UI-007 | 视觉系统 | 身份渐变只用于 Space、orb 与 aura；状态色只用于状态；无玻璃、霓虹、纯黑纯白大面积底色或等宽四列卡片墙 |
 | UI-008 | 运行模式选项 | 模式选项显示“有头 / 无头 / 伪有头”；无头与伪有头显示降低保证；伪有头明确只覆盖 UA，不暗示有头等价 |
+| UI-009 | `/profiles/new` 表单状态 | 加载/重复提交阻止；字段错误定位；未保存离开确认；凭据不回显；能力缺失时保存/启动被阻断且原因可见 |
+| UI-010 | `/profiles/:id` 详情状态 | 四段 proof、`reduced_assurance`、`ua_scope`、启动/停止/取消、crashed 重试和共享引擎故障可见；不需要打开详情才能判断哪项失败 |
+| UI-011 | `/proxies` | 类型化字段、TUIC 拒绝、分享链接只生成草稿、`credential_set` 不回读、`RESOURCE_IN_USE` 提示、检查错误类可区分 |
+| UI-012 | `/kernels` | 展示 `flags`、`headless_chrome_ua_patch`、已知问题、引擎 license/source_url；切换确认和连接池重置提示 |
+| UI-013 | `/activity` | `runtime.*`/`proxy.*` 精确事件名；按 `profile_id`、`type`、`from`/`to` 筛选；空状态和脱敏可见 |
+| UI-014 | 导入/导出 | Import 入口、明文/加密选择、口令、凭据移除提示、冲突处理和导出动作可用；错误字段可定位 |
+| UI-015 | 可访问性自动化 | 每个 surface 通过 axe 或等价扫描；对比度阈值、角色/名称、200% zoom、禁用原因和 reduced motion 有断言 |
 
 ## 4. 内核准入
 
@@ -111,6 +118,8 @@
 | FP-008 | 无头标记 | API 与 UI 显示降低保证；有头不被静默降级 |
 | FP-009 | 子区域读回 | 记录与完整读回差异，不崩溃 |
 | FP-010 | 设备内存 | 记录内核返回的 8/16/32 与已知不常见值的差异 |
+| FP-011 | DoH/IPv6 防护 | 启动后 DoH 不绕过代理、IPv6 直连被阻止；能力缺失或探针失败时拒绝启动 |
+| FP-012 | 非代理 UDP 关闭审计 | 默认阻止；无高级确认写入被拒绝；确认后产生 `proxy.non_proxied_udp.disable` 审计 |
 
 ## 6. 运行时与生命周期
 
@@ -168,7 +177,7 @@
 | PROXY-017 | IPv6 | 双栈与 IPv6-only 目标不产生直连 IPv6；不支持 IPv6 的节点明确报错 |
 | PROXY-018 | DoH 绕过 | 安全 DNS 不绕过代理；无法验证时启动被阻止或标记 |
 | PROXY-019 | 失败关闭 | 引擎关闭、节点断开、错误凭据、错误 TLS/REALITY 均导致网络失败，无直连 |
-| PROXY-020 | 代理检查 | 成功/失败、延迟、出口 IP、错误分类正确；检查通过共享引擎临时资源执行并清理 |
+| PROXY-020 | 代理检查 | 成功/失败、延迟、出口 IP 正确；认证、TLS、拒绝连接、超时返回不同稳定错误码；检查使用独立临时出站并清理，不改变 ref_count |
 | PROXY-021 | 并发与资源 | 高并发、空闲、半关闭连接下无 FD 或内存持续增长 |
 
 ### 7.4 秘密与边界
@@ -204,20 +213,27 @@
 | --- | --- | --- |
 | API-001 | 未认证访问 | 非健康端点返回 401 |
 | API-002 | 会话与 Token | 登录成功；Token 只显示一次；撤销立即生效 |
-| API-003 | Scope | 越权操作返回 403 |
+| API-003 | Scope | 每个操作声明 scope；越权操作返回 403；低权限 Token 不能创建更高权限 Token |
 | API-004 | CSRF | 跨源、缺失或错误 CSRF 的写请求被拒绝 |
 | API-005 | 登录限流 | 超限返回 429，消息不泄露用户是否存在 |
 | API-006 | 错误结构 | 统一 code/message/request_id，无敏感值 |
 | API-007 | 分页 | 游标无重复遗漏，页大小上限生效 |
 | API-008 | 幂等 | 相同键返回原结果，冲突键 409 |
-| API-009 | WebSocket | 无 URL Token；断线可按 after 补齐；心跳有效 |
-| API-010 | 健康与就绪 | 语义分离，响应无敏感配置 |
+| API-009 | WebSocket | 一次性票据只能使用一次；无长期 URL Token；Cookie 升级校验 Origin；断线可按 after 补齐；心跳有效 |
+| API-010 | 健康与就绪 | 语义分离；纯 headless 部署不要求 Xvfb；响应无敏感配置 |
 | API-011 | 请求限制 | 超大/畸形/慢请求被拒绝，内存不增长 |
-| API-012 | 审计 | 关键操作有事件，敏感字段脱敏 |
+| API-012 | 审计 | 关键操作有事件；`request_id`、actor、target 完整；敏感字段脱敏 |
 | API-013 | 静态 UI 安全 | CSP、nosniff、Referrer-Policy、frame-ancestors 生效 |
 | API-014 | 代理 API | CRUD、分享链接导入、检查可用；非法协议/参数被拒绝；响应脱敏 |
-| API-015 | 桌面 IPC 契约 | 档案、代理、运行时、内核命令与 HTTP 语义一致；错误结构一致；桌面无本地 HTTP 管理端口 |
+| API-015 | 桌面 IPC 契约 | 档案、代理、运行时、内核命令与 HTTP 语义一致；错误结构一致；桌面默认无本地 HTTP 管理端口 |
 | API-016 | 桌面事件回放 | 刷新 WebView 后补齐遗漏事件；按标识去重；顺序正确；无敏感字段 |
+| API-017 | 首次登录改密 | 初始密码登录返回 `must_change_password=true`；未改密写操作 403；改密后旧会话失效 |
+| API-018 | 查看器端点 | 默认 `VIEWER_NOT_AVAILABLE`；启用后返回一次性 URL，二次使用失败 |
+| EXPORT-001 | 明文导出 | 默认导出不含代理凭据、Token、Cookie；schema 可重新校验 |
+| EXPORT-002 | 加密导出/导入 | 正确口令可完整恢复配置；错误或篡改口令被拒绝；密文不可读 |
+| EXPORT-003 | 导入冲突 | 冲突项在确认后分配新 ID，否则返回 `PROFILE_IMPORT_CONFLICT` |
+| EXPORT-004 | 导入安全 | 超大、错误 schema、路径穿越、符号链接和恶意代理被拒绝 |
+| EXPORT-005 | 服务端传输 | Docker Web UI 可通过 import/export 端点操作；独立大小上限和 CSRF 生效 |
 | SEC-001 | 密钥静态保护 | 代理凭据字段为密文；桌面钥匙串/服务端文件权限正确 |
 | SEC-002 | 路径穿越 | 导入、档案目录、符号链接均不能越界 |
 | SEC-003 | 恶意导入 | 超大、错误 schema、非法代理、XSS 字符串被拒绝或转义 |
@@ -245,15 +261,15 @@
 
 | 编号 | 用例 | 通过条件 |
 | --- | --- | --- |
-| PKG-001 | macOS AdHoc 签名 | 应用、嵌套内核与 Xray-core 的 `codesign --verify` 通过；`codesign -dv` 显示 `Signature=adhoc`；不要求 Developer ID |
-| PKG-002 | Gatekeeper 行为 | 干净机器首次启动被阻止；发布说明提供 SHA-256 校验和手动放行步骤；不要求无提示打开 |
+| PKG-001 | macOS AdHoc 签名 | 应用、嵌套内核、Xray-core 和 frameworks 通过 `codesign --verify --deep --strict`；`--options runtime` 与 `Signature=adhoc` 已断言；不要求 Developer ID |
+| PKG-002 | Gatekeeper 行为 | 从浏览器下载的 DMG 保留 quarantine 后首次启动被阻止；发布说明提供 SHA-256 校验和手动放行步骤；不要求无提示打开 |
 | PKG-003 | 自动更新 | Tauri 更新清单签名有效，拒绝未签名或降级包；不依赖 Apple 签名或公证 |
 | PKG-004 | Docker 构建 | 多阶段构建可复现，镜像非 root，健康检查有效 |
 | PKG-005 | Docker 数据卷 | 删除并重建容器后数据保留 |
 | PKG-006 | SBOM 与许可 | 镜像和应用包含 SBOM、BSD-3-Clause、MPL-2.0 许可与来源信息 |
 | PKG-007 | 漏洞扫描 | 无未接受的高危/严重漏洞 |
 | PKG-008 | 发布说明 | 列出内核缺陷、代理协议矩阵、节点 bootstrap 泄漏、无头限制、跨系统限制、显示与字体限制 |
-| PKG-009 | GitHub Actions 发布 | 手动 `release_target` 仅在 main 已绿时发布；draft reservation 绑定 version/source；产物含 SHA-256SUMS、SBOM、许可证与支持的 attestation；不存在 Apple 证书或公证 secret |
+| PKG-009 | GitHub Actions 发布 | 手动 `release_target` 仅在 main 已绿时发布；draft reservation 绑定 version/source；产物含 SHA-256SUMS、SBOM、许可证、`release-identity.json` 与支持的 attestation；不存在 Apple 证书或公证 secret |
 
 ## 11. 缺陷分级与发布门禁
 
@@ -270,8 +286,9 @@
 - PRD-ACC-001 至 PRD-ACC-010 全部有证据。
 - 内核准入 KERNEL-001 至 KERNEL-010 通过。
 - 协议引擎准入 ENGINE-001 至 ENGINE-009 通过，Tier A 协议矩阵、共享出站与分享链接导入通过。
+- EXPORT-001 至 EXPORT-005 通过；UI-001 至 UI-015 通过。
 - 指纹、代理泄漏、认证与容器基线测试全部通过。
-- 桌面管理 UI 无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
+- 桌面管理 UI 默认无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
 - 已知限制在发布说明和 UI 中可见。
 
 ## 12. 证据与报告

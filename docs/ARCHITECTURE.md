@@ -191,13 +191,14 @@ macOS 的 `<data-root>` 为 `~/Library/Application Support/Mien`，日志位于 
 stateDiagram-v2
   [*] --> stopped
   stopped --> starting: start
-  starting --> running: CDP ready
+  starting --> running: CDP ready / process + inbound + grace
   starting --> failed: validation / spawn / timeout
   running --> stopping: stop
   running --> crashed: kernel exit
   stopping --> stopped: graceful exit
   stopping --> stopped: forced kill after timeout
   crashed --> starting: retry with backoff
+  crashed --> stopped: stop/cleanup
   failed --> stopped: cleanup
   stopped --> [*]
 ```
@@ -240,7 +241,7 @@ sequenceDiagram
   Core-->>UI: 状态事件 + cdp_url / proxy_port
 ```
 
-启动流程是串行的资源获取过程。共享引擎必须先于内核就绪；出站、入站和路由规则按顺序创建，任何一步失败都回滚并返回稳定错误码。代理检查失败默认允许启动但标记警告；内核校验失败、引擎校验失败、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。`headless` 使用 `--headless=new`；`pseudo_headful` 还要求内核能力清单声明 `headless_chrome_ua_patch=true`，只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
+启动流程是串行的资源获取过程。先写入 `starting` 记录；代理模式在共享引擎就绪后创建出站、入站和路由，直接模式跳过这些资源并保留 DoH/IPv6/UDP 防护。任何一步失败都回滚并返回稳定错误码。代理检查失败默认允许启动但标记警告；内核校验失败、引擎校验失败、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。`headless` 使用 `--headless=new`；`pseudo_headful` 还要求内核能力清单声明 `headless_chrome_ua_patch=true`，只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
 
 ### 7.2 停止档案
 
@@ -278,7 +279,7 @@ sequenceDiagram
 
 ### 7.4 代理检查
 
-代理检查通过共享引擎临时创建的回环入站、路由规则和出站发起独立短连接，检查完成后立即删除临时资源；不启动第二个引擎。检查内容包括协议握手、TLS/REALITY、认证、节点可达性、出口 IP、延迟和可选地区信息。检查结果写入 `proxies.last_check_json`，不作为启动的硬阻塞，除非用户配置了“检查失败禁止启动”。
+代理检查通过共享引擎临时创建的回环入站、路由规则和独立 `chk:<check_id>:out` 出站发起短连接，检查完成后立即删除临时资源；不启动第二个引擎，不写入 `proxy_outbounds`，不改变运行档案的 `ref_count`。检查内容包括协议握手、TLS/REALITY、认证、节点可达性、出口 IP、延迟和可选地区信息。检查结果写入 `proxies.last_check_json`，不作为启动的硬阻塞，除非用户配置了“检查失败禁止启动”。
 
 ## 8. 指纹流水线
 
@@ -346,9 +347,10 @@ flowchart LR
     "disable-spoofing": {"values": ["font", "audio", "canvas", "clientrects", "gpu"]}
   },
   "seed_derived": ["canvas", "audio", "webgl", "device_memory", "gpu_model"],
-  "known_issues": ["#102", "#108"],
+  "known_issues": ["#102"],
   "headless_chrome_ua_patch": true,
-  "sandbox": {"requires_namespace_sandbox": true}
+  "sandbox": {"requires_namespace_sandbox": true},
+  "network_controls": {"doh_mode": "disabled", "ipv6_mode": "block"}
 }
 ```
 
@@ -364,15 +366,30 @@ flowchart LR
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/login` | 服务端登录，创建会话 |
 | `POST` | `/api/v1/auth/logout` | 销毁会话 |
+| `GET` | `/api/v1/auth/session` | 当前会话与改密标记 |
+| `POST` | `/api/v1/auth/password` | 首次登录或用户主动改密 |
 | `GET` | `/api/v1/profiles` | 分页、筛选、搜索档案 |
 | `POST` | `/api/v1/profiles` | 创建档案 |
 | `GET` | `/api/v1/profiles/{id}` | 档案详情 |
 | `PATCH` | `/api/v1/profiles/{id}` | 更新档案 |
 | `DELETE` | `/api/v1/profiles/{id}` | 归档或删除 |
 | `POST` | `/api/v1/profiles/{id}/duplicate` | 复制档案 |
+| `POST` | `/api/v1/profiles/{id}/archive` | 归档档案 |
+| `POST` | `/api/v1/profiles/{id}/restore` | 恢复档案 |
+| `POST` | `/api/v1/profiles/import` | 导入档案 |
+| `GET` | `/api/v1/profiles/{id}/export` | 导出档案 |
 | `POST` | `/api/v1/profiles/{id}/start` | 启动运行时 |
 | `POST` | `/api/v1/profiles/{id}/stop` | 停止运行时 |
 | `GET` | `/api/v1/profiles/{id}/runtime` | 运行时详情 |
+| `POST` | `/api/v1/profiles/{id}/viewer` | 一次性查看器 URL |
+| `GET` | `/api/v1/groups` | 分组列表 |
+| `POST` | `/api/v1/groups` | 创建分组 |
+| `PATCH` | `/api/v1/groups/{id}` | 更新分组 |
+| `DELETE` | `/api/v1/groups/{id}` | 删除分组 |
+| `GET` | `/api/v1/tags` | 标签列表 |
+| `POST` | `/api/v1/tags` | 创建标签 |
+| `PATCH` | `/api/v1/tags/{id}` | 更新标签 |
+| `DELETE` | `/api/v1/tags/{id}` | 删除标签 |
 | `GET` | `/api/v1/proxies` | 代理列表（脱敏） |
 | `POST` | `/api/v1/proxies` | 创建代理配置 |
 | `PATCH` | `/api/v1/proxies/{id}` | 更新代理配置 |
@@ -381,7 +398,15 @@ flowchart LR
 | `POST` | `/api/v1/proxies/{id}/check` | 通过协议引擎测试代理 |
 | `GET` | `/api/v1/kernels` | 已安装内核与能力清单 |
 | `POST` | `/api/v1/kernels/{version}/activate` | 切换默认内核 |
+| `GET` | `/api/v1/engines` | 已安装协议引擎与能力清单 |
+| `POST` | `/api/v1/engines/{version}/activate` | 切换默认协议引擎 |
+| `GET` | `/api/v1/tokens` | Token 列表 |
+| `POST` | `/api/v1/tokens` | 创建 Token |
+| `DELETE` | `/api/v1/tokens/{id}` | 撤销 Token |
+| `GET` | `/api/v1/audit/events` | 审计事件 |
+| `POST` | `/api/v1/events/ticket` | 申请一次性 WebSocket 票据 |
 | `GET` | `/api/v1/events` | WebSocket 事件流 |
+| `GET` | `/api/v1/openapi.json` | 运行时 OpenAPI 文档 |
 | `GET` | `/healthz` | 存活检查 |
 | `GET` | `/readyz` | 就绪检查 |
 
@@ -449,7 +474,7 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 | 指纹规格与能力清单不符 | 拒绝启动，返回具体字段和原因。 |
 | 代理配置无效或引擎校验失败 | 拒绝启动，释放配额，保留档案数据。 |
 | 共享引擎启动或 API 就绪失败 | 拒绝启动新档案，返回稳定错误；已运行档案按引擎故障策略处理。 |
-| 内核启动后立即退出 | 状态 `crashed`，删除该档案的路由与入站，记录退出码与日志尾部，按退避策略决定是否允许重试；共享引擎继续服务其他档案。 |
+| 内核启动后立即退出 | 状态 `crashed`；由唯一 teardown 例程删除该档案的路由与入站并释放共享出站引用（恰好一次），记录退出码与日志尾部，按退避策略决定是否允许重试；共享引擎继续服务其他档案。 |
 | 共享引擎运行中退出 | 所有运行档案网络失败，不发直连回退；记录 `proxy.engine.failed`，按有界退避重启并按原端口重建；重建失败标记受影响运行时 `failed`。 |
 | CDP 在超时内未就绪 | 终止内核进程组，删除该档案的路由与入站，状态 `failed`。 |
 | 控制面崩溃 | 内核与共享引擎可能成为孤儿；下次启动对账，确认引擎归属后接管并重建或清理入站/规则。 |
@@ -492,7 +517,7 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 - 构建时从固定 URL 下载 Xray-core 发行包，校验 SHA-256，记录版本、平台、协议矩阵、许可和来源信息。
 - 引擎不提交到 Git；macOS 应用与 Docker 镜像均包含未修改的二进制、MPL-2.0 许可证与来源信息。
 - 引擎启动时使用最小引导配置；代理出站、每档案回环 HTTP 入站和路由规则通过仅绑定回环的 Xray 管理 API 动态创建。
-- 引擎升级独立于应用和内核，升级前比对能力清单并跑协议矩阵；运行中的档案不被静默替换，升级会重置共享连接池。
+- 引擎版本轴独立于应用和内核，升级前比对能力清单并跑协议矩阵；引擎随应用/镜像交付，不做运行中原地替换；运行中的档案不被静默替换，升级会重置共享连接池。
 - TUIC 不进入 v1；Hysteria2 依赖锁定版本中的 Xray 实现，并在发布准入中验证。
 
 ### 13.3 macOS
@@ -509,15 +534,15 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 - 多阶段构建：前端静态资源、Rust 服务端、运行时依赖。
 - 运行用户为非 root；`/data` 为唯一可写卷；根文件系统可只读。
 - 入口脚本负责 Xvfb、openbox、可选 noVNC 和主进程信号转发。
-- 健康检查调用 `/healthz`；就绪检查验证数据库、内核和协议引擎可用。
+- 健康检查调用 `/healthz`；就绪检查验证数据库、内核和协议引擎可用，并在当前运行模式需要显示时检查显示环境。
 - 镜像发布 `linux/amd64`；Apple Silicon 通过模拟运行，文档标注性能影响。
 - 镜像扫描、SBOM、MPL-2.0 许可与来源信息进入发布门禁。
 
 ## 14. 可观测性
 
 - 结构化日志字段：`ts`、`level`、`request_id`、`profile_id`、`runtime_id`、`event`、`error_code`。
-- 启动失败返回稳定错误码，例如 `KERNEL_CHECKSUM_MISMATCH`、`FINGERPRINT_INVALID`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT`、`PROXY_CONFIG_INVALID`、`CDP_TIMEOUT`、`QUOTA_EXCEEDED`。
-- 运行时事件通过 WebSocket 推送：`runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
+- 启动失败返回稳定错误码，例如 `KERNEL_CHECKSUM_MISMATCH`、`FINGERPRINT_INVALID`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT`、`PROXY_CONFIG_INVALID`、`RUNTIME_CDP_TIMEOUT`、`QUOTA_EXCEEDED`。
+- 运行时事件通过 WebSocket 推送：`runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`、`proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
 - 指标：启动次数、成功率、启动耗时、运行档案数、代理检查失败率、崩溃次数。
 - 日志轮转按档案和总量限制；默认保留最近 7 天或 100 MB，取较小者。
 
