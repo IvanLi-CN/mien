@@ -8,65 +8,65 @@ web
 
 ## Stack
 
-Tauri 2 + React 19 + TypeScript + Vite + Rust core, confirmed by the user. The management UI is a web UI shipped inside the macOS Tauri app and served by the Docker web host; the Rust core is shared by both hosts.
+Tauri 2 + React 19 + TypeScript + Vite + Rust 核心，由用户确认。管理界面是一套 Web UI，打包在 macOS Tauri 应用中，并由 Docker Web 宿主提供；Rust 核心由两种宿主共享。
 
 ## Users
 
-- Multi-account operators who maintain isolated store, social, or advertising environments and need stable profiles, proxy isolation, and simple daily operation.
-- QA and compatibility engineers who reproduce regional, language, and platform personas and need repeatable environments and automation entry points.
-- Privacy and anti-tracking researchers who inspect how sites behave under controlled fingerprints and need transparent limits.
-- Automation developers who drive multiple independent browser environments through a stable API and CDP.
-- Small team operators who run browser environments on a server and need Docker deployment, web access, persistence, and observability.
+- 维护隔离的店铺、社媒或广告环境的多账号运营人员，需要稳定的档案、代理隔离和简单的日常操作。
+- 复现地区、语言和平台画像的 QA 与兼容性工程师，需要可重复的环境和自动化入口。
+- 在受控指纹下观察站点行为的隐私与反追踪研究者，需要透明的限制说明。
+- 通过稳定 API 与 CDP 驱动多个独立浏览器环境的自动化开发者。
+- 在服务器上运行浏览器环境的小型团队运维，需要 Docker 部署、Web 访问、持久化和可观测性。
 
 ## Product Purpose
 
-Snailfish manages multiple isolated browser profiles, each with its own browser data directory, reproducible fingerprint specification, forward proxy, and supervised runtime. It runs as a macOS Apple Silicon desktop app and as a Docker `linux/amd64` service. Success means a user can create a profile, launch a coherent environment, verify its proxy and fingerprint behavior, and stop it without leaking data or state.
+Snailfish 管理多个相互隔离的浏览器档案；每个档案拥有独立的数据目录、可复现的指纹规格、正向代理和受监督的运行时。产品以 macOS Apple Silicon 桌面应用和 Docker `linux/amd64` 服务两种形态运行。成功意味着用户可以创建档案、启动一致的环境、验证其代理与指纹行为，并在不泄漏数据或状态的前提下停止它。
 
 ## Positioning
 
-Snailfish is a local-first, dual-host environment management platform, not just a launcher. It combines a reproducible fingerprint specification, a per-profile protocol engine for VLESS, VMess, Shadowsocks, Trojan, and related protocols, fail-closed proxying, and honest disclosure of kernel and host limitations. The mechanism a neighboring launcher could not truthfully copy is the shared Rust core driving both the macOS desktop app and the Docker web service, with the same profile, fingerprint, proxy, and runtime semantics.
+Snailfish 是本地优先、双宿主的环境管理平台，而不是单纯的启动器。它把可复现的指纹规格、每档案独立的 VLESS/VMess/Shadowsocks/Trojan 等协议引擎、失败关闭代理，以及对内核与宿主限制的诚实披露组合在一起。竞品无法如实复制的机制，是同一套共享 Rust 核心同时驱动 macOS 桌面应用和 Docker Web 服务，并保持一致的档案、指纹、代理与运行时语义。
 
 ## Operating Context
 
-Users work from a macOS desktop or a browser connected to a Docker deployment. Profiles are organized by groups, tags, notes, and runtime state. Each profile binds a fingerprint specification, a proxy configuration, and a start URL. Running profiles expose status, logs, proxy checks, and an optional loopback CDP endpoint for automation. The server edition uses a shared Xvfb display for headful profiles and supports headless profiles as an explicit reduced-assurance mode.
+用户从 macOS 桌面或连接 Docker 部署的浏览器工作。档案按分组、标签、备注和运行状态组织；每个档案绑定一套指纹规格、一个代理配置和一个启动地址。运行中的档案提供状态、日志、代理检查，以及可选的、仅绑定回环地址的 CDP 自动化入口。服务端版本使用共享 Xvfb 显示运行有头档案，并支持显式标记“降低保证”的无头档案。
 
 ## Capabilities and Constraints
 
-- Profile CRUD, duplication, archiving, groups, tags, search, import, export, and encrypted export.
-- Fingerprint fields: seed, platform, platform version, brand, brand version, CPU cores, languages, timezone, window size, spoof toggles, and WebRTC policy.
-- Forward proxy support: HTTP, HTTPS, SOCKS5, VLESS, VMess, Shadowsocks, Trojan; Hysteria2, TUIC, and WireGuard are Tier B and depend on the protocol engine capability manifest.
-- Per-profile sing-box protocol engine and loopback mixed inbound; credentials never enter Chromium.
-- Fail-closed networking, remote DNS for target hosts, WebRTC non-proxied UDP blocked by default, DoH bypass disabled, IPv6 handled explicitly.
-- macOS Apple Silicon and macOS 13+ only; Docker `linux/amd64` only. macOS Intel and native Linux ARM64 are out of scope for the first release.
-- Docker on Apple Silicon runs the amd64 image through emulation; Hysteria2 and TUIC require UDP egress.
-- fingerprint-chromium `148.0.7778.215` is pinned. Known kernel limitations, including canvas and font behavior, must be disclosed rather than hidden.
-- Screen size, device pixel ratio, color depth, and font enumeration are host-bound and cannot be promised as per-profile spoofed values.
-- sing-box is GPL-3.0-or-later and distributed as a separate process; legal review and Xray-core fallback are release constraints.
-- No cloud sync, team RBAC, subscription refresh, node marketplace, or built-in proxy sales in the first release.
-- The product does not provide anonymity or a guarantee of passing third-party detection.
+- 档案 CRUD、复制、归档、分组、标签、搜索、导入、导出与加密导出。
+- 指纹字段：种子、平台、平台版本、品牌、品牌版本、CPU 核心数、语言、时区、窗口尺寸、伪装开关与 WebRTC 策略。
+- 正向代理支持 HTTP、HTTPS、SOCKS5、VLESS、VMess、Shadowsocks、Trojan；Hysteria2、TUIC 与 WireGuard 属于 Tier B，取决于协议引擎能力清单。
+- 每档案独立的 sing-box 协议引擎与回环 mixed 入站；代理凭据不进入 Chromium。
+- 失败关闭网络、目标域名远程 DNS、默认阻止 WebRTC 非代理 UDP、禁用 DoH 绕过、显式处理 IPv6。
+- 仅支持 macOS Apple Silicon 与 macOS 13+；仅支持 Docker `linux/amd64`。macOS Intel 与原生 Linux ARM64 不在首个发布范围。
+- Apple Silicon 上的 Docker 通过模拟运行 amd64 镜像；Hysteria2 与 TUIC 需要 UDP 出站。
+- 固定 fingerprint-chromium `148.0.7778.215`。已知内核限制，包括 canvas 与字体行为，必须披露而不能隐藏。
+- 屏幕尺寸、设备像素比、颜色深度和字体枚举受宿主约束，不能承诺按档案伪造。
+- sing-box 以 GPL-3.0-or-later 分发，并作为独立进程运行；法律评审与 Xray-core 回退是发布约束。
+- 首个发布不包含云同步、团队 RBAC、订阅刷新、节点市场或内置代理销售。
+- 产品不提供匿名性，也不保证通过第三方检测。
 
 ## Brand Commitments
 
-- Name: Snailfish.
-- Voice: precise, calm, technical, and honest. No unverifiable claims such as “undetectable”, “100% isolated”, or “absolutely safe”.
-- Interface languages: Simplified Chinese and English. Profile language, timezone, and proxy region are independent of the UI language.
-- Visual system: Deep Current, a dark spatial workspace with space identities, deterministic seed auras, and four-block proof strips. The canonical rules and tokens live in `DESIGN.md`; the approved first-screen comp is `docs/design/profiles-dark.png`.
-- No logo or licensed photography has been established. Future brand work must extend Deep Current rather than introduce a second visual world.
+- 名称：Snailfish。
+- 语气：精确、冷静、技术化、诚实。不使用“不可检测”“100% 隔离”“绝对安全”等无法验证的承诺。
+- 界面语言：简体中文与英文。档案语言、时区与代理地区独立于界面语言。
+- 视觉系统：Deep Current，一个深色空间化工作区，包含 Space 身份、由种子派生的身份光晕和四段校验条。规范与设计 token 位于 `DESIGN.md`；已批准首屏视觉稿位于 `docs/design/profiles-dark.png`。
+- 尚未建立标志或授权摄影。后续品牌工作必须延续 Deep Current，而不是引入第二套视觉世界。
 
 ## Evidence on Hand
 
-- Product requirements, architecture, detailed design, technology selection, security model, test plan, ADRs, and topic specifications live in `docs/`.
-- No user research, customer interviews, testimonials, screenshots, product demos, pricing, or production analytics exist yet.
-- An approved visual-direction comp exists at `docs/design/profiles-dark.png`; no production UI assets, licensed photography, or illustrations exist yet. Future design work must not fabricate customers, benchmarks, or product screenshots.
+- 产品需求、架构、详细设计、技术选型、安全模型、测试计划、ADR 与主题规格位于 `docs/`。
+- 目前没有用户研究、客户访谈、推荐语、截图、产品演示、定价或生产分析数据。
+- 已批准视觉方向稿位于 `docs/design/profiles-dark.png`；尚无量产 UI 资产、授权摄影或插画。后续设计工作不得虚构客户、跑分或产品截图。
 
 ## Product Principles
 
-1. Isolation and reproducibility outrank feature breadth; a profile must be explainable, repeatable, and removable.
-2. Limits are part of the product truth; host-bound fingerprint fields, headless degradation, and kernel defects are disclosed in the interface.
-3. Security defaults are fail-closed; proxy or engine failure must never become a silent direct connection.
-4. Local-first is the default; server deployment is an explicit operating mode, not a requirement for desktop use.
-5. The interface is a spatial workspace: spaces, live sessions, and profile identities are visible at a glance; scanning, proof, and recovery outrank decorative novelty.
+1. 隔离与可复现性优先于功能广度；每个档案必须可解释、可重复、可移除。
+2. 限制是产品事实的一部分；宿主绑定的指纹字段、无头降级与内核缺陷必须在界面中披露。
+3. 安全默认失败关闭；代理或引擎故障绝不能变成静默直连。
+4. 本地优先是默认；服务端部署是一种显式运行模式，不是桌面使用的前提。
+5. 界面是空间化工作区：Space、运行中会话与档案身份应一眼可见；扫描、证据与恢复优先于装饰性新意。
 
 ## Accessibility & Inclusion
 
-The product requires keyboard-reachable primary actions, visible labels, non-color-only state, readable contrast, and bilingual copy. No product-specific accessibility standard or assistive-technology research has been established beyond the PRD’s baseline requirements.
+产品要求主要操作可键盘触达、标签可见、状态不只依赖颜色、对比度可读，并提供双语文案。除 PRD 中的基线要求外，尚未建立产品专属的无障碍标准或辅助技术研究。
