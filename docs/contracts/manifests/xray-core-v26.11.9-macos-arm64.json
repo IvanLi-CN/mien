@@ -1,0 +1,24 @@
+{
+  "engine": "xray-core",
+  "version": "v26.11.9",
+  "platform": "macos-arm64",
+  "sha256": "233f0c66681cd0726f81a6b2b6ed6a5710869e312047b522e46ed53035bebd26",
+  "license": "MPL-2.0",
+  "source_url": "https://github.com/XTLS/Xray-core/releases/tag/v26.11.9",
+  "connection_reuse": true,
+  "protocols": {
+    "http": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none", "tls"]},
+    "socks5": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"]},
+    "vless": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls", "reality"]},
+    "vmess": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls"]},
+    "shadowsocks": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"]},
+    "trojan": {"tier": "A", "transports": ["tcp", "ws"], "tls_modes": ["tls"]},
+    "hysteria2": {"tier": "B", "transports": ["quic"], "tls_modes": ["tls"], "notes": "Requires UDP egress."},
+    "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"]}
+  },
+  "limitations": [
+    "TUIC is not supported in v1.",
+    "Shared engine is a single point of failure for all running profiles.",
+    "Management API is loopback-only and has no application-level authentication."
+  ]
+}

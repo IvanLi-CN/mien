@@ -31,3 +31,5 @@
 
 - [`./SPEC.md`](./SPEC.md)
 - [`./HISTORY.md`](./HISTORY.md)
+- [`../../contracts/manifests/`](../../contracts/manifests/)
+- [`../../UI-SURFACES.md`](../../UI-SURFACES.md)

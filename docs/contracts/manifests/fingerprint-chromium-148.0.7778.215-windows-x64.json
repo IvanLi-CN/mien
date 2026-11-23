@@ -1,0 +1,28 @@
+{
+  "kernel_version": "148.0.7778.215",
+  "platform": "windows-x64",
+  "sha256": "9ef3f471b7a6641b4224532522b29141ce3746e27d55788d88e2fd951f362579",
+  "flags": {
+    "fingerprint": {"type": "uint32"},
+    "fingerprint-platform": {"values": ["windows", "macos", "linux"]},
+    "fingerprint-platform-version": {"type": "string"},
+    "fingerprint-brand": {"values": ["Chrome", "Edge", "Opera", "Vivaldi"]},
+    "fingerprint-brand-version": {"type": "string"},
+    "fingerprint-hardware-concurrency": {"type": "integer"},
+    "lang": {"type": "string"},
+    "accept-lang": {"type": "string"},
+    "timezone": {"type": "string"},
+    "proxy-server": {"type": "string"},
+    "disable-non-proxied-udp": {"type": "boolean"},
+    "disable-spoofing": {"values": ["font", "audio", "canvas", "clientrects", "gpu"]}
+  },
+  "seed_derived": ["canvas", "audio", "webgl", "device_memory", "gpu_model"],
+  "known_issues": ["#102", "#108"],
+  "limitations": [
+    "Windows desktop is a follow-up host; the manifest records the pinned artifact.",
+    "Host-bound screen size, devicePixelRatio, color depth and font enumeration remain observable.",
+    "Headless pseudo_headful mode changes UA only; other Headless characteristics remain."
+  ],
+  "sandbox": {"requires_namespace_sandbox": true},
+  "headless_chrome_ua_patch": true
+}

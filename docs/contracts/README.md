@@ -8,6 +8,9 @@
 | [`kernel-manifest.schema.json`](kernel-manifest.schema.json) | [`browser-runtime`](../specs/browser-runtime/SPEC.md)、[`fingerprint-engine`](../specs/fingerprint-engine/SPEC.md) | 内核能力清单、启动前校验、升级差异比较 |
 | [`proxy-engine-manifest.schema.json`](proxy-engine-manifest.schema.json) | [`proxy-gateway`](../specs/proxy-gateway/SPEC.md) | 协议引擎版本、校验和、协议矩阵、许可与升级差异 |
 | [`profile-export.schema.json`](profile-export.schema.json) | [`profile-management`](../specs/profile-management/SPEC.md) | 明文配置导出、导入校验；不包含代理凭据、Token、Cookie |
+| [`openapi.yaml`](openapi.yaml) | [`control-api`](../specs/control-api/SPEC.md) | REST 端点、DTO、鉴权、分页与错误响应 |
+| [`events.schema.json`](events.schema.json) | [`control-api`](../specs/control-api/SPEC.md) | WebSocket/Tauri 事件 envelope 与 payload |
+| [`manifests/`](manifests/) | [`browser-runtime`](../specs/browser-runtime/SPEC.md)、[`proxy-gateway`](../specs/proxy-gateway/SPEC.md) | 148 内核与 Xray v26.11.9 候选发布清单、资产校验和 |
 
 约定：
 
@@ -17,3 +20,4 @@
 - 导入校验必须拒绝未知字段、越界值和超出大小限制的数组；schema 中的 `additionalProperties: false` 是默认要求。
 - 指纹种子、内核版本和 schema 版本是复现指纹的三要素；导出必须保留。
 - 代理凭据、UUID、密码、私钥、Token、Cookie、完整分享链接和浏览器数据不属于默认配置导出。
+- 数据库 schema 见 [`../DATABASE-SCHEMA.md`](../DATABASE-SCHEMA.md)，稳定错误码见 [`../ERROR-CODES.md`](../ERROR-CODES.md)。

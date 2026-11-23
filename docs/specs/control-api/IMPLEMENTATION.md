@@ -6,7 +6,7 @@
 
 - Implementation: 未开始
 - Lifecycle: active
-- Catalog note: 服务端认证、Token、事件与控制面契约已建立。
+- Catalog note: 服务端认证、Token、事件、OpenAPI、事件 schema 与错误码契约已建立。
 
 ## Implementation Coverage
 
@@ -21,7 +21,7 @@
 ## Remaining Gaps
 
 - 登录、会话、Token、CSRF、错误结构、分页、幂等、事件、健康检查、审计和代理 API 均未实现。
-- 需要先冻结 OpenAPI 生成方式与错误码表，再建立契约测试。
+- OpenAPI、事件 schema 与错误码已建立；实现后需要用生成客户端和 fixture 建立契约测试。
 
 ## Related Changes
 
@@ -31,3 +31,6 @@
 
 - [`./SPEC.md`](./SPEC.md)
 - [`./HISTORY.md`](./HISTORY.md)
+- [`../../contracts/openapi.yaml`](../../contracts/openapi.yaml)
+- [`../../contracts/events.schema.json`](../../contracts/events.schema.json)
+- [`../../ERROR-CODES.md`](../../ERROR-CODES.md)

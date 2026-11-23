@@ -63,7 +63,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["tcp", "ws", "grpc", "http", "httpupgrade", "quic"]
+            "enum": ["tcp", "udp", "ws", "grpc", "http", "httpupgrade", "quic"]
           }
         },
         "tls_modes": {

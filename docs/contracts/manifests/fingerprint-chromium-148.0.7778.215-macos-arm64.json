@@ -1,0 +1,27 @@
+{
+  "kernel_version": "148.0.7778.215",
+  "platform": "macos-arm64",
+  "sha256": "b72f091e2e1a7583eed389c4b8e3534ed355e568af8c8bbf8fc30a25e23ca679",
+  "flags": {
+    "fingerprint": {"type": "uint32"},
+    "fingerprint-platform": {"values": ["windows", "macos", "linux"]},
+    "fingerprint-platform-version": {"type": "string"},
+    "fingerprint-brand": {"values": ["Chrome", "Edge", "Opera", "Vivaldi"]},
+    "fingerprint-brand-version": {"type": "string"},
+    "fingerprint-hardware-concurrency": {"type": "integer"},
+    "lang": {"type": "string"},
+    "accept-lang": {"type": "string"},
+    "timezone": {"type": "string"},
+    "proxy-server": {"type": "string"},
+    "disable-non-proxied-udp": {"type": "boolean"},
+    "disable-spoofing": {"values": ["font", "audio", "canvas", "clientrects", "gpu"]}
+  },
+  "seed_derived": ["canvas", "audio", "webgl", "device_memory", "gpu_model"],
+  "known_issues": ["#102", "#108"],
+  "limitations": [
+    "Host-bound screen size, devicePixelRatio, color depth and font enumeration remain observable.",
+    "Headless pseudo_headful mode changes UA only; other Headless characteristics remain."
+  ],
+  "sandbox": {"requires_namespace_sandbox": true},
+  "headless_chrome_ua_patch": true
+}

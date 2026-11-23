@@ -544,3 +544,7 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 - [`DESIGN.md`](DESIGN.md)
 - [`TECH-STACK.md`](TECH-STACK.md)
 - [`specs/`](specs/)
+- [`contracts/`](contracts/)
+- [`DATABASE-SCHEMA.md`](DATABASE-SCHEMA.md)
+- [`XRAY-MAPPING.md`](XRAY-MAPPING.md)
+- [`ERROR-CODES.md`](ERROR-CODES.md)

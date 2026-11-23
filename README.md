@@ -25,7 +25,7 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 ## 当前状态
 
-仓库处于设计与契约阶段，尚未包含实现代码。产品上下文、Deep Current 视觉系统与 Profiles 首屏 comp 已锁定；本目录中的文档覆盖产品需求、系统架构、详细设计、技术选型、决策记录、主题规格、路线图、测试计划与安全威胁模型。
+仓库处于设计与契约阶段，尚未包含实现代码。产品上下文、Deep Current 视觉系统与 Profiles 首屏 comp 已锁定；可执行 API/事件/错误/数据库/Xray 映射契约与 M0 计划已补齐。
 
 ## 文档地图
 
@@ -45,7 +45,18 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | 领域术语与缩写 |
 | [`docs/adr/`](docs/adr/) | 架构与边界决策记录 |
 | [`docs/specs/`](docs/specs/) | 长期能力契约，按主题维护 |
-| [`docs/contracts/`](docs/contracts/) | 指纹规格、内核能力清单与档案导出的 JSON Schema |
+| [`docs/contracts/`](docs/contracts/) | 长期契约的 JSON Schema、OpenAPI、事件 schema 与内核/引擎清单 |
+| [`docs/contracts/openapi.yaml`](docs/contracts/openapi.yaml) | 控制面 OpenAPI、DTO、鉴权、分页与错误响应 |
+| [`docs/contracts/events.schema.json`](docs/contracts/events.schema.json) | WebSocket/Tauri 事件 envelope 与 payload |
+| [`docs/DATABASE-SCHEMA.md`](docs/DATABASE-SCHEMA.md) | SQLite 表、约束、索引、加密边界与迁移规则 |
+| [`docs/ERROR-CODES.md`](docs/ERROR-CODES.md) | 稳定错误码与 HTTP/重试映射 |
+| [`docs/XRAY-MAPPING.md`](docs/XRAY-MAPPING.md) | 共享 Xray 引导、入站/出站、路由、`outbound_key` 与故障恢复 |
+| [`docs/UI-SURFACES.md`](docs/UI-SURFACES.md) | Profiles、创建/详情、代理、内核、活动和三档运行模式 |
+| [`docs/TEST-FIXTURES.md`](docs/TEST-FIXTURES.md) | 内核、代理、网络、Xray、模式、API 与数据库 fixture |
+| [`docs/DELIVERY-PLAN.md`](docs/DELIVERY-PLAN.md) | M0 spike、第一个纵向切片和开工检查表 |
+| [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md) | 第三方组件、许可义务与当前合规缺口 |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | macOS/Docker 发布、签名、SBOM、门禁与回滚 |
+| [`docs/contracts/manifests/`](docs/contracts/manifests/) | 148 内核与 Xray v26.11.9 候选能力清单 |
 
 ## 主题规格
 

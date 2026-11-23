@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mien.local/contracts/events.schema.json",
+  "title": "Mien control-plane event",
+  "description": "WebSocket/Tauri event envelope. Payloads are intentionally small and never contain proxy credentials, cookies, tokens, target URLs, or full configuration.",
+  "type": "object",
+  "required": ["schema_version", "id", "sequence", "type", "ts", "payload"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "id": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 1},
+    "type": {
+      "enum": [
+        "runtime.starting",
+        "runtime.running",
+        "runtime.stopping",
+        "runtime.stopped",
+        "runtime.crashed",
+        "runtime.failed",
+        "proxy.engine.failed",
+        "proxy.engine.rebuilt",
+        "proxy.check.completed",
+        "profile.created",
+        "profile.updated",
+        "profile.archived",
+        "profile.restored",
+        "profile.deleted",
+        "profile.duplicated",
+        "kernel.installed",
+        "kernel.activated",
+        "engine.installed",
+        "engine.activated",
+        "audit.recorded",
+        "auth.login",
+        "auth.logout",
+        "token.created",
+        "token.revoked"
+      ]
+    },
+    "ts": {"type": "string", "format": "date-time"},
+    "request_id": {"type": ["string", "null"]},
+    "payload": {"type": "object", "additionalProperties": true}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "runtime.starting"}}}, "then": {"$ref": "#/$defs/runtimeEvent"}},
+    {"if": {"properties": {"type": {"const": "runtime.running"}}}, "then": {"$ref": "#/$defs/runtimeEvent"}},
+    {"if": {"properties": {"type": {"const": "runtime.stopping"}}}, "then": {"$ref": "#/$defs/runtimeEvent"}},
+    {"if": {"properties": {"type": {"const": "runtime.stopped"}}}, "then": {"$ref": "#/$defs/runtimeEvent"}},
+    {"if": {"properties": {"type": {"const": "runtime.crashed"}}}, "then": {"$ref": "#/$defs/runtimeEvent"}},
+    {"if": {"properties": {"type": {"const": "runtime.failed"}}}, "then": {"$ref": "#/$defs/runtimeEvent"}},
+    {"if": {"properties": {"type": {"const": "proxy.engine.failed"}}}, "then": {"$ref": "#/$defs/engineEvent"}},
+    {"if": {"properties": {"type": {"const": "proxy.engine.rebuilt"}}}, "then": {"$ref": "#/$defs/engineEvent"}},
+    {"if": {"properties": {"type": {"const": "proxy.check.completed"}}}, "then": {"$ref": "#/$defs/proxyCheckEvent"}},
+    {"if": {"properties": {"type": {"const": "profile.created"}}}, "then": {"$ref": "#/$defs/profileEvent"}},
+    {"if": {"properties": {"type": {"const": "profile.updated"}}}, "then": {"$ref": "#/$defs/profileEvent"}},
+    {"if": {"properties": {"type": {"const": "profile.archived"}}}, "then": {"$ref": "#/$defs/profileEvent"}},
+    {"if": {"properties": {"type": {"const": "profile.restored"}}}, "then": {"$ref": "#/$defs/profileEvent"}},
+    {"if": {"properties": {"type": {"const": "profile.deleted"}}}, "then": {"$ref": "#/$defs/profileEvent"}},
+    {"if": {"properties": {"type": {"const": "profile.duplicated"}}}, "then": {"$ref": "#/$defs/profileEvent"}},
+    {"if": {"properties": {"type": {"const": "kernel.installed"}}}, "then": {"$ref": "#/$defs/kernelEvent"}},
+    {"if": {"properties": {"type": {"const": "kernel.activated"}}}, "then": {"$ref": "#/$defs/kernelEvent"}},
+    {"if": {"properties": {"type": {"const": "engine.installed"}}}, "then": {"$ref": "#/$defs/engineManifestEvent"}},
+    {"if": {"properties": {"type": {"const": "engine.activated"}}}, "then": {"$ref": "#/$defs/engineManifestEvent"}},
+    {"if": {"properties": {"type": {"const": "audit.recorded"}}}, "then": {"$ref": "#/$defs/auditEvent"}},
+    {"if": {"properties": {"type": {"const": "auth.login"}}}, "then": {"$ref": "#/$defs/authEvent"}},
+    {"if": {"properties": {"type": {"const": "auth.logout"}}}, "then": {"$ref": "#/$defs/authEvent"}},
+    {"if": {"properties": {"type": {"const": "token.created"}}}, "then": {"$ref": "#/$defs/tokenEvent"}},
+    {"if": {"properties": {"type": {"const": "token.revoked"}}}, "then": {"$ref": "#/$defs/tokenEvent"}}
+  ],
+  "$defs": {
+    "runtimeEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["runtime_id", "profile_id", "state", "mode"],
+          "properties": {
+            "runtime_id": {"type": "string"},
+            "profile_id": {"type": "string"},
+            "state": {"enum": ["stopped", "starting", "running", "stopping", "crashed", "failed"]},
+            "mode": {"enum": ["headful", "headless", "pseudo_headful"]},
+            "reduced_assurance": {"type": "boolean"},
+            "ua_scope": {"enum": ["chrome", null]},
+            "proxy_port": {"type": ["integer", "null"]},
+            "cdp_url": {"type": ["string", "null"]},
+            "error_code": {"type": ["string", "null"]},
+            "detail": {"type": ["string", "null"]}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "engineEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["state", "pid"],
+          "properties": {
+            "state": {"enum": ["failed", "rebuilt"]},
+            "pid": {"type": ["integer", "null"]},
+            "api_port": {"type": ["integer", "null"]},
+            "affected_profile_ids": {"type": "array", "items": {"type": "string"}},
+            "error_code": {"type": ["string", "null"]},
+            "detail": {"type": ["string", "null"]}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "proxyCheckEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["proxy_id", "ok"],
+          "properties": {
+            "proxy_id": {"type": "string"},
+            "ok": {"type": "boolean"},
+            "latency_ms": {"type": ["integer", "null"]},
+            "exit_ip": {"type": ["string", "null"]},
+            "region": {"type": ["string", "null"]},
+            "error_code": {"type": ["string", "null"]},
+            "detail": {"type": ["string", "null"]}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "profileEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["profile_id"],
+          "properties": {
+            "profile_id": {"type": "string"},
+            "name": {"type": "string"},
+            "group_id": {"type": ["string", "null"]},
+            "permanent": {"type": "boolean"}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "kernelEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["version", "platform"],
+          "properties": {
+            "version": {"type": "string"},
+            "platform": {"type": "string"},
+            "active": {"type": "boolean"},
+            "known_issues": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "engineManifestEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["engine", "version", "platform"],
+          "properties": {
+            "engine": {"const": "xray-core"},
+            "version": {"type": "string"},
+            "platform": {"type": "string"},
+            "active": {"type": "boolean"},
+            "connection_reuse": {"type": "boolean"},
+            "limitations": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "auditEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["action", "result"],
+          "properties": {
+            "actor": {"type": "string"},
+            "action": {"type": "string"},
+            "target": {"type": "string"},
+            "result": {"enum": ["success", "failure", "denied"]},
+            "metadata": {"type": "object", "additionalProperties": true}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "authEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "properties": {
+            "user": {"type": "string"},
+            "reason": {"type": ["string", "null"]}
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "tokenEvent": {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": ["token_id"],
+          "properties": {
+            "token_id": {"type": "string"},
+            "name": {"type": "string"},
+            "scopes": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

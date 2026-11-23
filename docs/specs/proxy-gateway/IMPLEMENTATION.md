@@ -21,7 +21,7 @@
 ## Remaining Gaps
 
 - 类型化代理配置、共享引擎动态入站/出站/路由、引用计数、分享链接解析、远程 DNS、失败关闭与代理检查均未实现。
-- 需要先完成 Xray-core 能力清单、MPL-2.0 合规、管理 API 访问控制和目标容器 QUIC/UDP 可行性验证，再冻结协议矩阵。
+- Xray 映射、候选清单与 MPL-2.0 记录已建立；仍需 M0 runtime spike 验证管理 API、连接复用、Hysteria2、目标容器 UDP 和故障重建后冻结协议矩阵。
 
 ## Related Changes
 
@@ -31,3 +31,6 @@
 
 - [`./SPEC.md`](./SPEC.md)
 - [`./HISTORY.md`](./HISTORY.md)
+- [`../../XRAY-MAPPING.md`](../../XRAY-MAPPING.md)
+- [`../../contracts/manifests/`](../../contracts/manifests/)
+- [`../../ERROR-CODES.md`](../../ERROR-CODES.md)
