@@ -6,10 +6,10 @@ Mien 是一个基于 [fingerprint-chromium](https://github.com/adryfish/fingerpr
 
 | 形态 | 目标环境 | 用户界面 | 浏览器运行模式 | 首个发布 |
 | --- | --- | --- | --- | --- |
-| macOS 桌面 | Apple Silicon，macOS 13+ | Tauri 2 原生窗口承载同一套 Web UI | 有头（宿主桌面）；无头为显式降级选项 | 支持 |
-| Docker 服务 | `linux/amd64` 容器，无桌面环境 | 浏览器访问容器内服务提供的 Web UI | 有头（Xvfb + openbox，可选 noVNC 查看）；无头为显式降级选项 | 支持 |
-| Windows 桌面 | Windows 10/11 x64 | 同一套 Web UI | 有头；无头可选 | 后续 |
-| Linux 桌面 | Linux x64 | 同一套 Web UI | 有头；无头可选 | 后续 |
+| macOS 桌面 | Apple Silicon，macOS 13+ | Tauri 2 原生窗口承载同一套 Web UI | 有头（宿主桌面）；无头/无头 UA 为显式降级选项 | 支持 |
+| Docker 服务 | `linux/amd64` 容器，无桌面环境 | 浏览器访问容器内服务提供的 Web UI | 有头（Xvfb + openbox，可选 noVNC 查看）；无头/无头 UA 为显式降级选项 | 支持 |
+| Windows 桌面 | Windows 10/11 x64 | 同一套 Web UI | 有头；无头/无头 UA 可选 | 后续 |
+| Linux 桌面 | Linux x64 | 同一套 Web UI | 有头；无头/无头 UA 可选 | 后续 |
 
 Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行服务镜像；原生 `linux/arm64` 需要自行从源码构建指纹内核，不在首个发布范围内。
 
@@ -51,14 +51,14 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 
 - [`docs/specs/profile-management/SPEC.md`](docs/specs/profile-management/SPEC.md)：环境档案、分组、导入导出与生命周期元数据。
 - [`docs/specs/fingerprint-engine/SPEC.md`](docs/specs/fingerprint-engine/SPEC.md)：指纹规格、种子、一致性校验与启动参数生成。
-- [`docs/specs/browser-runtime/SPEC.md`](docs/specs/browser-runtime/SPEC.md)：内核进程、有头/无头模式、监督、崩溃恢复与显示环境。
+- [`docs/specs/browser-runtime/SPEC.md`](docs/specs/browser-runtime/SPEC.md)：内核进程、有头/无头/无头 UA 模式、监督、崩溃恢复与显示环境。
 - [`docs/specs/proxy-gateway/SPEC.md`](docs/specs/proxy-gateway/SPEC.md)：VLESS/VMess/Shadowsocks/Trojan/Hysteria2、协议引擎、分享链接、远程 DNS 与泄漏防护。
 - [`docs/specs/control-api/SPEC.md`](docs/specs/control-api/SPEC.md)：控制面 HTTP/WS 契约、鉴权、事件与自动化入口。
 
 ## 关键产品约束
 
 - 指纹内核不能凭空创造宿主不存在的显示属性。`screen.width`、`screen.height`、`devicePixelRatio` 与字体枚举仍受宿主显示器和已安装字体影响；跨操作系统画像只能做到尽力对齐，不能承诺与真实设备完全一致。
-- 无头模式不是有头模式的等价替代。fingerprint-chromium 只处理了部分 Headless 特征，其余特征仍可能暴露；无头档案会被标记为“降低保证”。
+- 无头模式不是有头模式的等价替代。fingerprint-chromium 只处理了部分 Headless 特征，其余特征仍可能暴露；无头档案会被标记为“降低保证”。无头 UA 只把 `HeadlessChrome` UA 改为 `Chrome`，其他 Headless 特征仍保留。
 - Chromium 不支持代理认证和 VLESS/VMess/Shadowsocks 等协议。产品运行单实例共享 Xray 引擎，为每个运行档案创建回环 HTTP 入站和路由；相同节点/凭据复用出站与连接池，凭据不进入浏览器进程。
 - Xray-core 以 MPL-2.0 分发。产品将其作为独立进程使用，发布物保留许可证与来源信息；共享引擎是网络单点，必须失败关闭并在崩溃后按原端口重建。
 - 指纹浏览器提供环境隔离与指纹一致性，不提供匿名性保证，也不承诺绕过任何平台的风控或服务条款。

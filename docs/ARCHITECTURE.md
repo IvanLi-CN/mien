@@ -10,7 +10,7 @@
 - 协议引擎固定为构建清单中的 Xray-core，每个宿主一个共享进程、不修改、校验 SHA-256；运行时通过 Xray API 动态增删入站、出站与路由规则，升级必须经过协议矩阵准入。
 - 每个档案独占浏览器数据目录、种子和运行时；档案之间不共享 Cookie、缓存或存储。
 - Chromium 只连接所属运行档案的回环 HTTP 入站；VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与凭据由共享 Xray 引擎处理，产品不自行实现协议。
-- Docker 默认有头运行，使用 Xvfb；无头是显式降级选项。
+- Docker 默认有头运行，使用 Xvfb；无头与无头 UA 是显式降级选项。
 - macOS 只支持 Apple Silicon；Docker 只支持 `linux/amd64`。
 - 显示尺寸、设备像素比、颜色深度和字体枚举受宿主约束，架构必须让这些限制可观测，而不是假装可伪造。
 - 控制面与运行时解耦；控制面崩溃或容器重启不能留下重复浏览器或损坏档案。
@@ -156,7 +156,7 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `tags` | `id`, `name`, `color` | 标签；名称唯一 |
 | `profile_tags` | `profile_id`, `tag_id` | 多对多 |
 | `proxies` | `id`, `name`, `kind`, `server`, `port`, `config_ciphertext`, `last_check_json`, `created_at`, `updated_at` | 正向代理；`kind` 为 HTTP/SOCKS/VLESS/VMess/Shadowsocks/Trojan/Hysteria2 等；完整协议选项与凭据加密存储 |
-| `runtimes` | `id`, `profile_id`, `state`, `pid`, `pgid`, `proxy_port`, `proxy_inbound_tag`, `proxy_outbound_key`, `proxy_rule_tag`, `started_at`, `cdp_port`, `exit_code`, `last_error` | 运行态；共享引擎按这些标签重建入站、出站和路由 |
+| `runtimes` | `id`, `profile_id`, `state`, `mode`, `pid`, `pgid`, `proxy_port`, `proxy_inbound_tag`, `proxy_outbound_key`, `proxy_rule_tag`, `started_at`, `cdp_port`, `exit_code`, `last_error` | 运行态；`mode` 为 headful/headless/headless_ua；共享引擎按这些标签重建入站、出站和路由 |
 | `kernel_installs` | `version`, `platform`, `path`, `sha256`, `manifest_json`, `installed_at` | 已安装内核；支持并存与回滚 |
 | `proxy_engine_installs` | `version`, `platform`, `path`, `sha256`, `manifest_json`, `license`, `source_url`, `installed_at` | 已安装 Xray-core；协议矩阵、许可与回滚 |
 | `proxy_engine_state` | `pid`, `api_port`, `state`, `started_at`, `last_error` | 单实例引擎运行态；控制面启动时对账 |
@@ -240,7 +240,7 @@ sequenceDiagram
   Core-->>UI: 状态事件 + cdp_url / proxy_port
 ```
 
-启动流程是串行的资源获取过程。共享引擎必须先于内核就绪；出站、入站和路由规则按顺序创建，任何一步失败都回滚并返回稳定错误码。代理检查失败默认允许启动但标记警告；内核校验失败、引擎校验失败、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。
+启动流程是串行的资源获取过程。共享引擎必须先于内核就绪；出站、入站和路由规则按顺序创建，任何一步失败都回滚并返回稳定错误码。代理检查失败默认允许启动但标记警告；内核校验失败、引擎校验失败、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。`headless` 使用 `--headless=new`；`headless_ua` 还要求内核能力清单声明 `headless_ua_patch=true`，只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
 
 ### 7.2 停止档案
 
@@ -347,6 +347,7 @@ flowchart LR
   },
   "seed_derived": ["canvas", "audio", "webgl", "device_memory", "gpu_model"],
   "known_issues": ["#102", "#108"],
+  "headless_ua_patch": true,
   "sandbox": {"requires_namespace_sandbox": true}
 }
 ```
@@ -438,7 +439,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 
 ### 10.3 沙箱策略
 
-Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首选配置是使用专用 seccomp 配置允许非特权用户命名空间，并以非 root 用户运行；如果宿主环境无法启用命名空间沙箱，产品默认拒绝启动，只有显式设置 `ALLOW_UNSANDBOXED=1` 并记录审计事件后才允许 `--no-sandbox`。已知内核 148 存在渲染进程越界访问报告，无沙箱运行会显著放大影响。
+Docker 中有头、无头或无头 UA 启动前必须检测 Chromium 沙箱是否生效。首选配置是使用专用 seccomp 配置允许非特权用户命名空间，并以非 root 用户运行；如果宿主环境无法启用命名空间沙箱，产品默认拒绝启动，只有显式设置 `ALLOW_UNSANDBOXED=1` 并记录审计事件后才允许 `--no-sandbox`。已知内核 148 存在渲染进程越界访问报告，无沙箱运行会显著放大影响。
 
 ## 11. 失败处理
 

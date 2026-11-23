@@ -31,9 +31,10 @@ mien-cli     ─┘
 - `ProfileId(Ulid)`、`RuntimeId(Ulid)`、`KernelVersion`、`EngineVersion`。
 - `SpecSchema`、`KernelManifest`、`EngineManifest` 各自独立版本。
 - `RuntimeState`：`Stopped`、`Starting`、`Running`、`Stopping`、`Crashed`、`Failed`。
+- `RunMode`：`Headful`、`Headless`、`HeadlessUa`；对外序列化为 `headful`、`headless`、`headless_ua`。
 - `ProxyConfig`：`Http`、`Https`、`Socks5`、`Vless`、`Vmess`、`Shadowsocks`、`Trojan`、`Hysteria2`、`Wireguard` 的 tagged enum；秘密字段使用 `SecretString`，`Debug` 输出必须脱敏。TUIC 不进入 v1。
-- `LaunchPlan`：内核 argv、环境变量、用户数据目录、代理入口、是否启用 CDP、日志目标。
-- `RuntimeHandle`：运行时标识、档案标识、内核 PID、代理端口、CDP 端口、`proxy_inbound_tag`、`proxy_outbound_key`、`proxy_rule_tag`、取消令牌。
+- `LaunchPlan`：内核 argv、环境变量、用户数据目录、代理入口、运行模式、是否启用 CDP、日志目标。
+- `RuntimeHandle`：运行时标识、档案标识、运行模式、内核 PID、代理端口、CDP 端口、`proxy_inbound_tag`、`proxy_outbound_key`、`proxy_rule_tag`、取消令牌。
 - `ProxyEngineHandle`：共享 Xray 进程 PID、管理 API 端口、启动时间、状态和取消令牌。
 
 ### 3.2 核心端口
@@ -88,7 +89,7 @@ pub trait EventSink {
 2. 读取档案；拒绝已归档、已删除或正在删除的档案。
 3. 获取档案级 actor 锁；已有启动/停止操作时按幂等语义返回。
 4. 获取全局运行时配额；检查可用内存、磁盘和并发上限。
-5. 校验指纹规格、代理配置、内核与协议引擎能力清单。
+5. 校验指纹规格、代理配置、内核与协议引擎能力清单；`headless_ua` 还要求 `headless_ua_patch=true`。
 6. 校验内核与引擎二进制 SHA-256；失败则不创建任何临时资源。
 7. 分配回环代理端口；确保共享 Xray 引擎运行并连接管理 API。
 8. 计算 `outbound_key`，添加或复用出站，并增加引用计数。
@@ -143,7 +144,7 @@ pub trait EventSink {
 | `QUOTA_` | `QUOTA_EXCEEDED` | 429 | 并发或资源不足 |
 | `KERNEL_` | `KERNEL_CHECKSUM_MISMATCH` | 500/409 | 内核缺失、损坏或版本不兼容 |
 | `PROXY_` | `PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_NOT_READY`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT` | 502/503/409 | 引擎、API、端口或节点失败 |
-| `RUNTIME_` | `RUNTIME_CDP_TIMEOUT`、`RUNTIME_SPAWN_FAILED` | 500 | 进程生命周期失败 |
+| `RUNTIME_` | `RUNTIME_CDP_TIMEOUT`、`RUNTIME_SPAWN_FAILED`、`RUNTIME_MODE_UNSUPPORTED` | 422/500 | 进程或运行模式失败 |
 | `STORAGE_` | `STORAGE_BUSY`、`STORAGE_MIGRATION_FAILED` | 500 | 数据库或文件系统失败 |
 | `INTERNAL_` | `INTERNAL_UNEXPECTED` | 500 | 未分类错误，必须带 request_id |
 
@@ -298,7 +299,7 @@ tauri::Builder::default()
 - 临时数据目录与临时 SQLite 文件，保证测试隔离。
 - Golden fixture：指纹规格 → argv；代理配置 → 出站/入站/规则；错误 → HTTP 映射。
 - 合同测试：OpenAPI、JSON Schema、事件 schema、导入导出 schema。
-- 端到端：受控协议节点、DNS canary、WebRTC 探测、Docker 有头/无头。
+- 端到端：受控协议节点、DNS canary、WebRTC 探测、Docker 有头/无头/无头 UA。
 
 ## 13. 部署契约
 

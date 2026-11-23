@@ -97,7 +97,7 @@
                 "type": "string",
                 "pattern": "^(https?://|about:)"
               },
-              "mode": {"enum": ["headful", "headless"]},
+              "mode": {"enum": ["headful", "headless", "headless_ua"]},
               "window": {
                 "type": "object",
                 "additionalProperties": false,

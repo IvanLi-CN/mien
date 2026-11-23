@@ -16,7 +16,7 @@
 
 - 产品需求、架构、详细设计、技术选型、ADRs、主题规格、测试计划与安全威胁模型。
 - Deep Current 视觉系统、Profiles 首屏 comp 与 1440/1024/768/390 的响应式规则。
-- fingerprint-chromium 148 能力清单基线：逐项验证文档化开关是否生效。
+- fingerprint-chromium 148 能力清单基线：逐项验证文档化开关是否生效，包括 `headless_ua_patch`。
 - macOS ARM64 内核启动 spike：有头启动、CDP 探针、进程退出与数据目录。
 - Docker 沙箱 spike：在目标基础镜像中验证非 root + 用户命名空间沙箱是否可用；记录不可用时的配置。
 - Docker 显示 spike：Xvfb + openbox + Chromium 有头启动，确认窗口尺寸与 `screen.*` 行为。
@@ -44,7 +44,7 @@
 - 内核注册表：148 安装、SHA-256 校验、能力清单加载。
 - 指纹规格 v1 与确定性 argv 构建器。
 - 协议引擎注册表与共享引擎：Xray 校验、动态出站、每运行档案 HTTP 入站、路由规则、共享出站引用计数、VLESS 受控节点。
-- macOS 有头启动、状态事件、正常停止、日志文件。
+- macOS 有头、无头、无头 UA 启动，状态事件、正常停止、日志文件。
 - 主密钥存入钥匙串，代理配置与凭据字段加密。
 
 退出标准：
@@ -64,6 +64,7 @@
 - `--disable-spoofing` 映射、WebRTC 默认策略、DoH 与 IPv6 防护。
 - 协议矩阵：VLESS、VMess、Shadowsocks、Trojan；Hysteria2/WireGuard 按能力清单验证；TUIC 后续。
 - 分享链接导入、类型化配置、动态入站/出站/路由、引用计数、连接复用与引擎崩溃重建。
+- 运行模式矩阵与能力门禁：无头 UA 只在 `headless_ua_patch=true` 时可用，UI/API 返回 UA 范围与降低保证。
 - 远程 DNS、失败关闭、代理检查、出口 IP（配置回显端点时）、错误分类与事件。
 - 指纹探针完整版与 golden fixture；同一档案三次启动一致性测试。
 - 运行时对账、崩溃退避、并发准入、日志轮转与脱敏。
@@ -85,7 +86,7 @@
 - WebSocket 事件流、健康检查、审计事件。
 - 服务端 Web UI：档案、指纹、代理配置与分享链接导入、运行时、日志、内核、协议引擎、Token 管理。
 - Docker 镜像：非 root、Xvfb、openbox、可选 noVNC、Xray-core、数据卷、健康检查；记录 Hysteria2 的 UDP 出站要求。
-- 有头模式与无头模式切换，降低保证标记。
+- 有头、无头与无头 UA 模式切换，降低保证标记与 UA 范围说明。
 - 导入导出、加密导出、备份恢复说明。
 - OpenAPI 文档与 API 集成测试，覆盖代理 CRUD、分享链接导入、检查和脱敏视图。
 

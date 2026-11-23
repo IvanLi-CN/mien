@@ -12,7 +12,8 @@
     "flags",
     "seed_derived",
     "known_issues",
-    "sandbox"
+    "sandbox",
+    "headless_ua_patch"
   ],
   "properties": {
     "kernel_version": {
@@ -44,6 +45,9 @@
     "limitations": {
       "type": "array",
       "items": {"type": "string"}
+    },
+    "headless_ua_patch": {
+      "type": "boolean"
     },
     "sandbox": {
       "type": "object",
