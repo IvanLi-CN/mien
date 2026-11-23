@@ -106,6 +106,7 @@
 - 内核准入测试套件与 148 基线报告；协议引擎准入与 Tier A 矩阵报告。
 - 完整指纹、代理协议、生命周期、安全和性能测试报告。
 - macOS AdHoc 签名、DMG、SHA-256、支持的 attestation、Tauri 自动更新清单。
+- 手动 `release_target`、draft reservation、同 identity recovery 和 GitHub Release 发布记录。
 - Docker 镜像漏洞扫描、SBOM、BSD-3-Clause 与 MPL-2.0 许可清单、来源信息、发布标签。
 - 已知限制、部署指南、故障排查和可接受使用政策。
 - 发布回滚与安全响应流程。
@@ -133,7 +134,7 @@
 - 能力清单与指纹探针必须先于 UI 指纹编辑器冻结，否则 UI 会暴露无效字段。
 - 协议引擎的远程 DNS、失败关闭与协议矩阵必须在发布前通过受控节点和 canary 测试，不能仅靠代码审查。
 - Xray-core 的 MPL-2.0 合规、单实例 API 安全、连接复用和共享故障域必须在 M0 给出结论，否则 M2 的协议矩阵无法进入发布路径。
-- AdHoc 不依赖 Apple 证书；仍需在 M3 前准备 Tauri 更新签名密钥、release environment、tag 保护和一次性手动放行说明。
+- AdHoc 不依赖 Apple 证书；仍需在 M3 前准备 Tauri 更新签名密钥、release environment、draft reservation 策略、tag 保护和一次性手动放行说明。
 - 内核 148 的安全问题跟踪是持续工作；若上游修复或新版本达到准入标准，按 ADR-0002 走迁移。
 
 ## 5. 完成定义

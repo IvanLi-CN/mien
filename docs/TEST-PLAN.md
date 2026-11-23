@@ -253,7 +253,7 @@
 | PKG-006 | SBOM 与许可 | 镜像和应用包含 SBOM、BSD-3-Clause、MPL-2.0 许可与来源信息 |
 | PKG-007 | 漏洞扫描 | 无未接受的高危/严重漏洞 |
 | PKG-008 | 发布说明 | 列出内核缺陷、代理协议矩阵、节点 bootstrap 泄漏、无头限制、跨系统限制、显示与字体限制 |
-| PKG-009 | GitHub Actions 发布 | tag workflow 仅在 main 已绿时发布；产物含 SHA-256SUMS、SBOM、许可证与支持的 attestation；不存在 Apple 证书或公证 secret |
+| PKG-009 | GitHub Actions 发布 | 手动 `release_target` 仅在 main 已绿时发布；draft reservation 绑定 version/source；产物含 SHA-256SUMS、SBOM、许可证与支持的 attestation；不存在 Apple 证书或公证 secret |
 
 ## 11. 缺陷分级与发布门禁
 

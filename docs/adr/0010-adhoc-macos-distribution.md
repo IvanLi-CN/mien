@@ -17,7 +17,7 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 - 不执行 `notarytool`、`stapler` 或 Gatekeeper 成功验证。`spctl --assess` 对 AdHoc 应用预期失败，CI 只记录这个预期结果。
 - 发布物提供 `SHA256SUMS`、SBOM、许可证、已知限制和 Tauri 更新清单。仓库计划支持时，再为 DMG 和容器 digest 生成 GitHub artifact attestation。
 - macOS 更新使用 Tauri 的独立更新签名密钥，和 Apple 代码签名无关；客户端拒绝未签名或降级的更新包。
-- 发布由 GitHub Actions 的 `release.yml` 执行，由 `vX.Y.Z` tag 触发；tag 指向已通过 main CI 的提交，`release` environment 需要人工批准。
+- 发布由 GitHub Actions 的 `release.yml` 执行，由手动 `release_target` 触发；tag 只在 Release 阶段创建或验证，`release` environment 需要人工批准。target、reservation 和 recovery 见 [`ADR-0011`](0011-manual-release-identity.md)。
 - 不在应用、安装器或发布脚本中自动移除 `com.apple.quarantine`；发布说明要求用户先校验 SHA-256 或 attestation，再手动放行。
 - 不保存 Apple 证书、Apple ID、Team ID 或 App-Specific Password 作为 CI secret。
 

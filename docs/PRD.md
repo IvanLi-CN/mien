@@ -371,7 +371,7 @@ Mien 仅用于合法、授权的环境隔离、测试、隐私研究和多账号
 | 有头优先 | Docker 默认 Xvfb + openbox；无头与伪有头仅显式降级；noVNC 可选 | [`ADR-0005`](adr/0005-headful-first-display.md) |
 | 指纹模型 | 显式规格 + 种子派生，主机对齐优先，能力清单校验 | [`ADR-0006`](adr/0006-fingerprint-spec-model.md) |
 | 桌面调用 | 管理网页通过 Tauri IPC 调用核心；服务端使用 HTTP/WS；两套传输共享同一套领域服务与 DTO | [`ADR-0008`](adr/0008-tauri-ipc-ui-transport.md) |
-| macOS 分发 | AdHoc 签名，不公证；GitHub Actions tag 发布；SHA-256、artifact attestation 与 Tauri 更新签名组成信任链 | [`ADR-0010`](adr/0010-adhoc-macos-distribution.md)、[`CI.md`](CI.md) |
+| macOS 分发 | AdHoc 签名，不公证；GitHub Actions 手动 release target；draft reservation；SHA-256、artifact attestation 与 Tauri 更新签名组成信任链 | [`ADR-0010`](adr/0010-adhoc-macos-distribution.md)、[`ADR-0011`](adr/0011-manual-release-identity.md)、[`RELEASE-POLICY.md`](RELEASE-POLICY.md) |
 
 ## 16. 参考
 
@@ -385,3 +385,4 @@ Mien 仅用于合法、授权的环境隔离、测试、隐私研究和多账号
 - 测试计划：[`TEST-PLAN.md`](TEST-PLAN.md)
 - 安全威胁模型：[`SECURITY.md`](SECURITY.md)
 - CI 与发布流水线：[`CI.md`](CI.md)
+- 手动发布策略：[`RELEASE-POLICY.md`](RELEASE-POLICY.md)

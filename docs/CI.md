@@ -1,6 +1,6 @@
 # Mien CI 与发布流水线
 
-本文固定 GitHub Actions 上的持续集成、发布触发、macOS AdHoc 打包、制品和门禁。CI 只使用 GitHub-hosted runner；macOS 发布不使用 Developer ID 证书，也不使用 Apple 公证账号。`.github/workflows/` 的实际 YAML 在实现阶段按本文件落地；在 workflow、分支保护与发布环境配置完成前，不宣称门禁已经生效。
+本文固定 GitHub Actions 上的持续集成、手动发布触发、macOS AdHoc 打包、制品和门禁。CI 只使用 GitHub-hosted runner；macOS 发布不使用 Developer ID 证书，也不使用 Apple 公证账号。版本解析、reservation、identity 和 recovery 见 [`RELEASE-POLICY.md`](RELEASE-POLICY.md)。`.github/workflows/` 的实际 YAML 在实现阶段按本文件落地；在 workflow、分支保护与发布环境配置完成前，不宣称门禁已经生效。
 
 ## 1. 固定决策
 
@@ -8,7 +8,7 @@
 - PR 只使用只读权限和测试 fixture，不接触 release secrets。
 - macOS 使用 AdHoc 签名（`codesign --sign -`），不公证，不做 `stapler`。AdHoc 只提供包完整性信号，不证明发布者身份。
 - macOS 分发的信任链是 GitHub Release、SHA-256SUMS、GitHub artifact attestation（仓库计划支持时）和 Tauri 更新签名，不是 Apple Gatekeeper。
-- 发布由维护者推送 `vX.Y.Z` tag 触发；不由 PR 合并或 main push 自动发布。tag 必须指向已通过 main CI 的提交。
+- 发布由维护者手动触发 `release.yml`，输入单个 `release_target`；tag 只在 Release 阶段创建或验证，不作为触发入口。
 - release workflow 使用受保护的 `release` environment，发布前需要人工批准。
 - Docker 固定构建 `linux/amd64`；macOS 构建 Apple Silicon `aarch64-apple-darwin`。
 - 第三方 Actions 固定到完整 commit SHA；依赖升级由 Dependabot 或人工 PR 完成。
@@ -21,7 +21,7 @@
 | `.github/workflows/ci-pr.yml` | `pull_request` 的 `opened`、`synchronize`、`reopened`、`ready_for_review`；`merge_group` | `ci-pr-${{ github.event.pull_request.number || github.ref }}`，取消过期 candidate | PR candidate gate；`CI PR / required` 是唯一 required check |
 | `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与打包 smoke |
 | `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、容器和已知漏洞复查 |
-| `.github/workflows/release.yml` | `push` tag `v[0-9]+.[0-9]+.[0-9]+` | `release-${{ github.ref_name }}`，不取消 | 全量验证、macOS/Docker 构建、attestation、GitHub Release |
+| `.github/workflows/release.yml` | `workflow_dispatch`，输入 `release_target` | `release`，不取消 | target 解析、reservation、全量验证、macOS/Docker 构建、attestation、GitHub Release |
 
 `ci-pr.yml` 不监听 `pull_request.edited`；只有代码或 review-ready 状态变化才重新评估 required gate。`ci-main.yml` 与 `release.yml` 使用独立并发 namespace，不能被 PR 的取消策略误伤。
 
@@ -54,35 +54,41 @@ flowchart TD
 
 PR 初始阶段不按路径过滤。等基线稳定后可以引入 classifier 减少无关 workload，但 required 聚合 job 必须始终存在并覆盖实际改动域；不能用 paths filter 让 required check 缺席。
 
-`ci-main.yml` 复用同一套验证，但增加完整 e2e、容器矩阵、容量 smoke 和 macOS 打包 smoke。main 失败不回滚已合并代码，但阻断后续 tag 发布。
+`ci-main.yml` 复用同一套验证，但增加完整 e2e、容器矩阵、容量 smoke 和 macOS 打包 smoke。main 失败不回滚已合并代码，但阻断后续 release。
 
 ## 4. 发布流水线
 
+发布由维护者手动触发，输入单个 `release_target`。工作流自己解析 canonical version、建立 draft reservation、验证 source 和 `CI Main / verify`，再构建和发布；不接受 tag push、PR label 或 main push 作为自动 trigger。完整 policy 见 [`RELEASE-POLICY.md`](RELEASE-POLICY.md)。
+
 ```mermaid
 flowchart TD
-  Tag[vX.Y.Z tag] --> V[verify-tag]
-  V --> T[ci-reusable: release]
+  Dispatch[workflow_dispatch: release_target] --> V[resolve-target]
+  V --> R[reserve draft]
+  R --> T[ci-reusable: release]
   T --> M[macOS arm64 构建]
-  T --> D[Docker amd64 构建]
-  M --> P[publish draft 并上传]
-  D --> P
-  P --> A[attest]
-  A --> X[verify-published]
-  X --> R[finalize 公开 Release]
+  T --> Docker[Docker amd64 构建]
+  M --> S[stage-release]
+  Docker --> S
+  S --> A[attest]
+  A --> P[release: tag + 公开 GitHub Release]
+  P --> X[verify-release]
 ```
 
 | Job | 内容 | 失败处理 |
 | --- | --- | --- |
-| `verify-tag` | 校验 SemVer、tag 指向 `main` 祖先提交、目标提交存在成功的 `CI Main` 结论、版本号与包清单一致、同名公开 release 尚不存在；允许重跑未发布 draft | 不构建，不创建公开 release |
+| `resolve-target` | 读取 `release_target` 和 trusted baseline，解析 canonical version；校验 `main` source、`CI Main / verify`、已有 draft/public identity | 不构建，不创建公开 release |
+| `reserve` | 创建或复用 draft GitHub Release，写入 policy、target、version、source SHA 和 run ID | 不构建；同 version 不同 source 直接冲突 |
 | `test` | 调用 `ci-reusable.yml`，`profile=release`，运行全量测试与 e2e | 不构建发布物 |
-| `macos-arm64` | 在 `release` environment 中构建 Tauri 应用，下载并校验内核/Xray，AdHoc 签名，生成 DMG、SBOM、许可证与更新清单 | 上传失败诊断；不进入 publish |
-| `docker-amd64` | `buildx` 构建 `linux/amd64`，Trivy，SBOM，推送 GHCR digest，cosign keyless 签名 | 不进入 publish |
-| `publish` | 汇总制品，校验 SHA-256，创建 draft GitHub Release 并上传 | 保留未发布 draft；不公开半成品 |
+| `macos-arm64` | 在 `release` environment 中构建 Tauri 应用，下载并校验内核/Xray，AdHoc 签名，生成 DMG、SBOM、许可证与更新清单 | 上传失败诊断；不进入 stage-release |
+| `docker-amd64` | `buildx` 构建 `linux/amd64`，Trivy，SBOM，推送 GHCR digest，cosign keyless 签名 | 不进入 stage-release |
+| `stage-release` | 汇总产物到 draft，校验 SHA-256/digest，写入 `release-identity.json` | draft 保持未公开；不创建 tag |
 | `attest` | 对 DMG 和容器 digest 生成 GitHub artifact attestation；仓库计划不支持时显式跳过并记录，退回 SHA-256 校验 | attestation 已启用但失败则不公开 release |
-| `verify-published` | 下载已上传资产，校验 checksums、AdHoc 签名、更新清单和 DMG 内容 | 标记 release 无效；不得静默忽略 |
-| `finalize` | 公开 draft release | 仅在全部前置验证成功后执行 |
+| `release` | 校验 draft identity 后创建或验证 tag，公开 GitHub Release | 不公开；保留 draft 供同 identity recovery |
+| `verify-release` | 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity | 标记 release 无效；不得静默忽略 |
 
-tag 由维护者创建，workflow 不自动创建 tag。失败后对同一 tag 重跑 workflow；不创建内容相同的新 tag。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
+tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑；先读取已有 reservation，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
+
+Deploy 不在本仓库自动执行；后续部署必须消费 `release-identity.json` 中的 digest，不按分支或 `latest` 重新构建。
 
 ## 5. macOS AdHoc 打包
 
@@ -115,7 +121,7 @@ Tauri 自动更新使用独立的更新签名密钥，和 Apple 签名无关；�
 | 内核缓存 | 按发行资产 SHA-256 建立 key；恢复后必须重新校验，不信任缓存内容 |
 | Playwright 浏览器 | 按锁文件和 Playwright 版本建立 key |
 | PR 诊断 | nextest JUnit、失败 e2e 的 trace/screenshot/video，保留 7 至 14 天 |
-| Release 资产 | DMG、Docker digest、SBOM、许可证、`SHA256SUMS`、更新清单、attestation；随 GitHub Release 长期保留，Actions artifact 保留 90 天 |
+| Release 资产 | DMG、Docker digest、SBOM、许可证、`SHA256SUMS`、`release-identity.json`、更新清单、attestation；随 GitHub Release 长期保留，Actions artifact 保留 90 天 |
 
 成功 run 不长期上传整个 workspace、`node_modules`、浏览器安装目录或没有消费者的文件。release job 只上传可验证、可追溯的发布资产。
 
@@ -125,15 +131,18 @@ PR workflow 默认 `permissions: contents: read`；release workflow 按 job 最�
 
 | Job | 权限 |
 | --- | --- |
-| `verify-tag`、`test` | `contents: read` |
+| `resolve-target`、`test` | `contents: read` |
+| `reserve` | `contents: write` |
 | `macos-arm64` | `contents: read`；使用 `release` environment 读取更新签名密钥 |
 | `docker-amd64` | `contents: read`、`packages: write`、`id-token: write` |
-| `publish` | `contents: write` |
+| `stage-release` | `contents: write` |
 | `attest` | `contents: read`、`attestations: write`、`id-token: write` |
-| `verify-published` | `contents: read` |
-| `finalize` | `contents: write` |
+| `release` | `contents: write` |
+| `verify-release` | `contents: read` |
 
-`release` environment 的人工批准在 `macos-arm64` 入口执行；`publish` 依赖该 job，因此公开 release 前必然经过批准。
+`release` environment 的人工批准在 `macos-arm64` 入口执行；`release` job 依赖该 job，因此公开 release 前必然经过批准。
+
+实现时必须验证单独 re-run `release` job 仍受 `release` environment 或等价保护规则约束；若 GitHub 的 re-run 路径可以绕过环境审批，则把 `release` job 也绑定到受保护 environment，不能只依赖上游 job 的历史批准。
 
 release environment 仅保存：
 
@@ -156,15 +165,15 @@ fork PR 不获得任何 release secret；不使用 `pull_request_target` 执行�
 
 `ci-pr.yml` 的 workflow name 固定为 `CI PR`，聚合 job 名固定为 `required`；因此 check 名为 `CI PR / required`。`ci-main.yml` 的 workflow name 固定为 `CI Main`，主验证 job 名为 `verify`。`CI PR / required` 是一个聚合 job，只有所有适用上游 job 成功才成功。workflow 或 job 名称在 YAML 落地后必须与 GitHub 分支保护中的 check 名逐字核对；在未核对前，文档只记录设计，不宣称已经 enforce。
 
-`CI Main / verify` 用于 mainline 健康检查，不替代 PR required check。release workflow 不是 PR 门禁，但它的 `verify-tag` 与 `test` 必须在发布物构建前成功。
+`CI Main / verify` 用于 mainline 健康检查，不替代 PR required check。release workflow 不是 PR 门禁，但它的 `resolve-target` 与 `test` 必须在发布物构建前成功。
 
 ## 9. 失败、重跑与回滚
 
 - PR gate 失败时修复代码或测试；不使用 `continue-on-error`、降低断言、删除 required check 或扩大 waiver 来变绿。
 - 只有已确认的瞬态网络故障可以重试；flaky 测试、锁竞争和超时按缺陷处理。
-- release 在 `publish` 前失败时，tag 可以保留，但不得创建公开 release；修复后对同一 tag 重跑。
-- `publish` 先创建 draft；全部资产和 attestation 验证通过后才公开。公开后 `verify-published` 失败时，立即标记 release 无效并通知维护者。
-- 回滚使用上一版本 release 或重新构建同一 tag 的修正版本；不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
+- release 在 `release` job 前失败时，draft reservation 保留，不创建公开 release；用同一 target、同一 source SHA 重跑，复用已绑定 canonical version，不重新计算 successor。
+- `stage-release` 只写 draft；全部资产、identity 和 attestation 验证通过后，`release` 才创建或验证 tag 并公开。公开后 `verify-release` 失败时，立即标记 release 无效并通知维护者。
+- 回滚使用上一版本 release 或同 identity 的修正构建；不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
 
 ## 10. 实施顺序
 
@@ -172,13 +181,15 @@ fork PR 不获得任何 release secret；不使用 `pull_request_target` 执行�
 2. M1：加入 SQLite、API、生命周期与 Xray fixture 集成；把 `CI PR / required` 配置为真实 required check。
 3. M2：加入 Docker e2e smoke、内核下载校验和代理矩阵 fixture。
 4. M3：加入 macOS 打包 smoke、AdHoc 签名验证、SBOM 与 Trivy。
-5. M4：启用 `release` environment、tag 保护、release workflow、attestation、更新清单和发布后验证。
+5. M4：启用 `release` environment、draft reservation、手动 `release_target` workflow、tag 保护、attestation、更新清单和发布后验证。
 
 ## 11. 参考
 
 - [`RELEASE.md`](RELEASE.md)
+- [`RELEASE-POLICY.md`](RELEASE-POLICY.md)
 - [`TEST-PLAN.md`](TEST-PLAN.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`TECH-STACK.md`](TECH-STACK.md)
 - [`adr/0010-adhoc-macos-distribution.md`](adr/0010-adhoc-macos-distribution.md)
+- [`adr/0011-manual-release-identity.md`](adr/0011-manual-release-identity.md)
 - [`contracts/`](contracts/)

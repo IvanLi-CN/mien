@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | macOS 应用 | Tauri 2 应用、fingerprint-chromium 148 ARM64、Xray-core v26.11.9 ARM64、AdHoc 签名、更新清单 | 必须 |
 | macOS 校验 | `SHA256SUMS`、SBOM、许可证、来源信息、artifact attestation（计划支持时） | 必须 |
+| Release identity | `release-identity.json`：policy、target、canonical version、source SHA、reservation ID、artifact digest | 必须 |
 | Docker 镜像 | `linux/amd64`、非 root、Xvfb、openbox、noVNC、内核、Xray、健康检查 | 必须 |
 | 许可包 | BSD-3-Clause、MPL-2.0、容器组件许可、NOTICE、源码/来源链接 | 必须 |
 | SBOM | macOS 应用与 Docker 镜像 | 必须 |
@@ -26,12 +27,14 @@
 
 ## 2. 发布触发与门禁
 
-发布由维护者推送 `vX.Y.Z` tag 触发，不由 PR 合并或 main push 自动发布。tag 必须指向已通过 main CI 的提交，release workflow 使用受保护的 `release` environment 并要求人工批准。
+发布由维护者在 `release.yml` 中手动输入一个 `release_target` 触发，不由 PR 合并、main push 或 tag push 自动发布。target 可以是 `patch`、`minor`、`major` 或 explicit `X.Y.Z`；workflow 按 [`RELEASE-POLICY.md`](RELEASE-POLICY.md) 解析 canonical version。tag 只在 Release 阶段创建或验证，release workflow 使用受保护的 `release` environment 并要求人工批准。
 
 发布门禁：
 
 - `PRD-ACC-001` 至 `PRD-ACC-010` 有当前证据。
-- `CI PR / required` 在目标提交上通过；mainline 完整验证通过。
+- `CI PR / required` 在目标提交上通过；目标 `main` SHA 存在成功的 `CI Main / verify`。
+- `release_target` 合法，trusted baseline 可读取，canonical version 严格大于 baseline。
+- draft reservation 的 version/source 与本次 target 一致；同 version 不同 source 必须冲突。
 - 内核准入 `KERNEL-001` 至 `KERNEL-010` 通过。
 - Xray 准入、协议矩阵、共享出站引用计数、连接复用、引擎崩溃重建通过。
 - 指纹、DNS、WebRTC、IPv6、DoH、失败关闭测试通过。
@@ -77,17 +80,18 @@
 
 ## 5. GitHub Actions 发布流程
 
-发布 workflow 为 `.github/workflows/release.yml`，完整设计见 [`CI.md`](CI.md)：
+发布 workflow 为 `.github/workflows/release.yml`，完整设计见 [`CI.md`](CI.md)，版本与 identity 见 [`RELEASE-POLICY.md`](RELEASE-POLICY.md)：
 
-1. `verify-tag` 校验 SemVer、tag 指向 main 祖先提交、版本号一致，且 release 尚不存在。
-2. `test` 调用共享 CI workflow，运行完整测试和 e2e；不接触 release secrets。
-3. `macos-arm64` 与 `docker-amd64` 并行构建，分别上传 DMG、SBOM、校验和与镜像 digest。
-4. `publish` 在 `release` environment 批准后创建 draft GitHub Release，上传资产。
-5. `attest` 为 DMG 和容器 digest 生成 GitHub artifact attestation（计划支持时）。
-6. `verify-published` 下载已上传资产，校验 checksums、AdHoc 签名、更新清单和 DMG 内容。
-7. `finalize` 仅在全部前置验证成功后公开 release。
+1. `resolve-target` 读取 `release_target` 和 trusted baseline，解析 canonical version；校验 `main` source、`CI Main / verify` 和已有 reservation。
+2. `reserve` 创建或复用 draft GitHub Release，写入 policy、target、version、source SHA 和 run ID。
+3. `test` 调用共享 CI workflow，运行完整测试和 e2e；不接触 release secrets。
+4. `macos-arm64` 与 `docker-amd64` 并行构建，分别上传 DMG、SBOM、校验和与镜像 digest。
+5. `stage-release` 把产物写入 draft，校验 SHA-256/digest，写入 `release-identity.json`。
+6. `attest` 为 DMG 和容器 digest 生成 GitHub artifact attestation（计划支持时）。
+7. `release` 校验 identity 后创建或验证 tag，公开 release。
+8. `verify-release` 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity。
 
-release workflow 不自动创建 tag；失败后对同一 tag 重跑，不创建内容相同的新 tag。release 资产不可变，回滚使用上一版本 release，不覆盖已发布文件。
+失败后用相同 `release_target` 和相同 `source_sha` 重跑，复用已绑定 canonical version、draft reservation 和已记录 digest；不重新分配版本，不创建 successor，不改写已有 tag。release 资产不可变，回滚使用上一版本 release，不覆盖已发布文件。
 
 ## 6. 回滚与安全响应
 
@@ -95,13 +99,13 @@ release workflow 不自动创建 tag；失败后对同一 tag 重跑，不创建
 - 引擎升级会重置共享连接池；发布说明明确告知用户。
 - 发现高危内核或 Xray 缺陷时，先限制受影响版本/协议，再发布修复或回退包。
 - 回滚包必须保持 AdHoc 签名/校验和、数据库迁移兼容和导出 schema 兼容。
-- 已公开 release 的 `verify-published` 失败时，立即标记 release 无效并通知维护者。
+- 已公开 release 的 `verify-release` 失败时，立即标记 release 无效并通知维护者。
 - 安全公告包含影响范围、缓解措施和已知限制，不包含利用细节。
 
 ## 7. 当前缺口
 
 - Mien 自身项目许可证尚未选择。
-- `.github/workflows/` 的实际 YAML、branch protection、merge queue、`release` environment 和 tag 保护尚未落地。
+- `.github/workflows/` 的实际 YAML、branch protection、merge queue、`release` environment、draft reservation 和 tag 保护尚未落地。
 - Tauri 更新签名密钥尚未生成和配置。
 - 尚未完成正式法律评审与实际 SBOM/NOTICE 构建。
 - M0 Xray、内核、Docker 与代理矩阵 spike 尚未执行。
@@ -109,9 +113,11 @@ release workflow 不自动创建 tag；失败后对同一 tag 重跑，不创建
 ## 8. 参考
 
 - [`CI.md`](CI.md)
+- [`RELEASE-POLICY.md`](RELEASE-POLICY.md)
 - [`TEST-PLAN.md`](TEST-PLAN.md)
 - [`THIRD-PARTY.md`](THIRD-PARTY.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`ROADMAP.md`](ROADMAP.md)
 - [`adr/0010-adhoc-macos-distribution.md`](adr/0010-adhoc-macos-distribution.md)
+- [`adr/0011-manual-release-identity.md`](adr/0011-manual-release-identity.md)
 - [`contracts/manifests/`](contracts/manifests/)

@@ -56,6 +56,7 @@ Apple Silicon 上的 Docker Desktop 或 OrbStack 以 `linux/amd64` 模拟运行�
 | [`docs/DELIVERY-PLAN.md`](docs/DELIVERY-PLAN.md) | M0 spike、第一个纵向切片和开工检查表 |
 | [`docs/THIRD-PARTY.md`](docs/THIRD-PARTY.md) | 第三方组件、许可义务与当前合规缺口 |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | macOS/Docker 发布、AdHoc 签名、SBOM、门禁与回滚 |
+| [`docs/RELEASE-POLICY.md`](docs/RELEASE-POLICY.md) | 手动 `release_target`、trusted baseline、reservation 与 recovery |
 | [`docs/CI.md`](docs/CI.md) | GitHub Actions PR/main/release 拓扑、AdHoc 打包、门禁与发布环境 |
 | [`docs/contracts/manifests/`](docs/contracts/manifests/) | 148 内核与 Xray v26.11.9 候选能力清单 |
 

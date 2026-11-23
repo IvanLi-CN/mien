@@ -140,4 +140,5 @@ M0 结束前必须冻结：
 - [`TEST-PLAN.md`](TEST-PLAN.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`RELEASE.md`](RELEASE.md)
+- [`RELEASE-POLICY.md`](RELEASE-POLICY.md)
 - [`CI.md`](CI.md)

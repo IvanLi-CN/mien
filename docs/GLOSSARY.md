@@ -48,6 +48,10 @@
 | Gatekeeper | Gatekeeper | macOS 对下载应用的启动检查；AdHoc 且未公证的应用会被阻止首次启动。 |
 | 发布环境 | release environment | GitHub Actions 中受保护的 environment，要求人工批准并限制 release secrets 的使用。 |
 | 制品证明 | artifact attestation | 由构建平台生成的制品来源与完整性证明，用于补充 SHA-256 和 GitHub Release 的信任链。 |
+| 发布目标 | release target | 维护者提供的单个输入，可为 `patch`、`minor`、`major` 或 explicit `X.Y.Z`；由 workflow 解析为 canonical version。 |
+| 可信基线 | trusted baseline | 最新公开、非 draft、非 prerelease 的 GitHub Release 版本，用于版本单调性判断。 |
+| 发布预留 | release reservation | 构建前创建的 durable claim，绑定 canonical version、source SHA、policy 和 reservation ID；本项目使用 draft GitHub Release。 |
+| 发布标识 | release identity | canonical version、source SHA、policy、reservation、artifact digest 和 publication target 的组合。 |
 | VLESS | VLESS | 基于用户 ID 的轻量代理协议，常与 TLS、REALITY、WebSocket 或 gRPC 组合。 |
 | VMess | VMess | 基于用户 ID 与加密选型的代理协议，支持多种传输。 |
 | Shadowsocks | Shadowsocks | 基于 AEAD 或 2022 方法的加密代理协议。 |

@@ -14,6 +14,7 @@
 | [ADR-0008](0008-tauri-ipc-ui-transport.md) | 管理网页通过 Tauri IPC 调用核心 | 已接受 |
 | [ADR-0009](0009-shared-xray-engine.md) | 单实例 Xray 动态协议引擎与连接复用 | 已接受 |
 | [ADR-0010](0010-adhoc-macos-distribution.md) | macOS AdHoc 分发与 GitHub Actions 发布 | 已接受 |
+| [ADR-0011](0011-manual-release-identity.md) | 手动 release target 与不可变发布 identity | 已接受 |
 
 ## 阅读顺序
 
@@ -22,5 +23,6 @@
 3. [`ADR-0006`](0006-fingerprint-spec-model.md) 与 [`ADR-0009`](0009-shared-xray-engine.md) 分别定义指纹输入和网络输入；[`ADR-0007`](0007-protocol-engine-forward-proxy.md) 与 [`ADR-0004`](0004-local-proxy-relay.md) 仅保留为被取代的历史背景。
 4. [`ADR-0003`](0003-storage-and-secret-protection.md)、[`ADR-0005`](0005-headful-first-display.md) 与 [`ADR-0008`](0008-tauri-ipc-ui-transport.md) 补充持久化、密钥、显示和桌面调用边界。
 5. [`ADR-0010`](0010-adhoc-macos-distribution.md) 规定 macOS AdHoc 分发、Gatekeeper 限制与 GitHub Actions 发布边界。
+6. [`ADR-0011`](0011-manual-release-identity.md) 规定手动 target、trusted baseline、draft reservation 与同 identity recovery。
 
 新的 ADR 使用四位编号和 kebab-case 文件名；语义变更通过后继 ADR 取代旧决策，不直接改写已接受决策的理由。
