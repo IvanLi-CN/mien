@@ -140,7 +140,7 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 ## 13. Owner 前置条件
 
 - 确认 release target、trusted baseline 来源和首个 `0.1.0` release。
-- 配置 main branch protection、`CI PR / required`、`CI Main / verify` 和 `release` environment 审批。
+- 配置 main branch protection、`CI PR / required`、`CI Main / verify` 和 `release` environment 审批；`stage-release`、`promote-docker`、`release` 的独立 re-run 都必须重新进入审批。
 - 配置 repository ruleset：目标 `v*`，只启用 `Restrict updates` 与 `Restrict deletions`，不设 bypass list；关闭 `Restrict creations`，使 release job 可用 `GITHUB_TOKEN` 创建新 tag。规则不得允许改写或删除既有 tag。
 - 配置 Tauri 更新签名密钥；不配置 Apple Developer ID 或公证凭据。
 - 配置 GitHub Release、GHCR 的权限和 artifact retention。

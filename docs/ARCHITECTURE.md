@@ -546,7 +546,7 @@ Docker 中有头、无头或伪有头启动前必须检测 Chromium 沙箱是否
 
 - 通用构建目标为 `aarch64-apple-darwin`，最低 macOS 13。
 - 应用、嵌套内核、Xray-core 二进制和 frameworks 使用 AdHoc 签名；不执行公证，也不把 Gatekeeper 通过作为发布门禁。AdHoc 只提供包完整性信号，不证明发布者身份。
-- 发布物提供 SHA-256SUMS、SBOM、许可证和 Tauri 更新清单；仓库计划支持时生成 GitHub artifact attestation。Gatekeeper 首次启动会阻止 AdHoc 应用，发布说明要求用户先校验资产，再手动放行。
+- 发布物提供 SHA-256SUMS、SBOM、许可证和 Tauri 更新清单；GitHub artifact attestation 是必选发布门禁，不设跳过分支。Gatekeeper 首次启动会阻止 AdHoc 应用，发布说明要求用户先校验资产，再手动放行。
 - 自动更新使用 Tauri 更新签名清单，和 Apple 代码签名无关；禁止降级到未签名版本。
 - CI 与发布 workflow 的触发、权限、制品和门禁见 [`CI.md`](CI.md) 与 [`ADR-0010`](adr/0010-adhoc-macos-distribution.md)。
 - 主密钥存入登录钥匙串；卸载不自动删除数据目录。

@@ -222,7 +222,7 @@
 ### VER-API-011
 
 - Method: 检查 OpenAPI 的 `/api/v1/events` security 声明；申请一次性票据建立 WebSocket，断开后带整数 `after=<sequence>` 重连，并测试非整数/非正游标、URL 长效 Token、缺票据与跨源 Origin。
-- covers: `REQ-API-011`
+- covers: `REQ-API-002`, `REQ-API-011`
 - Pass condition: OpenAPI 声明 `ticketAuth`（apiKey in query）与 `cookieAuth`，不存在匿名 `security: []`；票据只能使用一次，缺失/过期/已用返回 401 `EVENT_TICKET_INVALID`；重连按 `sequence > after` 补齐且不跳过保留事件；非整数或非正 `after` 返回 422；URL 长效 Token 被拒绝；跨源升级返回 403 `AUTH_ORIGIN_INVALID`；心跳检测死连接。
 
 ### VER-API-012
@@ -266,6 +266,24 @@
 - Method: 使用生成的初始密码登录，尝试写操作，改密后重新登录，并尝试复用旧会话。
 - covers: `REQ-API-018`
 - Pass condition: 首次登录返回 `must_change_password=true`；未改密写操作返回 403 `AUTH_PASSWORD_CHANGE_REQUIRED`；改密成功后旧会话失效，新密码可登录。
+
+### VER-API-019
+
+- Method: 在运行与停止的档案上调用 `GET /api/v1/profiles/{id}/logs?limit=`，分别使用无认证、缺 scope、不存在 ID、无保留日志、非法与超限 `limit`，并扫描响应与桌面 IPC 等价输出。
+- covers: `REQ-API-019`, `REQ-RUNTIME-015`
+- Pass condition: 200 返回不超过 `limit` 的有界尾部与截断标记；非法/超限 `limit` 返回 422；未认证 401；缺 scope 403；档案不存在 404 `PROFILE_NOT_FOUND`；无运行时且无保留日志 404 `RUNTIME_NOT_FOUND`；响应与 IPC 输出均无凭据、Cookie、授权头、UUID 或完整 URL。
+
+### VER-API-020
+
+- Method: 分别以 `POST /api/v1/profiles/{id}/export` 导出 plain/encrypted，调用 `import/validate` 与 `import` 使用 `new_id`/`abort`，并在日志、审计、URL 中搜索口令。
+- covers: `REQ-API-020`
+- Pass condition: plain 载荷通过 `profile-export.schema.json` 且无凭据/Token/Cookie/顶层 `window`；encrypted 载荷无口令不可读、正确口令可还原、错误口令返回字段级错误；口令不出现在 URL、日志、审计与错误；validate 不写行/不建目录；`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`；代理仅含 `credential_fields` 与非秘密 `options`，`credentials_removed=true`。
+
+### VER-API-021
+
+- Method: 读取档案与运行时响应（覆盖六态与停止后重读）、软删除档案启动、模拟 purge 失败，并搜索 API/IPC schema 与数据库中是否存在 `block_start_on_check_failure`。
+- covers: `REQ-API-021`
+- Pass condition: 运行时 `state` 为六态之一且 `mode` 为三档之一；档案 `status` 为 `active|archived|deleted` 并带 `deleted_at`/`deletion_error`；两者均含 `isolation`，停止档案返回最后一次 `isolation` 与正确推导的 `reduced_assurance`；`pseudo_headful` 返回 `ua_scope=chrome`；`deleted` 启动返回 409 `PROFILE_DELETED`；purge 失败返回 `deletion_error` 可重试；`block_start_on_check_failure` 不存在，代理检查不阻断启动。
 
 ## Related ADRs
 

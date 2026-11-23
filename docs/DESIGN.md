@@ -189,7 +189,7 @@ macOS 使用 `~/Library/Application Support/Mien` 与 `~/Library/Logs/Mien`；Do
 
 - SQLite 开启 WAL、外键、`busy_timeout=5000`；写入使用短事务。
 - 迁移正向执行、版本化、不可变；不提供自动降级。迁移前创建数据库备份，失败时保持原库可打开。
-- 迁移文件只增不改；开发期变更通过新迁移完成。
+- 迁移文件只增不改；开发期变更通过新迁移完成。本版本需要：回填后删除 `profiles.window_json`（回填步骤见 DATABASE-SCHEMA §5），新增 `profiles.deletion_error`、`runtimes.isolation`、`admin_credentials`、安装表的 `asset_sha256`/`binary_sha256` 与 `idx_profile_tags_tag`。
 - 敏感字段以 AES-256-GCM 加密；密文包含版本、nonce 和 AAD（记录标识 + 字段名）。
 - `event_log` 按 7 天或 100 MB 清理；`idempotency_keys` 保留 24 小时；`sessions` 按过期时间清理。
 - 关闭时执行 WAL checkpoint；异常退出后启动时检查数据库完整性并清理临时文件。

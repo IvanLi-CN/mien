@@ -10,7 +10,7 @@
 | [ADR-0004](0004-local-proxy-relay.md) | 每档案本地代理中继 | 已被 ADR-0007 与 ADR-0009 依次取代 |
 | [ADR-0005](0005-headful-first-display.md) | 有头优先的显示策略 | 已接受 |
 | [ADR-0006](0006-fingerprint-spec-model.md) | 显式指纹规格与种子派生模型 | 已接受 |
-| [ADR-0007](0007-protocol-engine-forward-proxy.md) | 每档案独立协议引擎承载正向代理 | 已被 ADR-0009 取代 |
+| [ADR-0007](0007-protocol-engine-forward-proxy.md) | 每档案独立协议引擎承载正向代理 | 已被 ADR-0009 取代（ADR-0004 → 0007 → 0009 链终结） |
 | [ADR-0008](0008-tauri-ipc-ui-transport.md) | 管理网页通过 Tauri IPC 调用核心 | 已接受 |
 | [ADR-0009](0009-shared-xray-engine.md) | 单实例 Xray 动态协议引擎与连接复用 | 已接受 |
 | [ADR-0010](0010-adhoc-macos-distribution.md) | macOS AdHoc 分发与 GitHub Actions 发布 | 已接受 |

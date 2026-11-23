@@ -6,11 +6,11 @@
 
 | 产物 | 内容 | 首个发布 |
 | --- | --- | --- |
-| macOS 应用 | Tauri 2 应用、fingerprint-chromium 148 ARM64、Xray-core v26.11.9 ARM64、AdHoc 签名、更新清单 | 必须 |
-| macOS 校验 | `SHA256SUMS`、SBOM、许可证、来源信息、artifact attestation（计划支持时） | 必须 |
+| macOS 应用 | Tauri 2 应用、fingerprint-chromium 148 ARM64、Xray-core v26.11.9 ARM64、AdHoc 签名、Chromium JIT entitlements、更新清单 | 必须 |
+| macOS 校验 | `SHA256SUMS`、SBOM、许可证（含项目 Apache-2.0）与第三方许可、来源信息、`entitlements.plist`、artifact attestation | 必须 |
 | Release identity | `release-identity.json`：policy、target、canonical version、source SHA、reservation ID、artifact digest | 必须 |
-| Docker 镜像 | `linux/amd64`、非 root、Xvfb、openbox、noVNC、内核、Xray、健康检查 | 必须 |
-| 许可包 | BSD-3-Clause、MPL-2.0、容器组件许可、NOTICE、源码/来源链接 | 必须 |
+| Docker 镜像 | `linux/amd64`、非 root、Xvfb、openbox、noVNC、内核、Xray、健康检查；同一 source 两次构建 digest 相等 | 必须 |
+| 许可包 | 项目 Apache-2.0、BSD-3-Clause、MPL-2.0、容器组件许可、NOTICE、源码/来源链接 | 必须 |
 | SBOM | macOS 应用与 Docker 镜像 | 必须 |
 | 测试报告 | 内核、代理、生命周期、安全、UI、性能、镜像 | 必须 |
 | 已知限制 | 内核缺陷、伪有头、TUIC、bootstrap、共享引擎故障域、Gatekeeper 行为 | 必须 |
@@ -46,7 +46,7 @@
 - `SHA256SUMS`、SBOM、许可证、更新清单和 artifact attestation 完整；attestation 是必选门禁，没有“仓库计划不支持则跳过”的例外。
 - Docker 镜像扫描无未接受的高危/严重漏洞；镜像 digest 固定并签名。
 - MPL-2.0、BSD-3-Clause 与容器内 GPL 组件许可复核通过。
-- 项目自身许可证已确定并写入仓库。
+- 项目自身许可证为 Apache-2.0；仓库根 `LICENSE` 与 `README` 链接就位（M4 门禁）。
 - 发布说明列出所有已知限制与 Gatekeeper 手动放行步骤。
 
 ## 3. macOS 发布
@@ -111,8 +111,9 @@
 
 ## 7. 当前缺口
 
-- Mien 自身项目许可证尚未选择。
-- `.github/workflows/` 的实际 YAML、branch protection、merge queue、`release` environment、draft reservation 和 tag 保护尚未落地。
+- 项目许可已定为 Apache-2.0；`LICENSE` 文本与 `README` 许可链接由产品文档负责，落地后才算 M4 许可门禁通过。
+- `.github/workflows/` 的实际 YAML、branch protection、merge queue、`release` environment、draft reservation、不带 bypass list 的 tag ruleset、Docker 双构建比对和强制 attestation 尚未落地。
+- entitlements 文件与签名参数尚未在实际打包中验证。
 - Tauri 更新签名密钥尚未生成和配置。
 - 尚未完成正式法律评审与实际 SBOM/NOTICE 构建。
 - M0 Xray、内核、Docker 与代理矩阵 spike 尚未执行。

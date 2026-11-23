@@ -10,7 +10,16 @@
 - 二进制和镜像由 `xtask fixtures fetch` 按 manifest SHA-256 下载或构建；缓存目录不进入 Git。
 - 每个目录的 owner 在 README 中标注；变更 fixture 必须同时更新 manifest、期望输出和引用测试。
 
-## 1. 内核与指纹
+### 0.1 Provenance
+
+- 每个 fixture 目录必须有 `PROVENANCE.json`，或引用根级 `fixtures/provenance.lock.json` 中的同名条目；`xtask fixtures verify` 在测试前校验覆盖完整、摘要一致。
+- 第三方来源条目至少包含：`owner`、`origin`（`upstream`/`authored`）、`fixture_version`、`source_url`、`upstream_version` 或 `commit`、`license`、`retrieved_at`（UTC）、`fetch_command`、`asset_sha256`、`binary_sha256`（存在可执行文件时）、`size` 与 `notes`。
+- 自写 JSON、schema、探针页和期望输出使用 `origin=authored`，许可字段填 `Apache-2.0`，并在 README 标明作者与用途。
+- 已安装内核与引擎 fixture 同时记录发布资产 `asset_sha256` 与解包后可执行文件 `binary_sha256`；运行时校验只使用后者。
+- `xtask fixtures fetch` 必须先校验 provenance 中的摘要再写入缓存；摘要不符、缺少来源或许可证不兼容时失败，不得静默使用缓存。
+- fixture 不得包含真实凭据、客户数据或第三方生产站点快照；需要秘密时使用本地临时 secret，并在清理步骤中删除。
+
+## 1. 内核、指纹与档案
 
 | Fixture | 内容 | 用途 |
 | --- | --- | --- |

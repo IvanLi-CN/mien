@@ -22,6 +22,7 @@
 - Docker 显示 spike：Xvfb + openbox + Chromium 有头启动，确认窗口尺寸与 `screen.*` 行为。
 - 协议引擎 spike：Xray-core 动态 Add/Remove Inbound、Outbound、Rule，单实例共享出站、连接复用、VLESS/VMess/Shadowsocks/Trojan 受控节点、分享链接解析、远程 DNS、失败关闭。
 - MPL-2.0 合规评审：Xray-core 独立进程分发、许可证与来源信息、发布物合规。
+- 契约冻结：OpenAPI、事件 schema、错误码、数据库 schema、Xray 映射、内核/引擎清单、UI surface 与测试 fixture 目录一次性冻结，并接入 CI 校验（OpenAPI 生成差异、schema 编译、DDL 执行、`$ref` 解析、链接检查与 `spec_contract_check`）。
 - 指纹探针 v0：采集 UA、UA-CH、时区、语言、WebGL、canvas、音频、字体、WebRTC 候选。
 
 退出标准：
@@ -31,6 +32,7 @@
 - Xray 单实例可动态增删入站/出站/规则，相同 key 的档案复用连接，远程 DNS 与失败关闭可验证。
 - TUIC 退出 v1；Hysteria2 在锁定 Xray 版本上的支持结论明确。
 - MPL-2.0 合规结论明确。
+- 契约冻结完成：上述契约在 CI 中通过校验，冻结后任何变更必须同步 SPEC、测试与文档。
 - 能力清单中不包含未经验证的开关。
 
 ### M1：核心骨架与 macOS 有头运行
@@ -59,7 +61,7 @@
 
 交付物：
 
-- 指纹种子生成、冲突检测、一致性校验、能力清单校验。
+- 指纹种子生成（密码学安全随机源）、显式字段复制时重新生成种子、一致性校验、能力清单校验。
 - 主机对齐预设与跨系统画像确认流程。
 - `--disable-spoofing` 映射、WebRTC 默认策略、DoH 与 IPv6 防护。
 - 协议矩阵：VLESS、VMess、Shadowsocks、Trojan；Hysteria2/WireGuard 按能力清单验证；TUIC 后续。
@@ -105,16 +107,19 @@
 
 - 内核准入测试套件与 148 基线报告；协议引擎准入与 Tier A 矩阵报告。
 - 完整指纹、代理协议、生命周期、安全和性能测试报告。
-- macOS AdHoc 签名、DMG、SHA-256、支持的 attestation、Tauri 自动更新清单。
+- macOS AdHoc 签名、DMG、SHA-256、artifact attestation、Tauri 自动更新清单。
 - 手动 `release_target`、draft reservation、同 identity recovery 和 GitHub Release 发布记录。
 - Docker 镜像漏洞扫描、SBOM、BSD-3-Clause 与 MPL-2.0 许可清单、来源信息、发布标签。
+- Docker 可复现构建证据：CI 从同一 `source_sha` 连续构建两次并比对镜像 digest。
+- 项目许可证落地：仓库根 `LICENSE`（Apache-2.0）、`README` 许可链接、`NOTICE`、`LICENSES/` 与 SBOM 随每个发布物分发。
 - 已知限制、部署指南、故障排查和可接受使用政策。
 - 发布回滚与安全响应流程。
 
 退出标准：
 
-- PRD 的 PRD-ACC-001 至 PRD-ACC-010 全部通过，或有书面残余风险接受。
+- PRD 的 PRD-ACC-001 至 PRD-ACC-010 全部通过；P0 为 0，P1 的泄漏、回退、路径穿越、崩溃循环、运行时重复或孤儿、沙箱未披露类别为 0，不得整类豁免；其余 P1 只能逐项具名限期接受。
 - 无未关闭的高危安全问题。
+- Docker 两次构建的镜像 digest 相等；项目 `LICENSE`（Apache-2.0）与第三方许可清单随发布物分发，许可扫描无未处置项。
 - 发布说明列出内核缺陷、协议矩阵、节点 bootstrap 泄漏、无头限制、跨系统画像限制、显示与字体限制。
 - 冷启动、启动/停止耗时、并发与 24 小时浸泡达到目标。
 

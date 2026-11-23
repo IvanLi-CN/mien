@@ -231,7 +231,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 ## Reference
 
-- 已批准首屏 comp：[`docs/design/profiles-dark.png`](docs/design/profiles-dark.png)
+- 已批准首屏 comp：[`docs/design/profiles-dark.png`](docs/design/profiles-dark.png)。comp 是本地合成的布局与状态基线，档案名、节点、种子和数字均为示例，不是真实客户或生产指标；字段以 [`docs/UI-SURFACES.md`](docs/UI-SURFACES.md) 为准，comp 与字段契约冲突时以契约为准。
 - Profiles 方向契约：[`.impeccable/surfaces/ui-src-pages-profiles.md`](.impeccable/surfaces/ui-src-pages-profiles.md)
 - 产品事实：[`PRODUCT.md`](PRODUCT.md)
 - 产品需求：[`docs/PRD.md`](docs/PRD.md)

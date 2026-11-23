@@ -32,9 +32,10 @@
 
 ### REQ-FP-002
 
-- The system MUST generate a non-zero 32-bit seed using a cryptographically secure random source and MUST reject a seed already used by any existing profile, including archived profiles.
-- Inputs: 创建或复制档案请求、现有种子集合。
-- Outputs: 唯一种子或稳定冲突错误；不得使用时间戳、邮箱、档案名称或其他可预测值作为种子。
+- The system MUST generate a non-zero 32-bit seed using a cryptographically secure random source; every create and every duplicate copy (`copy_fingerprint=true`) MUST generate a fresh seed rather than reusing the source profile's seed. Create and duplicate therefore never collide on a generated seed. Import preserves the exported seed for reproducibility, so an imported profile may share a seed with its source; that is allowed and is not a conflict error. `FINGERPRINT_SEED_CONFLICT` is not part of the contract.
+- Import exception: importing an exported profile preserves the exported seed so the fingerprint remains reproducible; two profiles sharing a seed after import is allowed and is not an error.
+- Inputs: 创建或复制档案请求、导入载荷、密码学随机源。
+- Outputs: 非零种子；复制总是得到新种子；不得使用时间戳、邮箱、档案名称或其他可预测值作为种子；种子不被视为秘密。
 
 ### REQ-FP-003
 
@@ -259,6 +260,18 @@
 - Pass condition: 无确认时被拒绝；确认后写入审计事件并显示风险；默认值始终为 `true`。
 
 ### VER-FP-019
+
+- Method: 在 `sandbox_kind=namespace` 且 seccomp 生效、无法启用命名空间沙箱、`ALLOW_UNSANDBOXED=1` 显式无沙箱、以及 `sandbox_kind=none` 四种配置下启动，检查启动顺序、代理资源与 `isolation`。
+- covers: `REQ-FP-019`, `REQ-RUNTIME-014`
+- Pass condition: 沙箱校验发生在创建代理资源与启动内核之前；生效时 `isolation=enforced`；Docker 无法确认时 `SANDBOX_UNAVAILABLE` 且无出站/入站/规则/子进程；显式无沙箱时 `isolation=unsandboxed` 并写审计与警告；桌面无法确认时保留 `unsandboxed`/`unknown` 且不阻止启动。
+
+### VER-FP-020
+
+- Method: 使用安装记录启动，分别删除可执行文件、篡改可执行文件但保持发布资产摘要不变，并检查进程与代理资源。
+- covers: `REQ-FP-020`, `REQ-RUNTIME-004`
+- Pass condition: 缺失返回 `KERNEL_NOT_FOUND`；可执行文件摘要与 `binary_sha256` 不符返回 `KERNEL_CHECKSUM_MISMATCH`，即使 `asset_sha256`/清单 `sha256` 匹配也不启动；失败无子进程、入站、路由或出站引用残留。
+
+## Related ADRs
 
 - [ADR-0002：固定 fingerprint-chromium 148 并建立内核准入](../../adr/0002-pin-kernel-148.md)
 - [ADR-0006：显式指纹规格与种子派生模型](../../adr/0006-fingerprint-spec-model.md)

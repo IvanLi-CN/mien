@@ -128,3 +128,4 @@
 - CI 必须同时校验：本文代码集合与 OpenAPI `Error.code` 枚举双向一致；每个代码的 HTTP 与 `retryable` 映射一致；事件 `error_code` 与 fixture 取值经契约测试验证属于该集合（允许 `null`）；生成物 `git diff --exit-code` 无漂移。只允许第 5 节列出的代理检查错误码在 HTTP 200 响应体中携带 `error_code`。
 - 每个错误码至少有一个 `fixtures/api/errors/` 响应样例；`ProxyCheck` 错误还要有 `ok=false` 的 200 响应样例。没有样例或样例与目录不一致的代码不得发布。
 - 代码不得只存在于实现或 OpenAPI：目录是契约来源，枚举由目录生成或逐项校验；发现目录外代码、未使用代码或未声明状态码即构建失败。
+- 目录是错误码唯一契约源；OpenAPI 的 `ErrorCode` 与事件 schema 的 `errorCode` 都由目录生成，生成物提交后由 `git diff --exit-code` 校验，不手写第二份列表。

@@ -46,7 +46,7 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 1. 用户可以在 macOS 桌面或 Docker 服务中，以不超过十分钟完成首次部署并启动第一个隔离档案。
 2. 每个档案的指纹在相同内核、相同规格和相同启动参数下可重复；不同档案之间不共享种子和浏览器数据。
 3. 代理流量失败关闭，默认不产生 DNS、WebRTC 或 IPv6 直连泄漏。
-4. 正向代理覆盖 VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等主流协议，通过单实例共享 Xray 引擎与每运行档案入站/路由隔离浏览器网络，并复用相同节点与凭据的上游连接。
+4. 正向代理以 Tier A 协议（VLESS、VMess、Shadowsocks、Trojan）的受控节点矩阵作为首发必过项，Hysteria2 与 WireGuard 作为 Tier B 按能力清单提供并显式标注，通过单实例共享 Xray 引擎与每运行档案入站/路由隔离浏览器网络，并复用相同节点与凭据的上游连接。
 5. 控制面、运行时、内核与协议引擎升级彼此解耦，升级不会静默改变已有档案的指纹。
 6. 所有已知限制在 UI、API 与文档中显式呈现，不以“不可检测”作为卖点。
 
@@ -75,7 +75,7 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 - 有头模式：macOS 宿主桌面；Docker 内 Xvfb + openbox，可选 noVNC 查看。
 - 无头模式：macOS 与 Docker 均支持，但明确标记为降低保证。
 - 伪有头模式：无头运行，仅将 `HeadlessChrome` UA 改为 `Chrome`；其他 Headless 特征保留，标记为降低保证。
-| 正向代理协议引擎：单实例共享 Xray-core；HTTP/HTTPS/SOCKS5、VLESS、VMess、Shadowsocks、Trojan、Hysteria2；WireGuard 作为 Tier B 按清单支持；每运行档案独立回环入站与路由；相同节点/凭据共享出站与连接池；单条分享链接导入；远程 DNS、失败关闭、凭据不进入浏览器。
+- 正向代理协议引擎：单实例共享 Xray-core；HTTP/HTTPS/SOCKS5 属基础协议；Tier A 必过 VLESS、VMess、Shadowsocks、Trojan；Tier B 的 Hysteria2、WireGuard 按协议引擎能力清单提供，并明确标注能力与失败原因；每运行档案独立回环入站与路由；相同节点/凭据共享出站与连接池；单条分享链接导入；远程 DNS、失败关闭、凭据不进入浏览器。
 - 档案启动、停止、崩溃检测、日志、进程监督、并发准入和重启对账。
 - 服务端 Web UI、登录、API Token、REST/WebSocket 控制面和自动化启动入口。
 - 档案导入导出、加密导出、数据备份与恢复说明。
@@ -137,7 +137,7 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 | --- | --- |
 | PRD-FR-001 | 用户可以创建、编辑、复制、归档和删除环境档案；档案包含名称、分组、标签、备注、指纹规格、代理、运行偏好和启动地址。名称可重复，档案标识必须唯一且不可变。 |
 | PRD-FR-002 | 用户可以按名称、分组、标签、档案状态（active/archived/deleted）和运行状态筛选与搜索档案；核心返回分页结果，桌面端通过 Tauri IPC 使用同一分页契约，不依赖远程服务端。 |
-| PRD-FR-003 | 复制档案时默认生成新的种子和新的浏览器数据目录；用户可以复制指纹配置、代理配置和启动偏好，但不能默认复制运行中的会话。 |
+| PRD-FR-003 | 复制档案时始终生成新的种子和新的浏览器数据目录；`copy_fingerprint=true` 只复制指纹规格的显式字段并重新生成种子，`copy_proxy` 与启动偏好可复制，运行中的会话不得复制。 |
 | PRD-FR-004 | 删除档案必须二次确认；删除后浏览器数据目录进入可恢复的回收状态或按配置立即清除，不允许留下可被其他档案复用的残留目录。 |
 | PRD-FR-005 | 每个档案使用独立的数据目录；不同档案不得共享 Cookie、缓存、LocalStorage、IndexedDB、Service Worker 或下载目录。 |
 | PRD-FR-006 | 档案元数据变更必须持久化到 SQLite，并通过事务保证分组、标签和档案本体的一致性。 |
@@ -147,7 +147,7 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 | 编号 | 需求 |
 | --- | --- |
 | PRD-FR-007 | 用户可以配置种子、操作系统、操作系统版本、浏览器品牌、品牌版本、CPU 核心数、语言列表、时区、窗口尺寸、伪装开关和 WebRTC 策略。 |
-| PRD-FR-008 | 系统必须生成非零的 32 位随机种子，并检测与现有档案的种子冲突；种子生成使用密码学安全随机源。 |
+| PRD-FR-008 | 系统必须使用密码学安全随机源生成非零的 32 位种子；系统不得复用已有档案的种子，复制档案也不存在种子冲突分支。 |
 | PRD-FR-009 | 系统必须提供主机对齐预设：macOS 宿主默认 macOS 画像，Docker 默认 Linux 画像。Windows 宿主预设只在 Windows 桌面版本发布后生效；跨系统画像必须显式选择并显示降低保证提示。 |
 | PRD-FR-010 | 系统必须校验画像内部一致性，包括平台与 UA、UA-CH 平台版本、品牌与品牌版本、CPU 核心数、语言与时区、代理地区与语言时区建议；不可能组合必须拒绝保存或启动。 |
 | PRD-FR-011 | 相同内核版本、相同种子和相同启动参数必须产生相同的派生特征；系统不得在启动时引入额外随机源改变指纹。 |
@@ -291,6 +291,7 @@ Tier A 参与发布门禁；Tier B 必须明确标注能力与失败原因，不
 | Linux 构建仅 x86_64 | Docker 镜像为 `linux/amd64`；原生 ARM64 需自行编译内核。 |
 | Chromium 不支持代理认证与高级协议 | 必须由单实例共享 Xray 引擎处理；每个运行档案使用回环 HTTP 入站与路由；内核不接触上游凭据。 |
 | 协议引擎为 MPL-2.0 | Xray-core 作为独立进程分发，保留许可证与来源信息；不修改二进制；发布物合规检查仍是发布门槛。 |
+| 项目许可为 Apache-2.0 | 仓库根 `LICENSE` 与发布资产中的同一文本必须随每个发布物分发；第三方组件各自保留许可（内核 BSD-3-Clause、Xray-core MPL-2.0），许可扫描有未处置项即阻断发布。 |
 | 协议矩阵受引擎版本约束 | VLESS、VMess、Shadowsocks、Trojan 为首发必过；Hysteria2、WireGuard 按能力清单和独立测试标注；TUIC 不进入 v1。 |
 | 代理节点主机名可能需要 bootstrap 解析 | 可能暴露节点域名；目标域名不得本地解析，限制必须在 UI 与安全文档中说明。 |
 | 显示属性不可任意伪造 | `screen.*`、`devicePixelRatio`、`colorDepth` 与窗口外框受宿主或 Xvfb 配置约束。 |
@@ -315,15 +316,17 @@ Tier A 参与发布门禁；Tier B 必须明确标注能力与失败原因，不
 | PRD-ACC-007 | 导入导出 | 明文与加密导出可导入；错误 schema、超长字段、路径穿越和非法代理被拒绝；默认导出不含代理凭据；加密导出可完整恢复代理配置。 |
 | PRD-ACC-008 | 安全基线 | 未登录不能写操作；错误密码限流；Token 可撤销；代理凭据为密文；内核与协议引擎校验失败拒绝启动；容器非 root；Xray 管理 API 只绑定回环；沙箱状态可确认，无法确认时拒绝启动，显式无沙箱有审计；日志与 API 无秘密。 |
 | PRD-ACC-009 | 容量与性能 | 10 个档案并发运行；启动与停止满足性能目标；24 小时浸泡通过。 |
-| PRD-ACC-010 | 发布物 | macOS 应用、嵌套内核、Xray-core 与 frameworks 为 AdHoc 签名，`codesign --verify --deep --strict` 通过且 `Signature=adhoc`；不公证，Gatekeeper 首次启动被阻止且有经校验的手动放行说明；Docker 镜像可复现构建、带健康检查、通过漏洞扫描；内核的 BSD-3-Clause 与 Xray-core 的 MPL-2.0 许可、来源信息和已知限制文档齐全。 |
+| PRD-ACC-010 | 发布物 | macOS 应用、嵌套内核、Xray-core 与 frameworks 为 AdHoc 签名，`codesign --verify --deep --strict` 通过且 `Signature=adhoc`；不公证，Gatekeeper 首次启动被阻止且有经校验的手动放行说明；Docker 镜像由 CI 从同一 `source_sha` 连续构建两次并比对镜像 digest，两次相等、带健康检查、通过漏洞扫描；项目 `LICENSE`（Apache-2.0）随发布物分发，内核 BSD-3-Clause、Xray-core MPL-2.0、来源信息和已知限制文档齐全。 |
 
 ### 12.2 发布门槛
 
-- PRD-ACC-001 至 PRD-ACC-010 全部通过，或经产品负责人书面接受残余风险。
+- PRD-ACC-001 至 PRD-ACC-010 全部通过；P0 问题必须为 0；P1 中的凭据与网络泄漏（DNS、WebRTC、IPv6、DoH）、失败关闭回退、导入与档案路径穿越、崩溃循环、运行时重复或孤儿、沙箱状态未披露必须为 0。不得整类豁免，也不得以环境决策或书面备注豁免；其余 P1 只能逐项具名限期接受。
 - 已知内核缺陷、无头限制、跨系统画像限制和宿主显示限制必须在发布说明中列出。
 - 不得以关闭泄漏保护或关闭沙箱作为默认配置来通过验收。
 - VLESS、VMess、Shadowsocks、Trojan 的受控节点测试必须通过；Hysteria2 的失败必须记录为已知限制，不能静默降级。
 - 内核的 BSD-3-Clause、Xray-core 的 MPL-2.0 许可、来源信息和发布物合规检查必须完成；TUIC 不得作为 v1 能力宣传。
+- 项目以 Apache-2.0 发布：`LICENSE` 随发布物分发；`NOTICE`、`LICENSES/`、SBOM 与许可扫描无未处置项，第三方再分发义务闭合。
+- Docker 镜像可复现性以 CI 双重构建证明：同一 `source_sha` 连续两次构建必须得到相同的镜像 digest。
 - 任何未关闭的高危安全问题阻断发布。
 
 ## 13. 风险与缓解
@@ -366,7 +369,7 @@ Mien 仅用于合法、授权的环境隔离、测试、隐私研究和多账号
 | 运行架构 | 共享 Rust 核心，macOS 使用 Tauri 桌面宿主，Docker 使用 HTTP 服务宿主，共用一套 Web UI | [`ADR-0001`](adr/0001-shared-core-two-hosts.md) |
 | 内核版本 | 固定 fingerprint-chromium 148.0.7778.215，按平台绑定并校验 | [`ADR-0002`](adr/0002-pin-kernel-148.md) |
 | 数据与密钥 | SQLite + 字段级认证加密；桌面用钥匙串，服务端用受保护文件或环境变量 | [`ADR-0003`](adr/0003-storage-and-secret-protection.md) |
-| 正向代理 | 单实例共享 Xray 动态引擎 + 每运行档案回环 HTTP 入站 + 共享出站/连接复用；VLESS/VMess/SS/Trojan/Hysteria2；失败关闭 | [`ADR-0009`](adr/0009-shared-xray-engine.md) |
+| 正向代理 | 单实例共享 Xray 动态引擎 + 每运行档案回环 HTTP 入站 + 共享出站/连接复用；Tier A：VLESS/VMess/SS/Trojan；Tier B：Hysteria2/WireGuard；失败关闭 | [`ADR-0009`](adr/0009-shared-xray-engine.md) |
 | 旧中继方案 | 自建本地中继已被协议引擎取代，仅保留历史背景 | [`ADR-0004`](adr/0004-local-proxy-relay.md) |
 | 有头优先 | Docker 默认 Xvfb + openbox；无头与伪有头仅显式降级；noVNC 可选 | [`ADR-0005`](adr/0005-headful-first-display.md) |
 | 指纹模型 | 显式规格 + 种子派生，主机对齐优先，能力清单校验 | [`ADR-0006`](adr/0006-fingerprint-spec-model.md) |
