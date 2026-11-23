@@ -42,6 +42,10 @@
     },
     "protocols": {
       "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "enum": ["http", "https", "socks5", "vless", "vmess", "shadowsocks", "trojan", "hysteria2", "wireguard"]
+      },
       "additionalProperties": {
         "$ref": "#/$defs/protocolSpec"
       }
@@ -55,7 +59,7 @@
     "protocolSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tier"],
+      "required": ["tier", "transports", "tls_modes"],
       "properties": {
         "tier": {
           "enum": ["A", "B", "basic"],
@@ -63,6 +67,7 @@
         },
         "transports": {
           "type": "array",
+          "minItems": 1,
           "uniqueItems": true,
           "items": {
             "enum": ["tcp", "udp", "ws", "grpc", "http", "httpupgrade", "quic"]
@@ -70,6 +75,7 @@
         },
         "tls_modes": {
           "type": "array",
+          "minItems": 1,
           "uniqueItems": true,
           "items": {
             "enum": ["none", "tls", "reality"]

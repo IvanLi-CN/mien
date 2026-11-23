@@ -14,7 +14,7 @@
 
 - 每个 fixture 目录必须有 `PROVENANCE.json`，或引用根级 `fixtures/provenance.lock.json` 中的同名条目；`xtask fixtures verify` 在测试前校验覆盖完整、摘要一致。
 - 第三方来源条目至少包含：`owner`、`origin`（`upstream`/`authored`）、`fixture_version`、`source_url`、`upstream_version` 或 `commit`、`license`、`retrieved_at`（UTC）、`fetch_command`、`asset_sha256`、`binary_sha256`（存在可执行文件时）、`size` 与 `notes`。
-- 自写 JSON、schema、探针页和期望输出使用 `origin=authored`，许可字段填 `Apache-2.0`，并在 README 标明作者与用途。
+- 自写 JSON、schema、探针页和期望输出使用 `origin=authored`，许可字段填 `Apache-2.0`，并在 README 标明作者与用途；每个 authored 文件必须记录 `content_sha256`，每个目录或 glob fixture 必须记录排序后的 `tree_sha256`（文件相对路径 + 内容摘要），不能只用文件大小或修改时间。
 - 已安装内核与引擎 fixture 同时记录发布资产 `asset_sha256` 与解包后可执行文件 `binary_sha256`；运行时校验只使用后者。
 - `xtask fixtures fetch` 必须先校验 provenance 中的摘要再写入缓存；摘要不符、缺少来源或许可证不兼容时失败，不得静默使用缓存。
 - fixture 不得包含真实凭据、客户数据或第三方生产站点快照；需要秘密时使用本地临时 secret，并在清理步骤中删除。
@@ -48,7 +48,7 @@
 | `proxy/hysteria2/` | QUIC、TLS、认证；允许/阻止 UDP 出站 | Hysteria2 与容器 UDP |
 | `proxy/tuic/` | 仅用于负向测试 | v1 必须拒绝 TUIC |
 | `proxy/links/` | 五种合法分享链接、错误 base64、超大和非法参数 | 分享链接导入 |
-| `proxy/wireguard/` | WireGuard peer、隧道内 DNS 和缺失 DNS 变体 | Tier B 与 DNS 限制 |
+| `proxy/wireguard/` | WireGuard peer、隧道内 DNS 配置，以及缺失 DNS 的负向配置 | Tier B 与隧道内 DNS 强制 |
 | `proxy/invalid/` | 错误凭据、错误 TLS/REALITY、超时、不可达 | 错误分类与失败关闭 |
 | `proxy/echo/` | 返回出口 IP 与地区标记 | 代理检查 |
 
@@ -113,7 +113,7 @@
 - 测试结果按 `test-report/<version>/<platform>/<suite>/` 保存；不提交到源码。
 - fixture 不能依赖真实客户、真实代理服务或第三方生产站点；外部站点只作为辅助观察。
 - 任何 fixture 含秘密时必须使用本地临时 secret，并在测试结束后删除。
-- 发布前把 fixture 版本、provenance 摘要（含 `asset_sha256`/`binary_sha256`）、内核版本、引擎版本和镜像摘要写入测试报告；报告能追溯到具体 fixture 内容哈希。
+- 发布前把 fixture 版本、provenance 摘要（含 `asset_sha256`/`binary_sha256`/`content_sha256`/`tree_sha256`）、内核版本、引擎版本和镜像摘要写入测试报告；报告能追溯到具体 fixture 内容哈希。
 - 测试报告必须给出每个 suite 使用的 fixture 目录与 `provenance.lock.json` 哈希；引用未登记 fixture 或摘要不符的测试结果无效。
 - 第三方二进制、镜像和探针页必须记录许可证与来源；许可证不兼容或缺失来源时不得进入 fixture 缓存，也不得出现在发布测试报告中。
 

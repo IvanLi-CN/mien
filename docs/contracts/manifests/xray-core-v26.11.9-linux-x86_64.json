@@ -15,7 +15,7 @@
     "shadowsocks": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"], "methods": ["aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm"], "plugins": []},
     "trojan": {"tier": "A", "transports": ["tcp", "ws"], "tls_modes": ["tls"]},
     "hysteria2": {"tier": "B", "transports": ["quic"], "tls_modes": ["tls"], "notes": "Tier B: requires UDP egress and container UDP allowance; obfuscation support is declared per engine, never assumed."},
-    "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"], "notes": "Tier B: UDP-only outbound with no TLS or transport layering; needs UDP egress and independent end-to-end verification."}
+    "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"], "notes": "Tier B: UDP-only outbound with a mandatory tunnel DNS; configs without tunnel DNS are rejected. Needs UDP egress and independent end-to-end verification."}
   },
   "limitations": [
     "TUIC is not supported in v1.",

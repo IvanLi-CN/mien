@@ -26,8 +26,8 @@
 | 协议引擎二进制 | 应用资源、镜像、`engines/` | 篡改可执行任意代码或窃取代理凭据 |
 | 控制面与 noVNC | 容器网络、反向代理 | 未授权控制浏览器 |
 | 审计事件 | SQLite | 影响追责与事件调查 |
-| 管理员初始凭据 | Secret 管理、`MIEN_ADMIN_PASSWORD_FILE` 或 `/data/secrets/admin-bootstrap` | 泄露可接管控制面；首次改密后必须删除 |
-| 容器 seccomp 配置 | 仓库 `deploy/docker/seccomp/chromium.json`、镜像内 `/etc/mien/seccomp/chromium.json`、发布物 | 被替换或缺失会关闭 Chromium 沙箱边界 |
+| 管理员初始凭据 | Secret 管理、`MIEN_ADMIN_PASSWORD_FILE` 或 `<data-root>/secrets/admin-bootstrap` | 泄露可接管控制面；首次改密后删除应用生成的文件并撤销外部 Secret |
+| 容器 seccomp 配置 | 仓库 `deploy/docker/seccomp/chromium.json`、宿主侧发布物 `/etc/mien/seccomp/chromium.json`、镜像内审计副本 `/opt/mien/seccomp/chromium.json` | 被替换或缺失会关闭 Chromium 沙箱边界；Docker 只在容器创建前读取宿主侧文件 |
 
 ## 3. 信任边界
 
@@ -75,7 +75,7 @@ flowchart LR
 | T-12 | 容器逃逸或权限过大 | root、额外 capability、挂载 Docker socket | 非 root；cap-drop ALL；no-new-privileges；只读根；强制版本化 seccomp 配置；不挂载宿主目录 | 内核或运行时漏洞 |
 | T-13 | 内核或引擎供应链篡改 | 替换二进制、劫持下载、静默升级 | 固定 URL；SHA-256；AdHoc 签名仅保证包完整性；Docker digest/cosign；GitHub artifact attestation（必选）；版本绑定；不静默下载；能力清单 | AdHoc 不证明发布者身份；GitHub 账户或发布资产被攻破 |
 | T-14 | 日志泄露 | 记录代理 URL、Token、Cookie、页面内容 | 结构化日志字段白名单；统一脱敏；日志轮转与权限 | 调试日志可能临时包含更多信息 |
-| T-15 | 同用户滥用回环代理 | 本机进程连接运行档案入站或 Xray 管理 API | 回环绑定；固定分配端口；容器网络隔离；API 不暴露 | macOS 同用户进程仍可使用 |
+| T-15 | 同用户滥用回环代理 | 本机进程连接运行档案入站或 Xray 管理 API | 回环绑定；随机分配端口；容器网络隔离；API 不暴露 | macOS 同用户进程仍可使用；渲染进程也可经浏览器网络栈访问回环代理端口 |
 | T-16 | 主密钥丢失或泄露 | 误删钥匙串、环境变量泄露 | 钥匙串或 0600 文件；Secret 管理；备份流程；轮换流程；轮换后全部 API Token 失效并要求重新签发 | 丢失后敏感字段不可恢复 |
 | T-17 | 无沙箱运行 | 容器默认配置无法启用沙箱 | 启动前检查；默认拒绝；`ALLOW_UNSANDBOXED=1` 显式授权并审计；无沙箱时内核不得读取 `/data/secrets` 与数据库、不得连接 Xray 管理 API；子进程 `env_clear` 白名单；持久化 `isolation=unsandboxed` | 恶意网页可直接攻击浏览器主进程 |
 | T-18 | 网络泄漏 | DNS、WebRTC、IPv6、DoH 绕过代理 | 远程 DNS；`--disable-non-proxied-udp`；DoH 禁用；IPv6 阻止；失败关闭；canary 测试 | 代理节点自身行为不可控 |
@@ -87,14 +87,15 @@ flowchart LR
 | T-23 | 恶意 WebView 内容调用 IPC | 远程页面、XSS 或注入脚本调用 Tauri 命令 | 生产 CSP；禁止远程导航；capabilities 仅授权主窗口与必要命令；输入校验；不返回秘密 | WebView 被攻破后仍可调用已授权命令 |
 | T-25 | 直连模式出口泄漏 | 直连档案绕过代理，DNS、IPv6 与 WebRTC 直接暴露真实出口 | 直连是显式降级配置：桌面端标记降低保证；服务端必须 `MIEN_ALLOW_DIRECT_EGRESS=1` 并写入审计；T-18 控制只适用于代理模式；UI 与 API 不把直连伪装成代理 | 直连流量与真实地址对目标站点和本地网络完全可见 |
 | T-26 | 伪造客户端地址或协议 | 直连客户端伪造 `X-Forwarded-For`/`X-Forwarded-Proto` 绕过限流或影响 Cookie 与重定向 | 只信任 `MIEN_TRUSTED_PROXIES` 内的代理；`MIEN_PUBLIC_URL` 定义外部原始地址；服务端模式强制 `Secure` Cookie；按校验后的客户端 IP 限流 | 部署者配置了错误代理列表仍可能信任不可信来源 |
+| T-27 | 页面经浏览器网络栈访问回环 | 恶意页面 fetch `127.0.0.1:<proxy_port>`，绕过渲染进程命名空间对回环的假设 | 每运行档案随机端口；入站只接受代理语义且不暴露管理 API；Xray gRPC 与数据库在独立端口/路径；探针验证页面不能触达管理 API 或本地服务 | 页面仍可把该回环端口当作本机 HTTP 代理使用；这是已接受的本地代理暴露，不把它当作沙箱边界 |
 
 ## 5. 控制措施
 
 ### 5.1 身份与授权
 
-- 管理员凭据只存于 `admin_credentials` 表。引导密码从 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE`（文件权限 0600）读取；两者都未提供时生成高熵密码写入 `/data/secrets/admin-bootstrap`（0600），不写入日志或事件。
+- 管理员凭据只存于 `admin_credentials` 表。引导密码从 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE`（文件权限 0600）读取；两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600），不写入日志或事件。
 - 引导密码以 Argon2id（随机 salt、参数版本化）哈希后写入 `admin_credentials`；首次登录返回 `must_change_password`，改密前除改密与登出外的写操作返回 `AUTH_PASSWORD_CHANGE_REQUIRED`。
-- 改密成功后删除引导秘密：清除 `admin_credentials` 中的引导标记、删除 `/data/secrets/admin-bootstrap`、部署侧移除对应环境变量或 Secret，并写入审计事件；旧会话失效。
+- 改密成功后清除 `admin_credentials` 中的引导标记、删除应用自己生成的 `<data-root>/secrets/admin-bootstrap` 并写入审计事件。环境变量或外部 Secret 无法由应用删除，部署者必须撤销/轮换；应用不得声称已删除外部来源。旧会话同时失效。
 - 会话 Cookie 使用 `HttpOnly`、`SameSite=Strict`；服务端模式（设置 `MIEN_PUBLIC_URL` 或 TLS 终止）一律使用 `Secure`。
 - API Token 高熵随机、只保存 HKDF pepper 派生的 HMAC-SHA-256 哈希、可撤销、带范围；Token 创建时只显示一次，明文不落库、不可回放。
 - v1 不实现多用户 RBAC；服务端只有一个管理员身份和范围化 Token。多用户属于后续范围。
@@ -137,12 +138,12 @@ flowchart LR
 - noVNC 默认关闭；开启时使用一次性令牌或独立认证。
 - 直连模式：桌面端允许但必须标记降低保证（`direct=true` 与风险说明），不创建代理入站/出站；服务端必须显式设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 才允许直连启动，否则返回稳定错误并拒绝，允许时写入审计事件。T-18 的远程 DNS、禁用非代理 UDP、DoH、IPv6 与失败关闭控制只适用于代理模式，直连模式不得声称具备这些保护。
 - 代理模式默认远程 DNS、禁用非代理 UDP、禁用 DoH 绕过；IPv6 不能代理时阻止。
-- 引擎失败关闭，不回退直连；容器网络限制直连出口。
+- 代理模式引擎失败关闭，不回退直连；容器网络默认只允许共享引擎到代理节点的必要连接。服务端显式启用 `MIEN_ALLOW_DIRECT_EGRESS=1` 时，网络策略必须为直连档案开放相应出口并写入审计，不能再声称“仅代理出口”。
 
 ### 5.5 容器
 
 - 运行用户非 root；根文件系统只读；`/data` 是唯一持久可写卷。
-- seccomp 配置为必选项（不是“按需”）：仓库源文件 `deploy/docker/seccomp/chromium.json`，镜像内 `/etc/mien/seccomp/chromium.json`，同时作为发布物 `mien-seccomp-chromium-<version>.json` 进入 SHA-256SUMS 与 attestation 主体。启动命令必须带 `--security-opt seccomp=/etc/mien/seccomp/chromium.json`；不得使用 `--privileged`、`--userns=host` 或任何关闭 seccomp 的等价配置。
+- seccomp 配置为必选项（不是“按需”）：仓库源文件 `deploy/docker/seccomp/chromium.json`；发布物 `mien-seccomp-chromium-<version>.json` 必须由部署者安装到宿主文件系统供 Docker daemon 在创建容器前读取。启动命令的 `--security-opt seccomp=<host-path>` 只接受宿主路径；镜像内 `/opt/mien/seccomp/chromium.json` 是只读审计副本，Docker 在容器创建阶段无法访问它，禁止把它用于 `--security-opt`。发布物摘要进入 SHA-256SUMS 与 attestation 主体。不得使用 `--privileged`、`--userns=host` 或任何关闭 seccomp 的等价配置。
 - seccomp 配置以固定的 Moby 默认 allowlist（commit `a0fa7080`，Apache-2.0）为基线，原文件与许可留档在 `deploy/docker/seccomp/artifacts/`，`PROVENANCE.json` 记录上游摘要与本次改动。对基线的全部改动只有三条：`clone` 在参数含 `CLONE_NEWUSER` 时允许、`unshare` 在参数含 `CLONE_NEWUSER` 时允许、`clone3` 限定内核 >= 5.3 且排除 s390/s390x 后仍返回 `ENOSYS` 以走过滤后的 `clone`。`execve`、`futex`、`socket`、`mmap` 等运行必需项来自基线，不在此重列。不新增 `ptrace`、`bpf`、`io_uring_*`、`keyctl`，不授予 `CAP_SYS_ADMIN`；`mount` 只在新用户命名空间内生效。
 - 宿主要求：启用非特权用户命名空间；Ubuntu 24.04+ 等受 AppArmor `userns` 限制的宿主必须解除限制（`kernel.apparmor_restrict_unprivileged_userns=0`）或加载等价 AppArmor 配置。宿主不满足时返回 `SANDBOX_UNAVAILABLE`，不得静默降级。
 - 可写层布局：`--read-only`；`--tmpfs /tmp:rw,noexec,nosuid,size=1g`；`--shm-size=1g` 的 `/dev/shm`（按最大并发档案数调整，不足时返回资源不足错误而不是静默降级）；`HOME=/data/home`、`XDG_CONFIG_HOME=/data/home/.config`、`XDG_CACHE_HOME=/data/home/.cache`、`TMPDIR=/tmp`，上述 HOME/XDG 目录权限 0700。
@@ -239,7 +240,7 @@ docker run --detach \
   --env XDG_CACHE_HOME=/data/home/.cache \
   --env TMPDIR=/tmp \
   --env MIEN_PUBLIC_URL=https://mien.example.com \
-  --env MIEN_TRUSTED_PROXIES=172.30.0.0/24 \
+  --env MIEN_TRUSTED_PROXIES=172.30.0.10/32 \
   --mount type=volume,src=mien-data,dst=/data \
   --publish 127.0.0.1:8080:8080 \
   ghcr.io/<owner>/mien-server:vX.Y.Z
@@ -247,14 +248,14 @@ docker run --detach \
 
 - 上述基线只覆盖沙箱生效的部署；启用无沙箱模式时必须使用 5.5 的扩展配置并通过包含性探针，否则拒绝启动。
 - 以非 root 运行；`/data` 是唯一持久可写卷；`secrets`、`db`、`profiles`、`engines`、`kernels`、`logs`、`home` 均位于其下且权限 0700。
-- seccomp 配置随镜像分发并强制加载；不得省略、改用 `unconfined` 或依赖宿主默认配置。
+- 上例的 seccomp 路径是宿主路径：先把 `mien-seccomp-chromium-<version>.json` 安装到该位置，再启动容器。镜像内的只读副本只用于摘要比对与审计；不得省略、改用 `unconfined`、把镜像内路径传给 `--security-opt`，或依赖宿主默认配置。
 - 不挂载 Docker socket、宿主 home、SSH 密钥或其他敏感目录。
 - 限制 CPU、内存、PID（含 `/dev/shm` 容量）和文件描述符；设置健康检查。
 - 反向代理终止 TLS；只暴露控制面端口；noVNC 不默认发布。
-- 反代部署必须设置 `MIEN_PUBLIC_URL` 与 `MIEN_TRUSTED_PROXIES`，且后者只列出实际反代地址；三者与 `Secure` Cookie、Origin 校验、限流口径一致。
-- 数据卷使用加密存储；主密钥与引导密码通过 Secret 管理或 0600 文件提供；首次改密后移除引导密码。
+- 反代部署必须设置 `MIEN_PUBLIC_URL` 与 `MIEN_TRUSTED_PROXIES`，且后者只列出实际反代地址或最小 CIDR（例如单个 `/32`），不得使用整个容器网桥子网；三者与 `Secure` Cookie、Origin 校验、限流口径一致。
+- 数据卷使用加密存储；主密钥与引导密码通过 Secret 管理或 0600 文件提供；首次改密后删除应用生成的引导文件并清除标记，外部 Secret 由部署者撤销。
 - 需要直连模式时显式设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 并接受审计与降低保证。
-- 限制容器出站网络，仅允许共享协议引擎到代理节点的必要连接；Hysteria2 需要允许 UDP 出站；TUIC 不进入 v1。
+- 默认限制容器出站网络，仅允许共享协议引擎到代理节点的必要连接；Hysteria2 需要允许 UDP 出站；TUIC 不进入 v1。显式启用直连模式时，必须为直连流量单独放行出口并记录部署审计，不能同时声称代理-only 网络策略。
 - 启用镜像扫描与日志收集；定期轮换管理员密码；轮换主密钥会使全部 API Token 失效，必须重新签发。
 
 ## 8. 安全验收门禁
@@ -263,10 +264,10 @@ docker run --detach \
 
 | 门禁 | 证据 | 通过条件 |
 | --- | --- | --- |
-| M0-SEC-1 seccomp 配置 | `deploy/docker/seccomp/chromium.json`、Docker 启动日志、沙箱探针输出 | 配置通过 schema 校验并可被 Docker/containerd 加载；容器以 `--security-opt seccomp=...` 启动；探针返回 `isolation=enforced`；未设置 `ALLOW_UNSANDBOXED`；配置 SHA-256 写入发布物清单 |
+| M0-SEC-1 seccomp 配置 | `deploy/docker/seccomp/chromium.json`、宿主侧发布物、Docker 启动日志、沙箱探针输出 | 配置通过 schema 校验；宿主侧发布物可被 Docker/containerd 从 daemon 可见路径加载；容器以宿主路径 `--security-opt seccomp=...` 启动；探针返回 `isolation=enforced`；未设置 `ALLOW_UNSANDBOXED`；配置 SHA-256 写入发布物清单 |
 | M0-SEC-2 非特权用户命名空间 | 目标基础镜像上的 spike 记录 | 非 root 用户可创建用户命名空间且 Chromium 命名空间沙箱生效；宿主禁用 userns 时的失败信息映射为 `SANDBOX_UNAVAILABLE` |
 | M0-SEC-3 只读与 tmpfs/shm | 基线 `docker run` 命令与写探针输出 | 除 `/data`、`/tmp`、`/dev/shm` 外无可写路径；`/dev/shm` 容量满足最大并发档案；HOME/XDG 位于 `/data` |
-| M0-SEC-4 管理员引导 | 启动 → 登录 → 改密流程记录与数据库导出 | `admin_credentials` 只存 Argon2id 哈希；首次登录返回 `must_change_password`；改密后引导文件与 env 引用被删除并写入审计 |
+| M0-SEC-4 管理员引导 | 启动 → 登录 → 改密流程记录与数据库导出 | `admin_credentials` 只存 Argon2id 哈希；首次登录返回 `must_change_password`；改密后应用生成的引导文件被删除、引导标记被清除并写入审计；外部 env/Secret 的撤销由部署者完成 |
 | M0-SEC-5 Token 哈希与轮换 | 数据库导出、重启记录、主密钥轮换记录 | 只存 HKDF pepper 的 HMAC-SHA-256 哈希；同一主密钥重启后 Token 可用；轮换后旧 Token 返回 401，重新签发可用 |
 | M0-SEC-6 可信代理 | 伪造 `X-Forwarded-For` 的请求记录 | 非受信来源的转发头被忽略；限流按真实客户端 IP；服务端模式 Cookie 带 `Secure` |
 | M0-SEC-7 直连模式 | 服务端开关测试与审计导出 | 未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时拒绝直连启动；设置后启动、写入审计、UI 标记降低保证；不创建代理入站/出站 |
@@ -279,7 +280,7 @@ docker run --detach \
 - 数据库敏感字段为密文；API Token 只为 HKDF pepper 哈希；日志、事件、错误无敏感值；Xray 管理 API 不对内核可达。
 - 路径穿越、符号链接、恶意导入测试通过。
 - 容器非 root、只读根、最小能力、无 Docker socket；`--tmpfs /tmp:rw,noexec,nosuid,size=1g`、`--shm-size` 与 seccomp 配置在发布镜像冒烟测试中生效；沙箱状态可验证。
-- seccomp 配置文件随发布物分发，SHA-256SUMS、SBOM 与 attestation 覆盖该文件；镜像内副本摘要与仓库源文件一致。
+- seccomp 配置文件作为宿主侧发布物分发，SHA-256SUMS、SBOM 与 attestation 覆盖该文件；发布冒烟测试从宿主路径加载它，镜像内审计副本摘要与仓库源文件一致。
 - 管理员引导流程无内置固定密码；首次改密后引导秘密不可恢复；镜像与 SBOM 不含默认口令。
 - 直连模式默认拒绝、显式开关、审计与降低保证可见；无沙箱模式通过包含性探针。
 - 内核与协议引擎校验和验证、版本绑定、回滚测试通过。

@@ -125,7 +125,7 @@ Chromium 参数：
 | Shadowsocks | A | `shadowsocks` | server、port、method、password | 2022 方法按清单 |
 | Trojan | A | `trojan` | server、port、password；TLS、WS | TLS 必须 |
 | Hysteria2 | B | `hysteria` | `version: 2`、address、port；hysteria transport、auth、TLS | 需要 UDP 出站 |
-| WireGuard | B | `wireguard` | peer 公钥、私钥、endpoint、allowed IPs；隧道内 DNS | 无隧道 DNS 时必须标注 `LIMITATION_LOCAL_DNS` |
+| WireGuard | B | `wireguard` | peer 公钥、私钥、endpoint、allowed IPs；隧道内 DNS | 隧道内 DNS 必填；缺失时拒绝配置并返回 `PROXY_CONFIG_INVALID`，不得用本地 DNS 或 freedom 出站回退 |
 
 共享 constraints：
 
@@ -141,6 +141,7 @@ Chromium 参数：
 - 删除规则只能按 `ruleTag` 调用 `RemoveRule`，不得按位置或重建整个规则表；重复删除同一 tag 必须幂等。
 - Xray 路由配置没有 `routing.final` 字段，网关不得生成；`block` 必须是出站列表第一项，网关在启动时断言该不变量，断言失败则拒绝服务。未匹配、引擎故障或规则缺失时必须断网，不回退直连。
 - 目标域名由 Xray 出站或代理内 DNS 解析；只有代理节点主机名允许本地 bootstrap 解析。
+- WireGuard 必须声明隧道内 DNS；无法提供时拒绝该配置，不存在 `LIMITATION_LOCAL_DNS` 的可用路径，也不得为该配置生成 freedom 或本地 DNS 回退。
 - DoH 由 `network.doh_mode=disabled` 和内核能力清单声明的启动开关关闭；IPv6 由 `network.ipv6_mode=block` 和引擎路由/浏览器策略阻止；启动探针验证生效值。清单声明 `doh_mode=unsupported` 或 `ipv6_mode=unsupported` 时，代理档案拒绝启动并返回 `KERNEL_UNSUPPORTED`；`unsupported` 清单是合法 fixture，不得静默降级。
 - WebRTC 非代理 UDP 由浏览器 `--disable-non-proxied-udp` 阻止；关闭该保护必须经过高级确认并写入 `proxy.non_proxied_udp.disable` 审计事件。
 - Hysteria2 的 QUIC/UDP 仅用于引擎到节点，不放宽浏览器非代理 UDP 策略。
@@ -188,7 +189,7 @@ Chromium 参数：
 - [ ] 每运行档案 HTTP 入站只绑定回环；不同档案端口/标签隔离。
 - [ ] 沙箱校验失败时网关不创建任何入站、出站或规则。
 - [ ] DoH 关闭和 IPv6 阻止的实际开关、能力清单字段与启动探针一致。
-- [ ] WireGuard 目标域名在隧道内解析，或明确标注 `LIMITATION_LOCAL_DNS`。
+- [ ] WireGuard 目标域名在隧道内解析；缺少隧道 DNS 的配置被拒绝，且没有本地 DNS/freedom 回退。
 - [ ] 相同 `outbound_key` 的档案共享出站，连接数明显低于每档案独立出站。
 - [ ] mux/QUIC 复用能力与协议矩阵一致。
 - [ ] Hysteria2 通过 Xray `hysteria` v2 配置可连接；TUIC 被拒绝。

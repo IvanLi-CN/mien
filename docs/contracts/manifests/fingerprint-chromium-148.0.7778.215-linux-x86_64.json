@@ -22,6 +22,7 @@
     "timezone": {"type": "string"},
     "window-size": {
       "type": "string",
+      "values": ["1024,768", "1280,720", "1366,768", "1440,900", "1536,864", "1600,900", "1920,1080", "2560,1440"],
       "description": "WIDTH,HEIGHT window size passed to the kernel; window size only, never a screen resolution."
     },
     "proxy-server": {"type": "string"},
@@ -37,7 +38,7 @@
     "Host-bound screen size, devicePixelRatio, color depth and font enumeration remain observable.",
     "Docker uses Xvfb; screen attributes are shared by all profiles.",
     "Headless pseudo_headful mode changes UA only; other Headless characteristics remain.",
-    "Canvas sub-region readback can differ from full-surface readback (#98, #99); probe reports must attribute the gap to the kernel, not to the spec."
+    "Canvas sub-region readback can differ from full-surface readback (#98); WebGL readPixels can differ between 1x1 and 8x8 reads (#99); probe reports must attribute both gaps to the kernel, not to the spec."
   ],
   "sandbox_kind": "namespace",
   "network_controls": {"doh_mode": "disabled", "ipv6_mode": "block"},

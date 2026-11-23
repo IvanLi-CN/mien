@@ -15,9 +15,9 @@
 - `derived trait`: 由种子和内核版本决定、不逐项编辑的特征，例如 canvas 噪声、音频噪声、WebGL GPU 参数、设备内存。
 - `host-bound field`: 受宿主显示、字体或图形栈影响、产品不能可靠伪造的特征，例如 `screen.width`、`devicePixelRatio`、字体枚举、`navigator.plugins`。
 - `window`: 指纹规格内的窗口/视口尺寸 `{width, height}`，是指纹规格的规范字段和窗口尺寸的唯一权威来源；它不是屏幕分辨率，也不出现在档案顶层字段、启动偏好、导出 `runtime` 或 `window_json` 列中。
-- `capability manifest`: 内核版本与平台组合实际支持的能力清单，包含 `flags`（含必填 `window-size`，类型 `string`）、`sandbox_kind`、`network_controls` 与 `flagSpec.per_platform_values`。
+- `capability manifest`: 内核版本与平台组合实际支持的能力清单，包含 `flags`（含必填 `window-size`，类型 `string` 与候选集合）、`sandbox_kind`、`network_controls` 与 `flagSpec.values`/`per_platform_values`。
 - `install record`: 内核安装记录，同时保存发布资产摘要 `asset_sha256` 与解包后可执行文件摘要 `binary_sha256`；清单 `sha256` 只是发布资产摘要。
-- `sandbox_kind`: 内核构件依赖的沙箱机制，取值 `namespace|seatbelt|appcontainer|none`；声明沙箱种类不代替启动前的有效沙箱校验。
+- `sandbox_kind`: 内核构件依赖的沙箱机制，取值 `namespace|seatbelt|win32-restricted-token|none`；声明沙箱种类不代替启动前的有效沙箱校验。
 - `isolation verdict`: 启动校验后的隔离结论，取值 `enforced|unsandboxed|unknown`；由运行时写入 `runtimes.isolation` 并驱动 proof strip。
 - Interface: `POST /api/v1/profiles` 与 `PATCH /api/v1/profiles/{id}` 中使用的指纹 JSON；核心函数 `validate_spec`、`build_launch_argv`；内核能力清单 JSON；内核安装记录。
 
@@ -76,10 +76,10 @@
 ### REQ-FP-009
 
 - The system MUST validate every spec field and value against the installed kernel capability manifest before saving or launching.
-- Capability shape: the manifest declares `flags` (including required `window-size` of type `string`), `sandbox_kind` (`namespace|seatbelt|appcontainer|none`), `network_controls` with `doh_mode: disabled|unsupported` and `ipv6_mode: block|unsupported`, and `flagSpec.per_platform_values` for data-driven platform restrictions.
+- Capability shape: the manifest declares `flags` (including required `window-size` of type `string` with a candidate set), `sandbox_kind` (`namespace|seatbelt|win32-restricted-token|none`), `network_controls` with `doh_mode: disabled|unsupported` and `ipv6_mode: block|unsupported`, and `flagSpec.values` or `per_platform_values` for data-driven platform restrictions.
 - `unsupported` semantics: a manifest that declares `unsupported` is valid; it means the artifact cannot enforce that control on that platform. Validation MUST treat it as a missing capability and refuse the affected launch rather than marking the manifest invalid or silently relaxing the spec.
 - Inputs: 规格、能力清单、内核版本。
-- Outputs: 支持的字段与取值；清单外字段、无效果开关和不支持的取值必须被拒绝，不得静默丢弃；清单声明 `per_platform_values` 时以其为权威；`window-size` 缺失时清单无效。
+- Outputs: 支持的字段与取值；清单外字段、无效果开关和不支持的取值必须被拒绝，不得静默丢弃；清单声明 `per_platform_values` 时以其为权威，否则使用 `values`；`window-size` 缺失或没有候选集合时清单无效。
 
 ### REQ-FP-010
 
@@ -137,7 +137,7 @@
 
 ### REQ-FP-019
 
-- The system MUST derive the expected sandbox mechanism from the manifest `sandbox_kind` (`namespace|seatbelt|appcontainer|none`), replacing the former `requires_namespace_sandbox` boolean, and MUST require the effective sandbox to be verified before any proxy resource is created or the kernel is spawned.
+- The system MUST derive the expected sandbox mechanism from the manifest `sandbox_kind` (`namespace|seatbelt|win32-restricted-token|none`), replacing the former `requires_namespace_sandbox` boolean, and MUST require the effective sandbox to be verified before any proxy resource is created or the kernel is spawned.
 - Inputs: 清单 `sandbox_kind`（Linux `namespace` 同时要求强制 seccomp profile）、宿主/容器配置、启动计划、沙箱探测结果、`ALLOW_UNSANDBOXED`。
 - Outputs: 沙箱生效时写入 `isolation=enforced`；Docker 中无法确认时返回 `SANDBOX_UNAVAILABLE` 且不创建出站、入站、路由规则或子进程；`ALLOW_UNSANDBOXED=1` 时继续启动，写 `isolation=unsandboxed` 并记录审计与启动警告；桌面无法确认时保留 `unsandboxed` 或 `unknown`，不得阻止启动。
 - Semantics: 启动事务顺序、`runtimes.isolation` 持久化与 proof strip 推导由 `browser-runtime` REQ-RUNTIME-014/018 定义。
@@ -203,7 +203,7 @@
 
 - Method: 使用缺少某开关、取值受限、声明无效果、`sandbox_kind=none` 与 `network_controls` 为 `unsupported` 的能力清单校验规格，并移除 `window-size`。
 - covers: `REQ-FP-009`
-- Pass condition: 清单外字段被拒绝；无效果开关不出现在 UI；错误信息指出具体能力；缺少 `window-size` 的清单被判无效；`unsupported` 清单仍合法但影响对应启动；`per_platform_values` 为权威。
+- Pass condition: 清单外字段被拒绝；无效果开关不出现在 UI；错误信息指出具体能力；缺少 `window-size` 或候选集合的清单被判无效；`unsupported` 清单仍合法但影响对应启动；`per_platform_values` 为权威，否则 `values` 为权威。
 
 ### VER-FP-010
 

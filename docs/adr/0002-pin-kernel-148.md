@@ -17,8 +17,8 @@ fingerprint-chromium 的版本差异直接影响指纹行为与稳定性。`150.
 - 发布资产摘要与安装后可执行文件摘要分开记录：清单与发布物中的 `sha256` 是发布资产（DMG/TAR.XZ/ZIP）摘要；安装记录同时保存 `asset_sha256`（下载资产）和 `binary_sha256`（解包后可执行文件）。运行时以安装记录的 `binary_sha256` 校验可执行文件，不得用清单的发布资产摘要代替。
 - 可执行文件缺失返回 `KERNEL_NOT_FOUND`，摘要不符返回 `KERNEL_CHECKSUM_MISMATCH`；两种情况都拒绝启动，且不启动协议引擎。
 - 每个内核安装附带能力清单，声明支持的开关、取值、派生特征、已知缺陷和沙箱要求。
-- 能力清单是可演进契约：`flags` 在所有平台声明 `window-size`（类型 `string`）；沙箱要求用 `sandbox_kind`（`namespace|seatbelt|appcontainer|none`）表达，取代 `requires_namespace_sandbox` 布尔；`network_controls` 允许 `disabled|unsupported` 与 `block|unsupported`，使缺失该能力的平台清单仍是合法 fixture；`flagSpec` 提供 `per_platform_values`，CPU、语言、时区等能力校验由清单数据驱动，而不是硬编码在 UI 或校验器中。
-- 每个 148 平台清单必须登记上游已知问题 #98、#99（canvas 子区域读回与完整读回不一致），并保留已登记的 148 问题 #102、#108；150 的 #94、#95、#104、#112 只作为版本选择证据，不写入 148 清单。
+- 能力清单是可演进契约：`flags` 在所有平台声明 `window-size`（类型 `string`，并带候选集合）；沙箱要求用 `sandbox_kind`（`namespace|seatbelt|win32-restricted-token|none`）表达，取代 `requires_namespace_sandbox` 布尔；`network_controls` 允许 `disabled|unsupported` 与 `block|unsupported`，使缺失该能力的平台清单仍是合法 fixture；`flagSpec` 提供 `values` 或 `per_platform_values`，CPU、语言、时区等能力校验由清单数据驱动，而不是硬编码在 UI 或校验器中。
+- 每个 148 平台清单必须登记上游已知问题 #98（canvas 子区域与完整读回不一致）、#99（WebGL readPixels 不同读回尺寸不一致）与 #102（打包 16 位格式越界）；#108 只适用于 `windows-x64`，不得登记到 macOS/Linux 清单；150 的 #94、#95、#104、#112 只作为版本选择证据，不写入 148 清单。
 - 产品不修改、不分叉内核。升级只接受经过内核准入测试的上游版本。
 - 应用更新与内核更新分离。档案固定自己的 `kernel_version`，同一宿主可并存多个内核版本；应用更新不静默改写档案内核，运行中的档案不得被替换。
 - 内核迁移是显式的每档案操作：迁移前预检平台、能力清单、指纹规格（含窗口尺寸与派生特征）和沙箱可用性；迁移写入审计事件；迁移后重新校验指纹规格并提示派生特征变化。运行中的档案必须先停止才能迁移。
@@ -52,7 +52,7 @@ fingerprint-chromium 的版本差异直接影响指纹行为与稳定性。`150.
 - 上游发行资产：148 提供 macOS DMG、Linux TAR.XZ、Windows ZIP；150 没有 macOS 构建。
 - 上游 issue #94、#95、#104、#112：150 在 canvas 读回时崩溃；148 正常。
 - 上游 issue #102：148 的 WebGL readPixels 对打包 16 位格式存在越界访问报告。
-- 上游 issue #98、#99：148 的 canvas 子区域读回与完整读回可能不一致；清单与测试报告必须显式登记这一限制。
+- 上游 issue #98：148 的 canvas 子区域与完整读回可能不一致；#99：WebGL readPixels 在 1×1 与 8×8 读回间可能不一致。清单与测试报告必须分别登记这两类读回限制。
 - 上游 issue #108：148 Windows 上 CreepJS 可能卡住，测试需使用自有探针为主。
 - 上游 README：源码延迟发布，项目不提供技术支持。
 

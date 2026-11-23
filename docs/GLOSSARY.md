@@ -29,7 +29,7 @@
 | 分享链接 | share link | `vless://`、`vmess://`、`ss://`、`trojan://`、`hysteria2://` 形式的单节点配置文本。 |
 | 远程 DNS | remote DNS | 目标域名由代理节点解析或随协议发送，避免本机 DNS 查询泄漏目标域名；节点主机名可本地 bootstrap 解析。 |
 | 失败关闭 | fail-closed | 协议引擎不可用或出站失败时浏览器直接失去网络，而不是回退到直连或其他代理。 |
-| 控制面 | control plane | 产品自身的管理接口与界面：桌面宿主通过 Tauri IPC 提供进程内管理调用，服务端宿主通过 HTTP/WebSocket 提供同一套领域操作的远程入口；两者共用同一套 DTO、错误契约与权限语义，Web UI 经 `ControlTransport` 选择传输。 |
+| 控制面 | control plane | 产品自身的管理接口与界面：桌面宿主通过 Tauri IPC 提供进程内管理调用，服务端宿主通过 HTTP/WebSocket 提供同一套领域操作的远程入口；两者共用 DTO、领域校验、错误契约与运行时语义，但认证授权不同：桌面 IPC 依赖本机进程信任，不要求会话/Token scope；服务端 HTTP 使用登录会话或 Bearer Token 与 scope。Web UI 经 `ControlTransport` 选择传输。 |
 | 服务端宿主 | server host | 运行控制面、内核、共享协议引擎与显示环境的 Docker 容器进程。 |
 | 桌面宿主 | desktop host | macOS 上的 Tauri 应用进程，承载 Web UI 并调用共享核心库。 |
 | Tauri IPC | Tauri IPC | 桌面 WebView 与 Rust 宿主之间的进程内调用通道；前端用 `invoke`，Rust 用 `#[tauri::command]`。 |

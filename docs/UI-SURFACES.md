@@ -56,14 +56,14 @@
 - 校验失败：定位到字段；顶部显示稳定错误码与可复制诊断信息。
 - 未保存离开：二次确认。
 - 代理不可用：允许保存，启动前显示警告与该代理的 `ProxyCheck.error_code`；检查失败只影响 proof 与警告，不提供“检查失败禁止启动”开关，也不阻断启动。
-- 重复提交：同档案 start 只复用进行中的运行时并显示 `starting`，不得再次拉起内核；`starting` 中的 stop 作为取消并回到 `stopped`。
+- 重复提交：同档案 start 只复用进行中的运行时并显示 `starting`，不得再次拉起内核；`starting` 中的 stop 作为取消，先进入 `stopping`，清理完成后显示 `stopped`。
 - 内核能力缺失：显示具体字段和缺失能力，禁止保存或启动。
 
 ## 3. 档案详情
 
 必须显示：
 
-- 运行状态（六态）、模式、`reduced_assurance`、`ua_scope`。
+- 运行状态（六态）、模式、`direct`、`reduced_assurance`、`ua_scope`。
 - 四段 proof：fingerprint、proxy、runtime、isolation。`isolation` 取值为 `enforced`/`unsandboxed`/`unknown`，以 `runtimes.isolation`（最近一次运行）为唯一数据源派生，Profile payload 暴露同一派生值。
 - `isolation` 呈现：`enforced` 显示“沙箱已生效”；`unsandboxed` 持续显示“无沙箱”与降低保证；`unknown` 用虚线描边加 `?` 与文本“未确认”；`stopped` 用低透明度中性，`unknown` 与 `stopped` 不得共用同一呈现。
 - 停止的档案仍显示最近一次运行的 `unsandboxed` 与降低保证；从未启动且无运行记录时显示 `unknown`，不得因此省略 proof。
@@ -72,14 +72,15 @@
 - 启动/停止、编辑、复制、归档/恢复、删除到回收站/恢复/彻底删除。
 - 日志尾部、稳定错误码和复制诊断。
 - 限制说明：宿主绑定显示/字体/插件面、无头或伪有头、跨系统画像、共享引擎故障域。proof 不引用第三方指纹站点结果作为判定。
+- 直连档案显示“直连/降低保证”，明确不创建代理入站、不具备远程 DNS、DoH、IPv6 与非代理 UDP 防护；不得把直连显示成代理。
 
 状态行为：
 
-- `starting`：显示启动阶段与当前步骤；取消会中止启动并清理资源；不显示虚假“已运行”；重复 start 只显示进行中。
+- `starting`：显示启动阶段与当前步骤；取消会中止启动、进入 `stopping` 并清理资源，完成后显示 `stopped`；不显示虚假“已运行”；重复 start 只显示进行中。
 - `running`：显示停止；模式相关限制与 `isolation` 持续可见。
 - `stopping`：显示停止进度；完成后清空入站/规则/端口并显示 `stopped`。
 - `crashed`：内核提前退出（`starting` 或 `running` 遇异常退出）；显示退出码、错误码、最近日志与重试入口；启用自动重启时最多 3 次递增退避，稳定后重置，超过上限停止重试并提示崩溃循环。
-- `failed`：引擎/启动事务失败等非崩溃类失败；重建失败先拆除内核、入站/规则与出站引用再置终态，界面不得同时显示“运行中”。
+- `failed`：引擎/启动事务失败等非崩溃类失败；只有拆除内核、入站/规则与出站引用后才会进入该终态。若 teardown 尚未完成，界面保持 `stopping` 并显示重试/诊断入口，不得同时显示“运行中”或伪造终态。
 - `stopped` 与 `deleted`：`deleted` 不能启动，启动入口禁用且原因可见；彻底删除失败显示 `deletion_error` 与重试入口。
 - 共享引擎故障：显示全局网络中断与 `proxy.engine.failed`，所有运行档案 proof 变为失败或降级；重建成功显示 `proxy.engine.rebuilt` 并恢复，重建失败按 `failed` 终态展示。
 - 日志尾部：读取 `GET /api/v1/profiles/{id}/logs?limit=` 或桌面等价 IPC，显示有界脱敏内容、`limit` 与截断标记；不可用时显示稳定错误码与重试，不留空白。

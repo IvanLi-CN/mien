@@ -53,21 +53,21 @@
 - `per_platform_values`：按**画像平台**（`windows`、`macos`、`linux`）声明的允许取值集合，用于 CPU 核心数这类按平台受限、且与宿主平台不同的字段。
 - 当 `per_platform_values` 存在时，它是该开关的权威取值来源；`values` 只用于没有平台差异的开关。消费方不得把两个来源合并成更宽松的集合，以免静默扩大能力。
 
-`window-size`（`type: string`，`WIDTH,HEIGHT`）在所有平台清单中声明，schema 把 `flags.window-size` 设为必填，缺失即清单无效。窗口尺寸属于指纹规格的规范字段，**不是屏幕分辨率**：屏幕尺寸、`devicePixelRatio`、颜色深度和字体枚举仍是宿主绑定特征，不由清单或规格伪造（REQ-FP-010）。
+`window-size`（`type: string`，`WIDTH,HEIGHT`）在所有平台清单中声明，schema 把 `flags.window-size` 设为必填，缺失即清单无效。清单同时提供 `values` 候选集合；消费方只能接受集合内值，不能从 UI 预设另造集合。窗口尺寸属于指纹规格的规范字段，**不是屏幕分辨率**：屏幕尺寸、`devicePixelRatio`、颜色深度和字体枚举仍是宿主绑定特征，不由清单或规格伪造（REQ-FP-010）。
 
 语言与时区同样走清单校验：清单声明限制集合时按其校验，未声明时按 BCP-47 与 IANA 规则校验。任何清单外的字段、取值或不生效开关都必须被拒绝，不得静默丢弃（REQ-FP-009）。
 
 ### 2.2 `sandbox_kind`
 
-`sandbox_kind` 取代旧的 `requires_namespace_sandbox` 布尔值，取值 `namespace`、`seatbelt`、`appcontainer`、`none`，描述该构件依赖的沙箱机制：
+`sandbox_kind` 取代旧的 `requires_namespace_sandbox` 布尔值，取值 `namespace`、`seatbelt`、`win32-restricted-token`、`none`，描述该构件依赖的沙箱机制：
 
 | 平台 | `sandbox_kind` |
 | --- | --- |
 | `linux-x86_64` | `namespace`（配合强制 seccomp profile） |
 | `macos-arm64` | `seatbelt` |
-| `windows-x64` | `appcontainer` |
+| `windows-x64` | `win32-restricted-token`（restricted token + job object + integrity levels；普通渲染进程不使用 AppContainer） |
 
-清单声明的是构件设计依赖；产品仍需在服务流量前核验实际生效的沙箱状态。核验失败返回 `SANDBOX_UNAVAILABLE`；`none` 或未生效时只有显式不安全选项才允许启动，并写入审计与启动警告。Docker 中的 `namespace` 沙箱要求强制 seccomp profile，不能记为“按需”。
+清单声明的是构件设计依赖；产品仍需在服务流量前核验实际生效的沙箱状态。Docker 中无法确认 `namespace` 沙箱时返回 `SANDBOX_UNAVAILABLE`，只有 `ALLOW_UNSANDBOXED=1` 才允许启动并写入审计；桌面（`seatbelt`/`win32-restricted-token`）无法确认时不阻断启动，但必须写 `isolation=unknown` 或 `unsandboxed` 并呈现降低保证，不存在隐藏的自动放宽。Docker 中的 `namespace` 沙箱要求强制 seccomp profile，不能记为“按需”。
 
 ### 2.3 `network_controls`
 
@@ -80,11 +80,11 @@
 
 ### 2.4 已知问题
 
-148 内核清单统一携带 canvas 读回一致性缺陷：
+148 内核清单统一携带 canvas/WebGL 读回一致性与安全问题：
 
-- `#98`、`#99`：canvas 子区域读回与完整读回可能不一致。探针报告必须把差异归因于内核缺陷，不得判定为指纹规格失败（REQ-FP-016）。
-- `#102`：WebGL `readPixels` 打包 16 位格式存在越界访问报告。
-- `#108`（仅 `windows-x64`）：CreepJS 在部分 Windows 环境可能卡住；探针超时不得归因于产品缺陷。
+- `#98`：canvas 子区域读回与完整读回可能不一致；`#99`：WebGL `readPixels` 在 1×1 与 8×8 读回间可能不一致。探针报告必须分别归因于内核缺陷，不得判定为指纹规格失败（REQ-FP-016）。
+- `#102`：WebGL `readPixels` 打包 16 位格式存在越界访问报告；这是安全缺陷，不是 #98/#99 的读回一致性问题。
+- `#108`（仅 `windows-x64`）：CreepJS 在部分 Windows 环境可能卡住；该问题不登记在 macOS/Linux 清单；探针超时不得归因于产品缺陷。
 
 `docs/PRD.md` 记录上游完整问题清单；每个清单只列对该构件探针与运行时行为有影响的问题。发布门禁与测试报告必须引用清单中的编号，而不是口头结论。
 

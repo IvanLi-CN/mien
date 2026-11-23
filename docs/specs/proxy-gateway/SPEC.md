@@ -30,7 +30,7 @@
 
 - The system MUST support the Tier A protocols VLESS, VMess, Shadowsocks (AEAD and 2022 methods, plugins when declared), and Trojan, MUST support the Tier B protocols Hysteria2 and WireGuard when declared by the installed engine capability manifest, and MUST support HTTP, HTTPS and SOCKS5 as basic protocols. TUIC MUST be rejected in v1.
 - Inputs: 代理协议类型、服务器地址、端口、协议选项、凭据、引擎能力清单。
-- Outputs: 可生成的引擎出站配置；basic 协议不参与 Tier A/B 门禁；未在清单中声明或未通过测试的协议必须被拒绝，不得静默降级为 HTTP/SOCKS。
+- Outputs: 可以生成的引擎出站配置；basic 协议不参与 Tier A/B 门禁；未在清单中声明或未通过测试的协议必须被拒绝，不得静默降级为 HTTP/SOCKS；WireGuard 必须包含隧道内 DNS，缺失时返回 `PROXY_CONFIG_INVALID`。
 
 ### REQ-PROXY-002
 
@@ -72,7 +72,7 @@
 
 - The system MUST resolve target destination domains through the proxy, and MUST NOT perform local DNS resolution for target hosts.
 - Inputs: 浏览器请求、协议出站、DNS 策略、bootstrap 配置。
-- Outputs: 目标域名由代理协议携带或经代理内 DNS 解析；仅代理节点主机名允许本地 bootstrap 解析；目标域名不出现在本机 DNS 查询中。
+- Outputs: 目标域名由代理协议携带或经代理内 DNS 解析；仅代理节点主机名允许本地 bootstrap 解析；目标域名不出现在本机 DNS 查询中；WireGuard 缺少隧道内 DNS 时拒绝配置，不生成本地 DNS 或 freedom 回退。
 
 ### REQ-PROXY-009
 

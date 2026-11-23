@@ -12,7 +12,7 @@
 - release workflow 使用受保护的 `release` environment，发布前需要人工批准；`promote-docker` 与 `release` 都绑定该 environment。
 - Docker 固定构建 `linux/amd64`；macOS 构建 Apple Silicon `aarch64-apple-darwin`。Docker 镜像必须在同一 source 上独立构建两次并比对 digest，digest 不一致即判定失败；该比对是 ACC-010 可复现构建的证据，不能用文档声明替代。
 - 项目自身许可证为 Apache-2.0；仓库根目录提供 `LICENSE`，`README` 链接该文件，发布资产包含同一文本。
-- macOS 应用的 hardened runtime 只授予 Chromium JIT 必需的 entitlements；entitlements 文件是发布资产并写入 release identity。
+- macOS 应用与嵌套 Chromium 内核的 hardened runtime 只授予 Chromium JIT 必需的 entitlements；Xray/frameworks 不带 JIT 权限。entitlements 文件是发布资产并写入 release identity。
 - 第三方 Actions 固定到完整 commit SHA；依赖升级由 Dependabot 或人工 PR 完成。
 
 ## 2. Workflow 拓扑
@@ -46,10 +46,10 @@ flowchart TD
 
 | Job | 主要命令 | 说明 |
 | --- | --- | --- |
-| `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bunx biome check .`、`bunx tsc --noEmit`、`actionlint` | 静态检查与许可检查；不使用 `continue-on-error` |
+| `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bun run license:check`、`bunx biome check .`、`bunx tsc --noEmit`、`actionlint` | Rust、前端依赖与静态检查；前端许可扫描失败阻断；不使用 `continue-on-error` |
 | `rust` | `cargo nextest run --workspace` | 单元和库级集成；失败上传 nextest JUnit 报告 |
 | `web` | `bun install --frozen-lockfile`、`bun run typecheck`、`bun run test`、`bun run build` | 前端类型、测试和静态资源构建 |
-| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 解析、ErrorCode 目录/OpenAPI/events schema 双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 配置结构/SHA-256 校验、导入导出 fixture | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；生成差异、未知错误码或任一校验失败均阻断 |
+| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；生成差异、未知错误码、映射漂移或任一校验失败均阻断 |
 | `integration` | 服务端启动、SQLite、档案生命周期、API 鉴权、代理配置与 Xray fixture | 使用真实进程和临时数据目录；不连接外部网络 |
 | `e2e smoke` | Docker `linux/amd64` + Xvfb + Playwright | PR 只跑一条代表性有头启动/停止链路；完整矩阵留在 main 与 release |
 | `required` | 聚合 `needs` 结果 | `if: always()`；任何上游 `failure`、`cancelled` 或意外 `skipped` 都判失败 |
@@ -81,16 +81,16 @@ flowchart TD
 
 | Job | 内容 | 失败处理 |
 | --- | --- | --- |
-| `resolve-target` | 读取 `release_target` 和 trusted baseline（所有 `vX.Y.Z` tag 与 GitHub Release 的 SemVer 最大值，包含 prerelease 与已失效版本），解析 canonical version；校验 `main` source、`CI Main / verify`、已有 draft/public identity | 不构建，不创建公开 release；任何已有 tag/release 大于或等于 target 时 fail closed |
+| `resolve-target` | 读取 `release_target` 和 trusted baseline（所有 `vX.Y.Z` tag 与 GitHub Release 的 SemVer 最大值，包含 prerelease 与已失效版本），解析 canonical version；先读取已有 reservation/identity，再执行 collision 检查；校验 `main` source、`CI Main / verify` | 不构建，不创建公开 release；完全匹配的同一 identity 允许 recovery；其他任何已有 tag/release 大于或等于 target 时 fail closed |
 | `reserve` | 创建或复用 draft GitHub Release，写入 policy、target、version、source SHA 和 run ID；后续 job 从 reservation 读取 `source_sha` 并 checkout 该 SHA，不使用 main HEAD | 不构建；同 version 不同 source 直接冲突 |
 | `test` | 在 reservation 的 `source_sha` 上调用 `ci-reusable.yml`，`profile=release`，运行全量测试与 e2e | 不构建发布物 |
-| `macos-arm64` | 在 `release` environment 中于 `source_sha` 上构建 Tauri 应用，下载并校验内核/Xray，以 Chromium JIT entitlements 做 AdHoc 签名，生成 DMG、SBOM、许可证、entitlements 与更新清单，记录 DMG SHA-256 | identity 已记录 DMG digest 时跳过构建并复用已上传资产；重新构建使先前手动测试证据作废 |
-| `docker-amd64` | 在 `source_sha` 上用 `buildx` 从同一 source 独立构建两次 `linux/amd64` 并比对 digest；不相等即失败。相等后以 `staging-<run_id>` 临时 tag 推送并记录 digest；Trivy、SBOM、cosign keyless 签名 | 不进入 stage-release；identity 已记录 digest 时跳过构建并复用 |
-| `stage-release` | 在 `release` environment 中汇总产物到 draft，校验 SHA-256/digest，写入 `release-identity.json` | 本次构建 digest 与 identity 已记录 digest 不一致时拒绝；draft 保持未公开，不创建 tag |
-| `attest` | 对 DMG 和容器 digest 生成 GitHub artifact attestation；无跳过分支 | attestation 失败或缺失则不进入 promote-docker，不公开 release |
+| `macos-arm64` | 在 `release` environment 中于 `source_sha` 上构建 Tauri 应用，下载并校验内核/Xray；Chromium 内核与应用使用 JIT entitlements，Xray/frameworks 不带；生成 DMG、SBOM、许可证、entitlements 与更新清单，记录 DMG SHA-256 | identity 已记录 DMG digest 时跳过构建并复用已上传资产；重新构建使先前手动测试证据作废 |
+| `docker-amd64` | 在 `source_sha` 上用 `buildx` 从同一 source 独立构建两次 `linux/amd64` 并比对 digest；不相等即失败。相等后以 `staging-<run_id>` 临时 tag 推送并记录 digest；Trivy、SBOM、容器许可扫描与 cosign keyless 签名 | 不进入 stage-release；许可扫描失败或 identity 已记录 digest 不一致时拒绝 |
+| `stage-release` | 在 `release` environment 中汇总产物到 draft，包含宿主侧 seccomp 发布物，校验 SHA-256/digest，写入 `release-identity.json` | 本次构建 digest 与 identity 已记录 digest 不一致时拒绝；draft 保持未公开，不创建 tag |
+| `attest` | 对 DMG、容器 digest、SBOM 和 seccomp 发布物生成 GitHub artifact attestation；无跳过分支 | attestation 失败或缺失则不进入 promote-docker，不公开 release |
 | `promote-docker`（阶段 7） | 把已验证 digest 提升为 `ghcr.io/<owner>/mien-server:vX.Y.Z` 并记录最终 digest；绑定 `release` environment | 不公开 release |
 | `release`（阶段 8） | 校验 draft identity 后创建或验证 tag，公开 GitHub Release；绑定 `release` environment | 不公开；保留 draft 供同 identity recovery |
-| `verify-release` | 下载公开资产，校验 checksums、AdHoc 签名、更新清单和 identity | 标记 release 无效；不得静默忽略 |
+| `verify-release` | 下载公开资产，校验 checksums、SBOM、seccomp 发布物、AdHoc 签名、更新清单和 identity | 标记 release 无效；不得静默忽略 |
 
 tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑：先读取已有 reservation 和 identity，checkout reservation 的 `source_sha`；identity 已记录某产物 digest 时对应构建 job 跳过，`stage-release` 遇到 digest 不一致即拒绝，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
 
@@ -102,9 +102,9 @@ macOS job 的顺序固定为：
 
 1. 下载 fingerprint-chromium 148 DMG 和 Xray-core v26.11.9 ARM64；校验 SHA-256，记录最终二进制的 SHA-256。
 2. 构建 `aarch64-apple-darwin` 应用，把内核和 Xray 放入应用资源目录。
-3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。
-4. 签名应用时传入仓库内 `mien-desktop/entitlements.plist`，只包含 Chromium V8 JIT 必需的两项：`com.apple.security.cs.allow-jit` 和 `com.apple.security.cs.allow-unsigned-executable-memory`。不授予调试、网络、文件访问或其他放宽权限；hardened runtime 下缺这两项会导致内核无法启动。
-5. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`；用 `codesign -d --entitlements :-` 断言 entitlements 只包含上述两项。
+3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。Chromium 内核与应用使用 JIT entitlements；Xray 与 frameworks 使用 AdHoc 签名但不带 JIT 权限。
+4. 签名应用与 Chromium 内核时传入仓库内 `mien-desktop/entitlements.plist`，只包含 Chromium V8 JIT 必需的两项：`com.apple.security.cs.allow-jit` 和 `com.apple.security.cs.allow-unsigned-executable-memory`。不授予调试、网络、文件访问或其他放宽权限；hardened runtime 下缺这两项会导致内核无法启动。
+5. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`；用 `codesign -d --entitlements :-` 断言应用与 Chromium 内核只包含上述两项，Xray 与 frameworks 不含 JIT 权限。
 6. 生成 DMG、`SHA256SUMS`、SBOM、许可证、`entitlements.plist` 和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
 7. 在 `release` job 之前，由维护者在干净的 macOS 13+ 机器下载同一 run 的 DMG 和 `SHA256SUMS`（Actions artifact），先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级；结果写入 draft 正文，未通过不得公开。
 8. 手动测试证据绑定具体的 DMG SHA-256。任何一次重新构建 macOS 产物（包括同 identity 重跑中 `macos-arm64` 重新执行）都使已有手动测试证据作废，必须对新 DMG 重做并重写 draft 正文；不得沿用旧结果。
@@ -129,7 +129,7 @@ Tauri 自动更新使用独立的更新签名密钥，和 Apple 签名无关；�
 | 内核缓存 | 按发行资产 SHA-256 建立 key；恢复后必须重新校验，不信任缓存内容 |
 | Playwright 浏览器 | 按锁文件和 Playwright 版本建立 key |
 | PR 诊断 | nextest JUnit、失败 e2e 的 trace/screenshot/video，保留 7 至 14 天 |
-| Release 资产 | DMG、Docker digest、SBOM、许可证（含 Apache-2.0 `LICENSE`）与第三方许可、`SHA256SUMS`、`release-identity.json`、`entitlements.plist`、更新清单、attestation；随 GitHub Release 长期保留，Actions artifact 保留 90 天 |
+| Release 资产 | DMG、Docker digest、SBOM、许可证（含 Apache-2.0 `LICENSE`）与第三方许可、`mien-seccomp-chromium-<version>.json`、`SHA256SUMS`、`release-identity.json`、`entitlements.plist`、更新清单、attestation；随 GitHub Release 长期保留，Actions artifact 保留 90 天 |
 | 可复现构建证据 | Docker 双构建的两份 digest 与比对日志、两次构建的输入（`source_sha`、`Cargo.lock`/`bun.lock`、基础镜像 digest）；随 release identity 关联保留 |
 
 成功 run 不长期上传整个 workspace、`node_modules`、浏览器安装目录或没有消费者的文件。release job 只上传可验证、可追溯的发布资产。
@@ -197,8 +197,8 @@ tag 保护使用仓库 ruleset，目标模式 `v*`，只启用 `Restrict updates
 
 ## 10. 实施顺序
 
-1. M0：建立 `ci-reusable.yml`、`ci-pr.yml` 和 `ci-main.yml` 的最小骨架，先跑 fmt、lint、单元测试和契约校验。
-2. M1：加入 SQLite、API、生命周期与 Xray fixture 集成；把 `CI PR / required` 配置为真实 required check。
+1. M0：建立 `ci-reusable.yml`、`ci-pr.yml` 和 `ci-main.yml` 的最小骨架，先跑 fmt、lint、单元测试和契约校验；第一个纵向切片合并前把 `CI PR / required` 设为真实 required check，不允许先跳过契约门禁。
+2. M1：加入 SQLite、API、生命周期与 Xray fixture 集成；保持 `CI PR / required` 为真实 required check，不因新增 job 而缺席。
 3. M2：加入 Docker e2e smoke、内核下载校验和代理矩阵 fixture。
 4. M3：加入 macOS 打包 smoke、AdHoc 签名与 entitlements 验证、SBOM 与 Trivy。
 5. M4：启用 `release` environment、draft reservation、手动 `release_target` workflow、tag 保护（`Restrict updates` + `Restrict deletions`，不使用 bypass list）、强制 attestation、更新清单和发布后验证；加入 Docker 双构建 digest 比对与 Apache-2.0 `LICENSE` 门禁。

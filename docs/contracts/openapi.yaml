@@ -353,8 +353,8 @@ paths:
         '409':
           "$ref": "#/components/responses/Conflict"
         '500':
-          "$ref": "#/components/responses/InternalError"
-      description: permanent=false：active/archived -> deleted，目录移入 trash；permanent=true：仅对 deleted 档案先移除目录再删行，失败保留行和 deletion_error。
+          "$ref": "#/components/responses/PurgeFailed"
+      description: permanent=false：active/archived -> deleted，目录移入 trash；permanent=true：仅对 deleted 档案先移除目录再删行，失败保留行并返回带 deletion_error 的 PROFILE_PURGE_FAILED。
       x-required-scope: profiles.write
   "/api/v1/profiles/{profile_id}/duplicate":
     post:
@@ -1304,7 +1304,7 @@ paths:
         in: query
         schema:
           type: integer
-          minimum: 0
+          minimum: 1
         description: 最后收到的 event.sequence；从其后回放。
       - name: ticket
         in: query
@@ -1549,6 +1549,12 @@ components:
         application/json:
           schema:
             "$ref": "#/components/schemas/Error"
+    PurgeFailed:
+      description: 永久删除的目录移除失败；档案仍为 deleted，可重试
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/PurgeFailure"
     Unavailable:
       description: 依赖或资源暂不可用
       content:
@@ -1655,6 +1661,26 @@ components:
           type: object
           additionalProperties: true
           description: 非敏感字段级错误或诊断信息
+    DeletionError:
+      type: string
+      enum:
+      - busy
+      - permission_denied
+      - io_error
+      - not_found
+      - unknown
+    PurgeFailure:
+      allOf:
+      - "$ref": "#/components/schemas/Error"
+      - type: object
+        required:
+        - code
+        - deletion_error
+        properties:
+          code:
+            const: PROFILE_PURGE_FAILED
+          deletion_error:
+            "$ref": "#/components/schemas/DeletionError"
     RuntimeState:
       type: string
       enum:
@@ -1702,6 +1728,7 @@ components:
       - fingerprint
       - kernel_version
       - isolation
+      - direct
       - reduced_assurance
       - limitations
       properties:
@@ -1733,6 +1760,7 @@ components:
           type:
           - string
           - 'null'
+          description: null 表示直连模式；响应同时返回 direct=true。
         mode:
           "$ref": "#/components/schemas/RuntimeMode"
         status:
@@ -1763,15 +1791,18 @@ components:
           - 'null'
           format: date-time
         deletion_error:
-          type:
-          - string
-          - 'null'
-          description: 脱敏的 purge 失败原因；deleted 行保留以供重试。
+          anyOf:
+          - "$ref": "#/components/schemas/DeletionError"
+          - type: 'null'
+          description: 稳定、非敏感的 purge 失败原因；deleted 行保留以供重试。
         isolation:
           "$ref": "#/components/schemas/Isolation"
+        direct:
+          type: boolean
+          description: 该档案未配置代理并进入直连模式；为 true 时必须同时返回 reduced_assurance=true。
         reduced_assurance:
           type: boolean
-          description: 由 mode、直连配置和最近 isolation 推导；停止状态仍返回。
+          description: 由 mode、direct 和最近 isolation 推导；停止状态仍返回。
         limitations:
           type: array
           items:
@@ -2018,7 +2049,6 @@ components:
         required:
         - format
         - payload
-        - conflict_strategy
         properties:
           format:
             const: plain
@@ -2029,13 +2059,13 @@ components:
             enum:
             - new_id
             - abort
+            default: new_id
       - type: object
         additionalProperties: false
         required:
         - format
         - payload
         - passphrase
-        - conflict_strategy
         properties:
           format:
             const: encrypted
@@ -2052,6 +2082,7 @@ components:
             enum:
             - new_id
             - abort
+            default: new_id
     ViewerSession:
       type: object
       required:
@@ -2225,7 +2256,7 @@ components:
           - 'null'
         error_code:
           anyOf:
-          - "$ref": "#/components/schemas/ErrorCode"
+          - "$ref": "#/components/schemas/ProxyCheckErrorCode"
           - type: 'null'
         message:
           type:
@@ -2255,6 +2286,7 @@ components:
       - state
       - mode
       - isolation
+      - direct
       - reduced_assurance
       properties:
         id:
@@ -2265,6 +2297,9 @@ components:
           "$ref": "#/components/schemas/RuntimeState"
         mode:
           "$ref": "#/components/schemas/RuntimeMode"
+        direct:
+          type: boolean
+          description: 直连模式标记；直连运行时 reduced_assurance 必须为 true。
         reduced_assurance:
           type: boolean
         ua_scope:
@@ -2556,7 +2591,7 @@ components:
       enum:
       - namespace
       - seatbelt
-      - appcontainer
+      - win32-restricted-token
       - none
     ProfileExportRequest:
       oneOf:
@@ -2658,6 +2693,7 @@ components:
             - index
             - status
             - profile
+            - errors
             properties:
               index:
                 type: integer
@@ -2666,6 +2702,11 @@ components:
                 const: imported
               profile:
                 "$ref": "#/components/schemas/Profile"
+              errors:
+                type: array
+                items:
+                  type: string
+                description: 该项的稳定错误或警告；成功导入时为空数组。
     RuntimeLogTail:
       type: object
       additionalProperties: false
@@ -2770,6 +2811,15 @@ components:
             type: string
         notes:
           type: string
+    ProxyCheckErrorCode:
+      type: string
+      enum:
+      - PROXY_CONNECTION_REFUSED
+      - PROXY_AUTH_FAILED
+      - PROXY_TLS_FAILED
+      - PROXY_TIMEOUT
+      - PROXY_CONNECTION_FAILED
+      - PROXY_DNS_FAILED
     ErrorCode:
       type: string
       enum:

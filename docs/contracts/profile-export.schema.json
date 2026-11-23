@@ -79,11 +79,11 @@
                   "wireguard"
                 ]
               },
-              "server": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^@/\\s]+$", "description": "Host or IP literal only; userinfo and path segments are rejected so credentials cannot ride along inside the server string."},
+              "server": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^@/?#\\s]+$", "description": "Host or IP literal only; userinfo, path, query and fragment are rejected so credentials cannot ride along inside the server string."},
               "port": {"type": "integer", "minimum": 1, "maximum": 65535},
               "options": {
                 "type": "object",
-                "propertyNames": {"not": {"pattern": "(?:[Pp]assword|[Pp]assphrase|[Pp]wd|[Pp][Ss][Kk]|[Pp]rivate|[Ss]ecret|[Tt]oken|[Cc]redential|[Cc]ookie|[Uu][Uu][Ii][Dd]|[Bb]earer|[Aa][Pp][Ii][_-]?[Kk]ey)"}},
+                "propertyNames": {"not": {"pattern": "(?:[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Pp][Hh][Rr][Aa][Ss][Ee]|[Pp][Ww][Dd]|[Pp][Ss][Kk]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Uu][Uu][Ii][Dd]|[Bb][Ee][Aa][Rr][Ee][Rr]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy])"}},
                 "additionalProperties": {"$ref": "#/$defs/optionValue"},
                 "description": "Non-secret protocol options only: TLS mode, SNI, transport, cipher method, DNS mode and similar. Secret-bearing keys are rejected at every nesting level; credential values never appear in options."
               },
@@ -121,7 +121,7 @@
         {"type": "array", "items": {"$ref": "#/$defs/optionValue"}},
         {
           "type": "object",
-          "propertyNames": {"not": {"pattern": "(?:[Pp]assword|[Pp]assphrase|[Pp]wd|[Pp][Ss][Kk]|[Pp]rivate|[Ss]ecret|[Tt]oken|[Cc]redential|[Cc]ookie|[Uu][Uu][Ii][Dd]|[Bb]earer|[Aa][Pp][Ii][_-]?[Kk]ey)"}},
+          "propertyNames": {"not": {"pattern": "(?:[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Pp][Hh][Rr][Aa][Ss][Ee]|[Pp][Ww][Dd]|[Pp][Ss][Kk]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Cc][Oo][Oo][Kk][Ii][Ee]|[Uu][Uu][Ii][Dd]|[Bb][Ee][Aa][Rr][Ee][Rr]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy])"}},
           "additionalProperties": {"$ref": "#/$defs/optionValue"}
         }
       ]

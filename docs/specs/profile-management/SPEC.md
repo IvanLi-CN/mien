@@ -46,7 +46,7 @@
 - Inputs: 源档案标识、可选的配置复制选项 `copy_fingerprint` 与 `copy_proxy`。
 - Outputs: 新档案标识；不得共享运行时、数据目录、下载目录、种子或 Cookie。
 - Defaults: `copy_fingerprint=false`。
-- Copy semantics: `copy_fingerprint=true` 时复制指纹规格的显式字段（`platform`、`platform_version`、`brand`、`brand_version`、`hardware_concurrency`、`languages`、`timezone`、`window`、`spoof`、`webrtc`、`network`），但 MUST 始终生成新的 `seed`；不得复用源档案种子，也不存在种子冲突分支。
+- Copy semantics: `copy_fingerprint=true` 时复制指纹规格的显式字段（`platform`、`platform_version`、`brand`、`brand_version`、`hardware_concurrency`、`languages`、`timezone`、`window`、`spoof`、`webrtc`、`network`），但 MUST 始终生成新的 `seed`；不得复用源档案种子。生成的新种子若与任何现有档案相同必须内部重抽，不返回用户可见的冲突错误。
 
 ### REQ-PROFILE-005
 
@@ -59,7 +59,7 @@
 - The system MUST implement the profile lifecycle as `active <-> archived`、`active|archived -> deleted`、`deleted -> active` 与 `deleted -> purge`，并 MUST 拒绝启动 `deleted` 档案。
 - Transitions: `POST /api/v1/profiles/{id}/archive` 把 `active` 转为 `archived` 并写 `archived_at`；`POST /api/v1/profiles/{id}/restore` 把 `archived` 或 `deleted` 转为 `active` 并清空 `archived_at`；`DELETE /api/v1/profiles/{id}?permanent=false` 把 `active|archived` 转为 `deleted`，把数据目录移动到 `<data-root>/trash/<profile-id>` 并写 `deleted_at`；`DELETE /api/v1/profiles/{id}?permanent=true` 对 `deleted` 档案先删除数据目录、再删除数据库记录。
 - Inputs: 档案标识、`permanent` 删除模式、确认令牌。
-- Outputs: 状态与目录移动同步；从回收站恢复时目录移回 `<data-root>/profiles/<profile-id>`；`deleted` 档案的任何启动请求返回 `PROFILE_DELETED`（409）且不得隐式恢复；purge 目录删除失败时保留 `deleted` 状态、不删除记录、写入并返回 `deletion_error`，修复后可重试 purge。
+- Outputs: 状态与目录移动同步；软删除或 purge 前必须确认运行时已停止并完成 teardown；运行中档案返回 `RUNTIME_CONFLICT` 或先停止，不得移动/删除其目录。从回收站恢复时目录移回 `<data-root>/profiles/<profile-id>`；`deleted` 档案的启动请求返回 `PROFILE_DELETED`（409）且不得隐式恢复，但 restore、purge、读取与 purge 重试仍可用；purge 目录删除失败时保留 `deleted` 状态、不删除记录、写入并返回稳定 `deletion_error`，修复后可重试 purge。
 
 ### REQ-PROFILE-007
 
@@ -77,7 +77,7 @@
 ### REQ-PROFILE-009
 
 - The system MUST validate import input against the declared export schema before writing anything, and MUST expose a dry-run that creates no rows or directories.
-- Inputs: `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy}`；`format` 为 `plain|encrypted`；`payload` 为明文导出对象或不透明加密容器；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；`conflict_strategy` 为 `new_id|abort`，默认 `new_id`。
+- Inputs: `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy?}`；`format` 为 `plain|encrypted`；`payload` 为明文导出对象或不透明加密容器；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；`conflict_strategy` 为 `new_id|abort`，默认 `new_id`。
 - Outputs: `POST /api/v1/profiles/import/validate` 返回逐项草稿、逐项 `errors` 与冲突项，且不写数据库、不建目录；`POST /api/v1/profiles/import` 返回 `ProfileImportResult`，其 `items[]` 每项包含 `profile`、`status` 和 `errors`。
 - Conflict semantics: `new_id` 为冲突项分配新 ULID 并保留配置；`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`，不产生任何档案、目录、分组或标签。
 - Validation: 非法 schema、未知 `schema_version`、超大文件、字段超限、代理配置形状、分享链接字段、`../` 与绝对路径、符号链接必须被拒绝；加密导出未提供口令或口令错误时返回字段级错误且不回显口令。
@@ -146,7 +146,7 @@
 
 - Method: 复制含种子、代理、运行偏好和指纹规格的档案，分别以 `copy_fingerprint=false` 与 `copy_fingerprint=true` 比较新旧档案。
 - covers: `REQ-PROFILE-004`
-- Pass condition: 新档案标识与数据目录不同；`copy_fingerprint=false` 时不复制指纹；`copy_fingerprint=true` 时显式字段一致但 `seed` 必然不同，且不返回种子冲突；源档案运行状态与数据目录不受影响。
+- Pass condition: 新档案标识与数据目录不同；`copy_fingerprint=false` 时不复制指纹；`copy_fingerprint=true` 时显式字段一致但 `seed` 必然不同；强制注入相同随机值时应内部重抽，不返回种子冲突；源档案运行状态与数据目录不受影响。
 
 ### VER-PROFILE-005
 

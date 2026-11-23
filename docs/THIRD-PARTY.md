@@ -19,7 +19,7 @@
 | noVNC | 固定版本（镜像内静态资源） | MPL-2.0 | Docker 运行时，默认关闭 | 保留 MPL-2.0 文本与来源；如修改文件必须公开修改后的文件 |
 | websockify | 固定版本（镜像内） | LGPL-3.0 | Docker 运行时，独立进程 | 保留 LGPL-3.0 文本；提供 Corresponding Source 与可替换方式；不修改或修改后公开 |
 | 字体包 | 固定版本 | OFL-1.1、Apache-2.0 等按字体 | Docker 与桌面资源 | 只分发允许再分发的字体；逐字体记录许可与来源 |
-| Moby seccomp 基线配置 | 提交 `a0fa7080` | Apache-2.0 | 仓库 `deploy/docker/seccomp/chromium.json`，随镜像与发布物分发 | 保留 Apache-2.0 文本与来源；记录对默认 allowlist 的增量（`clone`/`unshare` 的 `CLONE_NEWUSER` 规则与 `clone3` 条件） |
+| Moby seccomp 基线配置 | 提交 `a0fa7080` | Apache-2.0 | 仓库 `deploy/docker/seccomp/chromium.json`；宿主侧发布物分发，镜像内只保留审计副本 | 保留 Apache-2.0 文本与来源；记录对默认 allowlist 的增量（`clone`/`unshare` 的 `CLONE_NEWUSER` 规则与 `clone3` 条件） |
 
 ## 2. Copyleft 组件义务
 
@@ -44,21 +44,21 @@ openbox、x11vnc、websockify、noVNC 与 Xray-core 是独立程序，不作为�
 - 发布物根目录包含 `LICENSE`（Apache-2.0）、`NOTICE`、`LICENSES/`（逐组件许可文本）与 `SBOM/`。
 - 许可门禁：`cargo-deny`、前端依赖许可扫描、容器许可扫描和 SBOM 生成全部通过；出现未知许可、禁止许可或缺失许可文本时阻断发布。
 - 发布说明列出：项目许可、第三方组件与版本、许可、源码获取方式、已知内核缺陷、无头/伪有头限制、TUIC 不支持、代理节点 bootstrap 解析与共享引擎故障域。
-- 发布门禁同时要求 `deploy/docker/seccomp/chromium.json`、内核、Xray-core 与 SBOM 的 SHA-256 进入 SHA-256SUMS 与 attestation 主体。
+- 发布门禁同时要求 `deploy/docker/seccomp/chromium.json`、内核、Xray-core 与 SBOM 的 SHA-256 进入 SHA-256SUMS 与 attestation 主体；前端依赖与容器许可扫描失败时不得发布。
 - 不使用第三方名称暗示官方关联或背书；不把 GPL 组件描述为 Mien 的一部分。
 
 ## 4. 发布前必须完成的合规动作
 
-| 动作 | 证据 | 门禁 |
-| --- | --- | --- |
-| 项目许可证落地 | 仓库根 `LICENSE` 为 Apache-2.0，README 链接该文件 | M4 与每次发布 |
-| 许可文本归档 | `LICENSES/` 覆盖本文全部组件，`NOTICE` 列出归属 | 每次发布 |
-| Copyleft 源码获取方式 | 发布说明包含固定版本源码 URL 与书面要约 | 每次发布 |
-| 容器内 GPL/LGPL/MPL 组件评审 | 组件清单、链接关系说明、源码与许可证据 | 每次发布 |
-| Xray MPL-2.0 名称使用与再分发评审 | 评审记录与发布说明措辞 | 首次发布与重大变更 |
-| 二进制签名链核验 | 记录 Xray 与 fingerprint-chromium 发行资产的 SHA-256 与签名来源 | 每次内核/引擎升级 |
-| 依赖与许可扫描 | `cargo-deny`、容器许可扫描、SBOM 报告 | CI `contracts`/发布 job |
-| seccomp 基线来源与改动 | 上游 commit、Apache-2.0 文本、`git diff` 摘要 | M0 与每次修改配置 |
+| 动作 | Owner | 证据 | 门禁 |
+| --- | --- | --- | --- |
+| 项目许可证落地 | Release owner | 仓库根 `LICENSE` 为 Apache-2.0，README 链接该文件 | M4 与每次发布 |
+| 许可文本归档 | Release owner | `LICENSES/` 覆盖本文全部组件，`NOTICE` 列出归属 | 每次发布 |
+| Copyleft 源码获取方式 | Legal owner | 发布说明包含固定版本源码 URL 与书面要约 | 每次发布 |
+| 容器内 GPL/LGPL/MPL 组件评审 | Security owner | 组件清单、链接关系说明、源码与许可证据 | 每次发布 |
+| Xray MPL-2.0 名称使用与再分发评审 | Legal owner | 评审记录与发布说明措辞 | 首次发布与重大变更 |
+| 二进制签名链核验 | Release owner | 记录 Xray 与 fingerprint-chromium 发行资产的 SHA-256 与签名来源 | 每次内核/引擎升级 |
+| 依赖与许可扫描 | CI owner | `cargo-deny`、`bun run license:check`、容器许可扫描与 SBOM 报告 | `CI PR / required`、`docker-amd64` 与发布 job |
+| seccomp 基线来源与改动 | Security owner | 上游 commit、Apache-2.0 文本、`git diff` 摘要 | M0 与每次修改配置 |
 
 ## 5. 参考
 

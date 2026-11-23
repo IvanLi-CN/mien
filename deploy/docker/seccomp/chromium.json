@@ -1095,6 +1095,9 @@
       ],
       "action": "SCMP_ACT_ERRNO",
       "errnoRet": 38,
+      "includes": {
+        "minKernel": "5.3"
+      },
       "excludes": {
         "caps": [
           "CAP_SYS_ADMIN"
@@ -1102,8 +1105,7 @@
         "arches": [
           "s390",
           "s390x"
-        ],
-        "minKernel": "5.3"
+        ]
       }
     },
     {
@@ -1265,7 +1267,13 @@
           "op": "SCMP_CMP_MASKED_EQ"
         }
       ],
-      "comment": "Allow clone() calls that include CLONE_NEWUSER, the predicate Chromium uses to bootstrap its namespace sandbox. Moby returns ENOSYS for clone3 so Chromium falls back here; on kernels before 5.3 the same filtered clone path is used."
+      "comment": "Allow clone() calls that include CLONE_NEWUSER, the predicate Chromium uses to bootstrap its namespace sandbox. Moby returns ENOSYS for clone3 so Chromium falls back here; on kernels before 5.3 the same filtered clone path is used.",
+      "excludes": {
+        "arches": [
+          "s390",
+          "s390x"
+        ]
+      }
     },
     {
       "names": [

@@ -53,8 +53,8 @@
       "type": "boolean"
     },
     "sandbox_kind": {
-      "enum": ["namespace", "seatbelt", "appcontainer", "none"],
-      "description": "Sandbox mechanism this artifact depends on: namespace on Linux (with a mandatory seccomp profile), seatbelt on macOS, appcontainer on Windows, none when the artifact cannot sandbox. Declaring a kind does not replace verifying the effective sandbox before serving traffic."
+      "enum": ["namespace", "seatbelt", "win32-restricted-token", "none"],
+      "description": "Sandbox mechanism this artifact depends on: namespace on Linux (with a mandatory seccomp profile), seatbelt on macOS, win32-restricted-token on Windows (restricted token, job object and integrity levels; not AppContainer), none when the artifact cannot sandbox. Declaring a kind does not replace verifying the effective sandbox before serving traffic."
     },
     "network_controls": {
       "type": "object",
@@ -66,6 +66,17 @@
       }
     }
   },
+  "allOf": [
+    {
+      "properties": {
+        "flags": {
+          "properties": {
+            "window-size": {"required": ["values"]}
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "flagSpec": {
       "type": "object",

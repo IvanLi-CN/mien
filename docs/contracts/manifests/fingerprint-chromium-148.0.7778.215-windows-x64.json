@@ -22,6 +22,7 @@
     "timezone": {"type": "string"},
     "window-size": {
       "type": "string",
+      "values": ["1024,768", "1280,720", "1366,768", "1440,900", "1536,864", "1600,900", "1920,1080", "2560,1440"],
       "description": "WIDTH,HEIGHT window size passed to the kernel; window size only, never a screen resolution."
     },
     "proxy-server": {"type": "string"},
@@ -39,9 +40,9 @@
     "Host-bound screen size, devicePixelRatio, color depth and font enumeration remain observable.",
     "Headless pseudo_headful mode changes UA only; other Headless characteristics remain.",
     "CreepJS may stall in some Windows environments (#108); probe timeouts must not be reported as spec failures.",
-    "Canvas sub-region readback can differ from full-surface readback (#98, #99); probe reports must attribute the gap to the kernel, not to the spec."
+    "Canvas sub-region readback can differ from full-surface readback (#98); WebGL readPixels can differ between 1x1 and 8x8 reads (#99); probe reports must attribute both gaps to the kernel, not to the spec."
   ],
-  "sandbox_kind": "appcontainer",
+  "sandbox_kind": "win32-restricted-token",
   "network_controls": {"doh_mode": "unsupported", "ipv6_mode": "unsupported"},
   "headless_chrome_ua_patch": true
 }

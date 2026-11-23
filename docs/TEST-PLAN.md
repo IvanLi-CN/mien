@@ -89,7 +89,7 @@
 | KERNEL-009 | 稳定性 | 100 次启动/停止无孤儿；30 分钟连续浏览无崩溃 |
 | KERNEL-010 | 安全回归 | 已知越界访问报告有复现或缓解结论；无法缓解时阻断发布 |
 
-已知 148 问题：CreepJS 在部分 Windows 环境可能卡住（#108）；WebGL readPixels 打包 16 位格式存在越界访问报告（#102）；canvas 子区域与完整读回可能不一致（#98、#99）。已知 150 问题：canvas 读回崩溃与站点加载失败（#94、#95、#104、#112）。测试报告必须记录这些结论，不能把第三方站点卡住直接归因于产品。
+已知 148 问题：CreepJS 在部分 Windows 环境可能卡住（#108）；canvas 子区域与完整读回可能不一致（#98）；WebGL readPixels 在 1×1 与 8×8 读回间可能不一致（#99）；WebGL readPixels 打包 16 位格式存在越界访问（#102）。已知 150 问题：canvas 读回崩溃与站点加载失败（#94、#95、#104、#112）。测试报告必须记录这些结论，不能把第三方站点卡住直接归因于产品。
 
 ## 5. 指纹探针与判定
 
@@ -155,7 +155,7 @@
 | RT-018 | 跨档案数据隔离 | 两个档案并发运行时 Cookie、localStorage、缓存、会话与下载文件互不可见；默认下载目录为 `<data-root>/profiles/<id>/downloads`，权限 0700，路径包含校验拒绝越界 |
 | RT-019 | 归档/删除/恢复与清理 | `active <-> archived` 通过 archive/restore 切换且不移动目录；`DELETE permanent=false` 将目录移到 `<data-root>/trash/<id>` 并写入 `deleted_at`，`deleted` 不可启动；恢复后目录回位且 `archived_at` 清空；`permanent=true` 先删目录再删行，失败保留 `deleted` 并写 `deletion_error` 供重试 |
 | RT-020 | 崩溃循环 | 默认不自动重启；启用自动重启时最多 3 次递增退避，稳定运行后计数重置；超过上限进入 `crashed` 并停止重试；事件、退出码与日志尾部足以诊断，无无限重启 |
-| RT-021 | 共享引擎故障与重建失败 | 运行中强杀引擎时全部运行档案网络失败且无直连/其他节点回退，产生 `proxy.engine.failed`；重建成功产生 `proxy.engine.rebuilt` 并恢复原端口；重建失败先拆除内核与进程组、入站/规则、出站引用、配额与锁，再写 `failed`，终态后无残留内核或端口 |
+| RT-021 | 共享引擎故障与重建失败 | 运行中强杀引擎时全部运行档案网络失败且无直连/其他节点回退，产生 `proxy.engine.failed`；重建成功产生 `proxy.engine.rebuilt` 并恢复原端口；重建失败先转入 `stopping` 并拆除内核与进程组、入站/规则、出站引用、配额与锁，再写 `failed`；teardown 失败保持 `stopping` 与 `last_error`，终态后无残留内核或端口 |
 | RT-022 | 沙箱校验先于资源创建 | 启动事务先校验沙箱，失败返回 `SANDBOX_UNAVAILABLE`，且不创建入站/出站/规则、不拉起进程、不占用配额；显式无沙箱时写入审计与降级标记，`isolation=unsandboxed` |
 | RT-023 | 控制面重启对非终态运行时对账 | 重启后对 `starting`/`stopping` 行终止可归属内核、删除入站/规则/出站引用，再置 `stopped`；仅在拆除全部完成后才允许写 `failed`；不产生重复运行时，不可归属进程按契约记录而不盲杀 |
 | RT-024 | 隔离 proof 状态 | 启动时沙箱探测写入 `runtimes.isolation`（`enforced`/`unsandboxed`/`unknown`）；proof strip 以该字段为唯一数据源派生，Profile payload 暴露同一派生值（取最近一次运行，无记录为 `unknown`）；停止的档案仍显示最近一次运行的 `unsandboxed` 与降低保证；`unknown` 与 `stopped` 不共用同一视觉或语义 |
@@ -174,7 +174,7 @@
 | PROXY-005 | Shadowsocks AEAD/2022 | 各声明方法与插件可连接；错误密码/方法/插件被拒绝 |
 | PROXY-006 | Trojan TLS/WS | TLS 与密码认证正确；证书错误、错误密码有明确分类 |
 | PROXY-007 | Hysteria2 QUIC（Tier B） | 按 Tier B 记录：受控节点可访问；容器允许 UDP 出站时成功；UDP 被阻止时明确报错；不得作为 Tier A 发布门禁或 PRD 必选协议 |
-| PROXY-008 | Hysteria2/WireGuard/TUIC | Hysteria2 与 WireGuard 统一按 Tier B 清单记录，不列为必选；TUIC 在 v1 被拒绝，不静默降级 |
+| PROXY-008 | Hysteria2/WireGuard/TUIC | Hysteria2 与 WireGuard 按 Tier B 清单记录；WireGuard 必须有隧道内 DNS，缺失配置被拒绝；TUIC 在 v1 被拒绝；均不静默降级 |
 
 ### 7.2 配置与引擎生命周期
 
@@ -204,8 +204,8 @@
 | 编号 | 用例 | 通过条件 |
 | --- | --- | --- |
 | PROXY-022 | 凭据脱敏 | 进程参数、日志、事件、API 响应和持久化文件均无 UUID/密码/私钥/完整分享链接 |
-| PROXY-023 | 回环边界 | 非回环地址不可连接运行档案入站或 Xray 管理 API；运行时结束后端口关闭；同用户残余风险有文档 |
-| PROXY-024 | 直连模式 | 不创建入站/出站，风险标记持续可见 |
+| PROXY-023 | 回环边界 | 非回环地址不可连接运行档案入站或 Xray 管理 API；运行时结束后端口关闭；同用户与浏览器网络栈访问回环代理的残余风险有文档，页面不能触达管理 API 或数据库 |
+| PROXY-024 | 直连模式 | 不创建入站/出站；`direct=true`、`reduced_assurance=true` 与风险标记持续可见；服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时拒绝启动，允许时写审计；不声称拥有代理模式的 DNS/DoH/IPv6/UDP 防护 |
 | PROXY-025 | 恶意配置/链接 | 配置注入、路径、超长字段、非法端口、未知协议被拒绝；产品不直接透传用户 JSON |
 | PROXY-026 | 脱敏视图 | UI/API 只显示非秘密字段与 `credential_set`；无法读回旧凭据；可替换保存 |
 | PROXY-027 | 共享出站与连接复用 | 相同节点/凭据/传输/TLS/mux 的档案只创建一个出站并复用连接；不同凭据不共享；引用归零删除 |
@@ -259,9 +259,9 @@
 | SEC-001 | 密钥静态保护 | 代理凭据字段为密文；桌面钥匙串/服务端文件权限正确 |
 | SEC-002 | 路径穿越 | 导入、档案目录、符号链接均不能越界 |
 | SEC-003 | 恶意导入 | 超大、错误 schema、非法代理、XSS 字符串被拒绝或转义 |
-| SEC-004 | 容器基线 | 非 root、无多余能力、只读根、无 Docker socket、镜像扫描通过 |
+| SEC-004 | 容器基线 | 非 root、无多余能力、只读根、无 Docker socket；宿主侧 seccomp 文件被 Docker daemon 加载，镜像内审计副本摘要一致；镜像扫描通过 |
 | SEC-005 | 内核与引擎供应链 | 校验和不匹配拒绝；发布物含许可声明；无静默下载 |
-| SEC-006 | 依赖 | Rust/前端依赖审计无未接受的高危项 |
+| SEC-006 | 依赖与许可 | Rust/前端依赖审计无未接受的高危项；Rust、前端与容器许可扫描全部通过 |
 | SEC-007 | MPL 合规 | Xray-core 许可证、来源信息、再分发合规评审完成 |
 | SEC-008 | 引擎 API 保护 | 管理 API 仅回环；凭据不进入 argv/日志/持久化配置；API 无 UUID/密码/私钥 |
 | SEC-009 | 桌面 WebView 边界 | 远程内容不能获得 IPC 能力；CSP/capabilities 生效；外链交给系统浏览器；文件路径经 dialog 与校验 |
@@ -283,7 +283,7 @@
 
 | 编号 | 用例 | 通过条件 |
 | --- | --- | --- |
-| PKG-001 | macOS AdHoc 签名 | 应用、嵌套内核、Xray-core 和 frameworks 通过 `codesign --verify --deep --strict`；`--options runtime` 与 `Signature=adhoc` 已断言；不要求 Developer ID |
+| PKG-001 | macOS AdHoc 签名 | 应用、嵌套 Chromium 内核、Xray-core 和 frameworks 通过 `codesign --verify --deep --strict`；应用与 Chromium 内核带且只带 JIT 两项 entitlements，Xray/frameworks 不带；`--options runtime` 与 `Signature=adhoc` 已断言；不要求 Developer ID |
 | PKG-002 | Gatekeeper 行为 | 从浏览器下载的 DMG 保留 quarantine 后首次启动被阻止；发布说明提供 SHA-256 校验和手动放行步骤；不要求无提示打开 |
 | PKG-003 | 自动更新 | Tauri 更新清单签名有效，拒绝未签名或降级包；不依赖 Apple 签名或公证 |
 | PKG-004 | Docker 构建 | 多阶段构建可复现，镜像非 root，健康检查有效 |
@@ -291,7 +291,7 @@
 | PKG-006 | SBOM 与许可 | 镜像和应用包含 SBOM、BSD-3-Clause、MPL-2.0 许可与来源信息 |
 | PKG-007 | 漏洞扫描 | 无未接受的高危/严重漏洞 |
 | PKG-008 | 发布说明 | 列出内核缺陷、代理协议矩阵、节点 bootstrap 泄漏、无头限制、跨系统限制、显示与字体限制 |
-| PKG-009 | GitHub Actions 发布 | 手动 `release_target` 仅在 main 已绿时发布；draft reservation 绑定 version/source；产物含 SHA-256SUMS、SBOM、许可证、`release-identity.json` 与 attestation；不存在 Apple 证书或公证 secret |
+| PKG-009 | GitHub Actions 发布 | 手动 `release_target` 仅在 main 已绿时发布；draft reservation 绑定 version/source；产物含 SHA-256SUMS、SBOM、许可证、宿主侧 seccomp 发布物、`release-identity.json` 与覆盖 DMG/容器/SBOM/seccomp 的 attestation；不存在 Apple 证书或公证 secret |
 
 ## 11. 缺陷分级与发布门禁
 
@@ -315,7 +315,7 @@
 - 隔离 proof（`enforced`/`unsandboxed`/`unknown`）与日志尾部端点的脱敏证据存在；停止档案的降低保证可见。
 - 桌面管理 UI 默认无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
 - 已知限制在发布说明和 UI 中可见。
-- 门禁自检（GATE-001）：测试报告缺字段、P0 非零或 P1 阻断类别非零时，流水线拒绝创建发布草稿与 promote。
+- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..029`、`EXPORT-001..006`、`UI-001..022`、`RT-017..025`、`API-019..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；P0 非零或 P1 阻断类别非零同样拒绝。
 
 ## 12. 证据与报告
 

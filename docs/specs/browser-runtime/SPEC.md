@@ -14,7 +14,8 @@
 - `runtime state`: `stopped`、`starting`、`running`、`stopping`、`crashed`、`failed`。
 - `process group`: 内核及其子进程组成的进程组，用于可靠终止和孤儿清理。
 - `isolation`: 运行时隔离结论，取值 `enforced`、`unsandboxed` 或 `unknown`；持久化在 `runtimes.isolation`，并随档案与运行时响应返回，驱动四项 proof 的 isolation 段。
-- `reduced assurance`: 降级保证标记，由运行模式与 `isolation` 共同决定；`headless`、`pseudo_headful` 以及 `isolation != enforced` 的运行时保留该标记，已停止档案保留最后一次结论。
+- `reduced assurance`: 降级保证标记，由运行模式、直连配置与 `isolation` 共同决定；`headless`、`pseudo_headful`、`direct=true` 以及 `isolation != enforced` 的运行时保留该标记，已停止档案保留最后一次结论。
+- `direct`: 档案未配置代理且显式进入直连模式的运行时标记；Profile 与 Runtime 必须返回 `direct=true`，该模式不创建代理入站/出站，也不声称具备代理模式的 DNS、DoH、IPv6 或非代理 UDP 防护。
 - `headful`: 内核创建可见窗口；macOS 使用宿主桌面，Docker 使用 Xvfb。
 - `headless`: 内核不创建可见窗口；标记为降低保证。
 - `pseudo_headful`: 无头模式，依赖 fingerprint-chromium 的 `HeadlessChrome` → `Chrome` UA 补丁；其他 Headless 特征保留；标记为降低保证。`headless` 不承诺 UA 结果；在 pinned 148 上 UA 补丁可能是编译期默认，`pseudo_headful` 通过能力清单把该行为变成显式契约。
@@ -33,13 +34,13 @@
 - The system MUST enforce the runtime state machine and MUST emit a state event for every transition.
 - Inputs: 启动、停止、内核退出、超时、控制面重启。
 - Outputs: 合法转移序列；非法转移必须被拒绝并记录；外部观察者可以通过事件流重建状态。
-- Transitions: `stopped -> starting`（start）、`starting -> running`（CDP 就绪，或“进程存活 + 代理入站就绪 + 有界宽限”）、`starting -> crashed`（就绪前内核退出）、`starting -> failed`（校验、生成、沙箱、spawn 或超时失败）、`running -> stopping`（stop）、`running -> crashed`（内核退出）、`running -> failed`（共享引擎故障或重建失败，且在 teardown 完成后）、`stopping -> stopped`（正常退出或超时强制终止）、`crashed -> starting`（退避重试）、`crashed -> stopped` 与 `failed -> stopped`（清理或停止）。
+- Transitions: `stopped -> starting`（start）、`starting -> running`（CDP 就绪，或“进程存活 + 代理入站就绪 + 有界宽限”）、`starting -> crashed`（就绪前内核退出）、`starting -> stopping`（启动中 stop 取消，或失败后进入 teardown）、`starting -> failed`（校验、生成、沙箱、spawn 或超时失败，且已确认无资源残留）、`running -> stopping`（stop，或共享引擎故障后进入 teardown）、`running -> crashed`（内核退出）、`stopping -> stopped`（正常退出或超时强制终止）、`stopping -> failed`（非用户发起的失败在 teardown 完成后进入终态）、`crashed -> starting`（退避重试）、`crashed -> stopped`、`failed -> starting`（用户显式重试且已确认无残留）与 `failed -> stopped`（清理或停止）。`starting`/`running` 不得直接写 `failed`；teardown 未完成时必须保留非终态并记录 `last_error`。
 
 ### REQ-RUNTIME-003
 
 - The system MUST make start and stop idempotent per profile and MUST allow at most one supervised runtime per profile.
 - Inputs: 重复的启动/停止请求、并发请求、档案锁。
-- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；已停止时停止返回成功；对 `crashed`/`failed` 运行时执行停止必须清理残留资源并转为 `stopped`；并发启动不得产生两个内核。
+- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；`starting` 中的 stop 是取消，转入 `stopping`，清理完成后返回 `stopped`；已停止时停止返回成功；对 `crashed`/`failed` 运行时执行停止必须清理残留资源并转为 `stopped`；并发启动不得产生两个内核。
 
 ### REQ-RUNTIME-004
 
@@ -95,7 +96,7 @@
 
 - The system MUST reconcile non-terminal runtime records after a control-plane or container restart using PID, process start time, and command line, without killing processes it cannot safely attribute.
 - Inputs: `runtimes` 记录、进程表、档案锁、数据目录。
-- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时；对 `starting`/`stopping` 中断行，终止可归属内核进程组、删除该档案的入站与规则、清空 `proxy_*`、递减非终态引用后写 `stopped`，只有 teardown 本身失败才写 `failed`；恢复完成后不保留中间态。
+- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时；对 `starting`/`stopping` 中断行，终止可归属内核进程组、删除该档案的入站与规则、清空 `proxy_*`、递减非终态引用后写 `stopped`；teardown 失败时保留 `stopping` 或原非终态并记录 `last_error`，不得在资源仍存在时写 `failed`，后续对账重试；恢复完成后不保留中间态。
 
 ### REQ-RUNTIME-013
 
@@ -131,14 +132,14 @@
 
 - The system MUST persist and expose the isolation verdict as `isolation` with values `enforced`, `unsandboxed`, or `unknown`, and MUST derive the isolation proof and reduced-assurance markers from it.
 - Inputs: 沙箱校验结果、运行模式、`runtimes` 记录、档案详情。
-- Outputs: `runtimes.isolation` 持久化；运行时与档案响应包含 `isolation` 和 `reduced_assurance`；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation`，并显示 `unsandboxed` 或 `unknown` 提示。
+- Outputs: `runtimes.isolation` 持久化；运行时与档案响应包含 `isolation`、`direct` 和 `reduced_assurance`；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation`，并显示 `unsandboxed` 或 `unknown` 提示。
 - UI semantics: proof strip 的 isolation 段由该字段驱动；`unknown` 使用虚线轮廓与 `?` 文本说明，`stopped` 使用中性低透明度，两者不得呈现为相同状态。
 
 ### REQ-RUNTIME-019
 
 - The system MUST tear down a runtime before writing any terminal state when the shared proxy engine fails or must be rebuilt.
 - Inputs: 共享引擎故障或重建失败事件、运行时记录、进程与代理资源状态。
-- Outputs: 依次终止内核进程组、删除该档案的入站与路由、清空 `proxy_*`、递减非终态出站引用、释放档案锁与配额，然后写 `failed` 并发出 `runtime.failed` 事件；`crashed`、`failed`、`stopped` 之后不得存在仍在运行的内核或仍计数的代理资源；引擎恢复后由用户显式重试启动，不自动把运行时改回 `running`。
+- Outputs: 先转入 `stopping`，依次终止内核进程组、删除该档案的入站与路由、清空 `proxy_*`、递减非终态出站引用、释放档案锁与配额，确认无残留后才写 `failed` 并发出 `runtime.failed` 事件；teardown 失败时保留 `stopping`、记录 `last_error` 并重试，不得提前发出终态事件；`crashed`、`failed`、`stopped` 之后不得存在仍在运行的内核或仍计数的代理资源；引擎恢复后由用户显式重试启动，不自动把运行时改回 `running`。
 
 ## Verification
 
@@ -152,7 +153,7 @@
 
 - Method: 驱动启动、成功、停止、崩溃、超时、就绪前退出、共享引擎故障和控制面重启路径，收集事件流。
 - covers: `REQ-RUNTIME-002`
-- Pass condition: 事件序列符合状态机，包括 `starting -> crashed` 与 `running -> failed`；非法转移被拒绝；终态无残留内核或代理资源；最终状态与数据库一致。
+- Pass condition: 事件序列符合状态机，包括 `starting -> stopping -> stopped`、`starting -> crashed`、`running -> stopping -> failed`；非法转移被拒绝；teardown 失败时保持非终态；终态无残留内核或代理资源；最终状态与数据库一致。
 
 ### VER-RUNTIME-003
 
@@ -248,13 +249,13 @@
 
 - Method: 分别产生 `enforced`、`unsandboxed` 与 `unknown` 的运行时，并检查已停止档案的档案详情与 proof strip。
 - covers: `REQ-RUNTIME-018`
-- Pass condition: `runtimes.isolation` 持久化并在重启后仍以数据库为准；运行时与档案响应包含 `isolation` 及按模式推导的 `reduced_assurance`；已停止档案仍显示最后一次隔离结论与降低保证提示；`unknown` 的虚线与 `?` 文本和 `stopped` 的中性低透明度可区分。
+- Pass condition: `runtimes.isolation` 持久化并在重启后仍以数据库为准；运行时与档案响应包含 `isolation`、`direct` 及按模式/直连/隔离推导的 `reduced_assurance`；已停止档案仍显示最后一次隔离结论与降低保证提示；直连档案必须显示降低保证；`unknown` 的虚线与 `?` 文本和 `stopped` 的中性低透明度可区分。
 
 ### VER-RUNTIME-019
 
 - Method: 在运行中注入共享引擎故障与重建失败，检查内核、代理资源与终态。
 - covers: `REQ-RUNTIME-019`
-- Pass condition: 每个受影响运行时都先完成 teardown 再写 `failed`；内核进程组、入站、路由、出站引用、锁与配额均被释放；`runtime.failed` 事件可观察；引擎恢复后需显式重试且不自动恢复 `running`。
+- Pass condition: 每个受影响运行时先转入 `stopping` 并完成 teardown 再写 `failed`；若 teardown 失败则保留 `stopping` 与 `last_error`，不发出终态事件；内核进程组、入站、路由、出站引用、锁与配额均被释放；`runtime.failed` 事件可观察；引擎恢复后需显式重试且不自动恢复 `running`。
 
 ## Related ADRs
 

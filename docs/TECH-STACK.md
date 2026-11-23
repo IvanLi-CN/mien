@@ -63,7 +63,7 @@
 | 协议引擎 | Xray-core v26.11.9+ | 固定补丁版本与 SHA-256 | 单实例动态入站/出站/路由；VLESS/VMess/SS/Trojan/Hysteria2/WireGuard；MPL-2.0 |
 | 容器基础 | Debian bookworm-slim | 固定摘要 | 需要 X11、Chromium 运行库与字体 |
 | 容器 init | tini | 固定 | 信号转发与僵尸进程回收 |
-| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）+ AppArmor | 固定文件与 SHA-256 | 允许非特权用户命名空间的 Chromium 命名空间沙箱；随镜像与发布物分发，不得改用默认或 `unconfined` |
+| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）+ AppArmor | 固定文件与 SHA-256 | 允许非特权用户命名空间的 Chromium 命名空间沙箱；宿主侧发布物供 Docker 创建前加载，镜像副本仅审计，不得改用默认或 `unconfined` |
 | 虚拟显示 | Xvfb + openbox | 固定主版本 | 无桌面环境的有头运行 |
 | 远程查看 | x11vnc + noVNC/websockify | 固定主版本 | 可选、一次性令牌、默认关闭；GPL-2.0、MPL-2.0、LGPL-3.0 义务见 `THIRD-PARTY.md` |
 | 任务编排 | cargo xtask | 固定 | 仓库内构建、校验、打包任务 |
@@ -178,7 +178,7 @@
 - 端到端：Playwright 连接 CDP；Docker 有头/无头；受控协议节点；DNS canary。
 - macOS：`aarch64-apple-darwin` 构建，嵌套内核与 Xray-core 做 AdHoc 签名；不公证、不 stapler；用 `codesign --verify`、SHA-256 和 artifact attestation 建立完整性。
 - Docker：`buildx` 构建 `linux/amd64`；非 root、只读根、`--tmpfs /tmp:rw,noexec,nosuid,size=1g`、`--shm-size`、`/data` 卷、健康检查、SBOM、Trivy、cosign；同一源码构建两次并比较镜像 digest。
-- 容器安全：镜像内烘焙 `/etc/mien/seccomp/chromium.json`，同一文件作为 `mien-seccomp-chromium-<version>.json` 进入 SHA-256SUMS、SBOM 与 attestation；镜像副本与仓库源文件摘要不一致时阻断发布。
+- 容器安全：同一文件作为宿主侧发布物 `mien-seccomp-chromium-<version>.json` 进入 SHA-256SUMS、SBOM 与 attestation；镜像内只烘焙 `/opt/mien/seccomp/chromium.json` 审计副本。Docker daemon 在容器创建前只能读取宿主路径，`--security-opt` 不得指向镜像内文件；镜像副本与仓库源文件摘要不一致时阻断发布。
 - 发布物：SHA-256SUMS 覆盖应用包、内核、Xray-core、seccomp 配置与 SBOM；发布说明列出 GPL/LGPL/MPL 组件的许可与源码获取方式。
 - 内核与引擎：构建时下载、SHA-256 校验、写入能力清单；不提交二进制。
 - GitHub Actions 的 PR/main/release 拓扑、权限与门禁见 [`CI.md`](CI.md)。

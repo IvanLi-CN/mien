@@ -43,7 +43,7 @@ Trusted baseline 是仓库中**所有已存在的 `vX.Y.Z` Git tag 与 GitHub Re
 ## 4. Ordering 与 collision
 
 - 使用 SemVer 2.0.0 的 stable 比较规则；canonical version 是 `MAJOR.MINOR.PATCH`。
-- 新 identity 的 target 必须严格大于所有已存在 tag/release 的 SemVer；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形。
+- 新 identity 的 target 必须严格大于所有已存在 tag/release 的 SemVer；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形：先读取 reservation 并验证 policy/target/version/source SHA 完全一致，再放行；不得仅因 version 相同就复用。
 - 相同 target 只允许作为同一 source identity 的 idempotent retry/recovery，不得重新分配 successor。
 - tag `vX.Y.Z` 已存在时，只能读取并验证其 peeled commit；如果指向不同 source，停止，不改写 tag。
 - Release record、container tag 或 GitHub Release 已属于另一个 source identity 时，停止并报告冲突。
@@ -97,7 +97,7 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 - Docker：`ghcr.io/<owner>/mien-server:vX.Y.Z` 和固定 digest；不使用可变 `latest` 作为生产发布映射。
 - Docker 构建先推 `staging-<run_id>` 临时 tag；验证通过后在 `promote-docker` 阶段按 digest 提升为 `vX.Y.Z`，不重复构建。
 - macOS 使用 AdHoc 签名，不公证；Gatekeeper 手动放行说明随 Release 一起发布。Apple 签名不是 publication identity。
-- 每种产物只构建一次；Release 和后续部署消费者复用同一 digest，不重新构建或改写版本。
+- 每种发布产物只构建一次；Docker 为可复现性验证进行的第二次构建不发布、不写 identity，Release 和后续部署消费者复用第一次构建的同一 digest，不重新构建或改写版本。
 
 ## 10. Release 与 Deploy 阶段
 

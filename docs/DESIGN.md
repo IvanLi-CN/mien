@@ -33,10 +33,10 @@ mien-cli     ─┘
 - `ProfileId(Ulid)`、`RuntimeId(Ulid)`、`KernelVersion`、`EngineVersion`。
 - `SpecSchema`、`KernelManifest`、`EngineManifest` 各自独立版本。
 - `RuntimeState`：`Stopped`、`Starting`、`Running`、`Stopping`、`Crashed`、`Failed`。
-- 合法转移：`Stopped → Starting`、`Starting → Running|Failed|Crashed`、`Running → Stopping|Crashed|Failed`、`Stopping → Stopped`、`Crashed → Starting|Stopped`、`Failed → Stopped`。`Running → Failed` 只用于共享引擎故障且 teardown 已完成；`Starting → Crashed` 用于内核提前退出。任何终态都不得存在活内核、入站、规则或计入引用计数的出站。
+- 合法转移：`Stopped → Starting`、`Starting → Running|Stopping|Crashed|Failed`、`Running → Stopping|Crashed`、`Stopping → Stopped|Failed`、`Crashed → Starting|Stopped`、`Failed → Starting|Stopped`。`Starting → Stopping` 用于 cancel 或失败清理，`Running → Stopping` 用于 stop 或共享引擎故障；`Starting → Failed` 只在确认无资源残留时进入，`Stopping → Failed` 只在 teardown 完成后进入；teardown 失败保留 `Stopping` 与 `last_error` 并重试；`Failed → Starting` 仅用于用户显式重试。`Starting → Crashed` 用于内核提前退出。任何终态都不得存在活内核、入站、规则或计入引用计数的出站。
 - `ProfileStatus`：`Active`、`Archived`、`Deleted`，对外序列化为 `active`/`archived`/`deleted`；`Deleted` 必须携带 `deleted_at`，永久删除失败时携带 `deletion_error` 并保持 `Deleted`，可重试；`Deleted` 不能启动。
 - `Isolation`：`Enforced`、`Unsandboxed`、`Unknown`，对外序列化为 `enforced`、`unsandboxed`、`unknown`；每次启动由沙箱探测写入 `runtimes.isolation`，是 proof strip 的唯一数据源。
-- `SandboxKind`：`Namespace`、`Seatbelt`、`AppContainer`、`None`，来自内核能力清单 `sandbox_kind`。
+- `SandboxKind`：`Namespace`、`Seatbelt`、`Win32RestrictedToken`、`None`，来自内核能力清单 `sandbox_kind`；Windows 普通渲染进程不使用 AppContainer。
 - `RunMode`：`Headful`、`Headless`、`PseudoHeadful`；对外序列化为 `headful`、`headless`、`pseudo_headful`。
 - `ProxyConfig`：`Http`、`Https`、`Socks5`、`Vless`、`Vmess`、`Shadowsocks`、`Trojan`、`Hysteria2`、`Wireguard` 的 tagged enum；秘密字段使用 `SecretString`，`Debug` 输出必须脱敏。TUIC 不进入 v1。
 - `LaunchPlan`：内核 argv、环境变量、用户数据目录、代理入口、运行模式、是否启用 CDP、日志目标。
@@ -100,11 +100,11 @@ pub trait EventSink {
 7. 在事务内写入 `runtimes(state=starting, isolation=unknown)` 并发布 `runtime.starting`；此后任何失败都能被对账发现。
 8. 沙箱验证：按内核清单 `sandbox_kind` 探测实际生效状态，得出 `isolation=enforced|unsandboxed|unknown`；Docker 中无法确认且未启用 `ALLOW_UNSANDBOXED=1` 时返回 `SANDBOX_UNAVAILABLE`，不创建代理资源、不启动进程；桌面无法确认时不阻断，但写 `unsandboxed` 或 `unknown`。通过后立即持久化 `isolation`。
 9. 代理模式：分配回环代理端口；确保共享 Xray 引擎运行并连接 gRPC 管理 API；断言 blackhole 是第一个出站；计算 `outbound_key`，添加或复用出站并增加引用计数；添加带稳定 `ruleTag` 的入站和路由（`shouldAppend=true`）。直接模式跳过本步骤。
-10. 生成内核 argv；代理模式注入 `--proxy-server=http://127.0.0.1:<proxy_port>`，直接模式不注入代理参数；保留 DoH/IPv6/UDP 防护参数；子进程 `env_clear` 后只注入白名单环境。
+10. 生成内核 argv；代理模式注入 `--proxy-server=http://127.0.0.1:<proxy_port>` 并应用 DoH/IPv6/非代理 UDP 防护参数；直接模式不注入代理参数，也不声称这些防护生效；子进程 `env_clear` 后只注入白名单环境。
 11. 启动内核；自动化开启时等待 `DevToolsActivePort`，关闭时等待进程存活、代理入站就绪（如适用）和有界启动宽限。
 12. 持久化 `runtimes=running` 与 `isolation`，发布 `runtime.running`，返回运行时句柄。
 
-失败回滚顺序与启动相反：终止内核进程组、按 `ruleTag` 删除路由规则与入站、清空 `proxy_*` 字段、递减非终态出站引用、释放端口、释放配额、释放 actor 锁、写入 `failed` 与稳定错误码。沙箱失败发生在资源创建之前，因此只需释放配额与锁。共享引擎本身不因单个运行时失败而退出。回滚中的二次失败必须记录，但不得掩盖原始错误；teardown 必须幂等且只执行一次。
+失败回滚顺序与启动相反：终止内核进程组、按 `ruleTag` 删除路由规则与入站、清空 `proxy_*` 字段、递减非终态出站引用、释放端口、释放配额、释放 actor 锁，然后写入 `failed` 与稳定错误码。teardown 失败时保留 `stopping` 与 `last_error` 并重试，不得提前写终态。沙箱失败发生在资源创建之前，因此只需释放配额与锁。共享引擎本身不因单个运行时失败而退出。回滚中的二次失败必须记录，但不得掩盖原始错误；teardown 必须幂等且只执行一次。
 
 ### 4.2 停止顺序
 
@@ -124,9 +124,9 @@ pub trait EventSink {
 控制面启动时读取非终态 `runtimes`：
 
 - 通过 PID、进程启动时间和 API 端口确认共享 Xray 引擎；通过 PID、命令行和数据目录确认各内核。
-- 对 `starting`/`stopping` 中断行：终止可归属的内核进程组，按 `ruleTag` 删除入站与规则，清空 `proxy_*` 并递减非终态引用计数，然后写 `stopped`；只有 teardown 本身失败才写 `failed`。
+- 对 `starting`/`stopping` 中断行：终止可归属的内核进程组，按 `ruleTag` 删除入站与规则，清空 `proxy_*` 并递减非终态引用计数，然后写 `stopped`；teardown 失败时保留非终态与 `last_error` 并重试。
 - 引擎可接管时通过 gRPC 管理 API 对账入站/出站/规则；不可接管时重启引擎并按 `proxy_port` 重建全部运行配置（原 `ruleTag`、`shouldAppend=true`）。
-- 共享引擎重建失败时，对每个受影响运行时执行第 4.1 节的同一 teardown，完成后才写 `failed`；不允许终态背后存在活内核或仍被计数的出站。
+- 共享引擎重建失败时，对每个受影响运行时执行第 4.1 节的同一 teardown，完成后才写 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不允许终态背后存在活内核或仍被计数的出站。
 - 无法确认归属的进程不盲目杀死，标记为孤儿并按 TTL 清理。
 - 删除过期锁文件和端口引用；未完成操作在 teardown 完成后以 `stopped` 或 `failed` 事件告知 UI，不留 `starting`/`stopping` 残留。
 
@@ -147,7 +147,7 @@ pub trait EventSink {
 | 错误族 | 示例 | HTTP | 说明 |
 | --- | --- | --- | --- |
 | 认证与授权 | `AUTH_REQUIRED`、`AUTH_INVALID`、`AUTH_RATE_LIMITED`、`AUTH_PASSWORD_CHANGE_REQUIRED`、`AUTH_ORIGIN_INVALID`、`EVENT_TICKET_INVALID`、`FORBIDDEN_SCOPE` | 401/403/429 | 缺失、过期或无效凭据；`Origin` 不被信任；已认证但无权限或必须先改密 |
-| 资源与生命周期 | `PROFILE_NOT_FOUND`、`PROXY_NOT_FOUND`、`RUNTIME_NOT_FOUND`、`TOKEN_NOT_FOUND`、`VIEWER_NOT_AVAILABLE`、`PROFILE_ARCHIVED`、`PROFILE_DELETED`、`PROFILE_PURGE_FAILED`、`RUNTIME_CONFLICT`、`RESOURCE_IN_USE`、`IDEMPOTENCY_CONFLICT`、`PROFILE_IMPORT_CONFLICT`、`GROUP_NAME_CONFLICT`、`TAG_NAME_CONFLICT` | 404/409/500 | `*_NOT_FOUND` 为 404；状态、归属、幂等键或命名冲突为 409；软删除未 purge 的档案返回 `PROFILE_DELETED` 而非 404；purge 目录删除失败为可重试 500 |
+| 资源与生命周期 | `PROFILE_NOT_FOUND`、`PROXY_NOT_FOUND`、`RUNTIME_NOT_FOUND`、`TOKEN_NOT_FOUND`、`VIEWER_NOT_AVAILABLE`、`PROFILE_ARCHIVED`、`PROFILE_DELETED`、`PROFILE_PURGE_FAILED`、`RUNTIME_CONFLICT`、`RESOURCE_IN_USE`、`IDEMPOTENCY_CONFLICT`、`PROFILE_IMPORT_CONFLICT`、`GROUP_NAME_CONFLICT`、`TAG_NAME_CONFLICT` | 404/409/500 | `*_NOT_FOUND` 为 404；状态、归属、幂等键或命名冲突为 409；软删除未 purge 的档案只在启动或修改时返回 `PROFILE_DELETED`，restore/purge/读取仍可用；purge 目录删除失败为可重试 500 |
 | 输入与能力 | `VALIDATION_FAILED`、`FINGERPRINT_INVALID`、`PROXY_CONFIG_INVALID`、`SHARE_LINK_INVALID`、`RUNTIME_MODE_UNSUPPORTED`、`KERNEL_UNSUPPORTED`、`UNSUPPORTED_PROTOCOL`、`TUIC_NOT_SUPPORTED` | 422 | `*_INVALID`、`*_UNSUPPORTED`、`*_NOT_SUPPORTED` 表达输入或能力不符 |
 | 配额与资源不足 | `QUOTA_EXCEEDED`、`INSUFFICIENT_RESOURCES` | 429/503 | 并发上限可重试；内存、磁盘、描述符不足为 503 |
 | 内核 | `KERNEL_NOT_FOUND`、`KERNEL_CHECKSUM_MISMATCH`、`KERNEL_UNSUPPORTED` | 500/422 | 文件缺失或 `binary_sha256` 不符；不兼容组合在启动前拒绝 |
@@ -172,8 +172,8 @@ pub trait EventSink {
 | `MIEN_BIND` | 服务端 `0.0.0.0:8080`；桌面未设置 | 服务端控制面监听地址；桌面不监听 |
 | `MIEN_DESKTOP_AUTOMATION_BIND` | 未设置 | 桌面可选自动化地址；显式设置后才监听，且必须是 `127.0.0.1`/`::1`，非回环值启动失败 |
 | `MIEN_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `/data/secrets/master.key` |
-| `MIEN_ADMIN_PASSWORD` | 无 | 首次启动管理员密码引导值；与 `MIEN_ADMIN_PASSWORD_FILE` 二选一；两者都未提供时生成密码写入 `/data/secrets/admin-bootstrap` |
-| `MIEN_ADMIN_PASSWORD_FILE` | 无 | 以 0600 文件提供管理员密码；首次改密后删除该文件与引导标记 |
+| `MIEN_ADMIN_PASSWORD` | 无 | 首次启动管理员密码引导值；与 `MIEN_ADMIN_PASSWORD_FILE` 二选一；两者都未提供时生成密码写入 `<data-root>/secrets/admin-bootstrap` |
+| `MIEN_ADMIN_PASSWORD_FILE` | 无 | 以 0600 文件提供管理员密码；首次改密后删除应用生成的文件并清除引导标记；外部挂载 Secret 由部署者撤销 |
 | `MIEN_PUBLIC_URL` | 无 | 服务端对外基址；用于生成绝对链接与校验 `Origin` |
 | `MIEN_TRUSTED_PROXIES` | 空 | 可信反向代理 CIDR/地址列表；仅这些来源的 `X-Forwarded-*` 被采信 |
 | `MIEN_SCREEN` | `1920x1080x24` | Docker Xvfb 分辨率 |
@@ -326,8 +326,8 @@ tauri::Builder::default()
 
 - macOS 应用包含内核与 Xray-core 二进制、MPL-2.0 许可与更新清单；数据目录不随应用卸载删除。
 - Docker 镜像使用非 root 用户、只读根文件系统、`/data` 唯一持久可写卷；`--tmpfs /tmp:rw,noexec,nosuid,size=1g`，`/dev/shm` 显式定量，HOME/XDG 可写目录在 `/data` 下；入口脚本（tini 作为 PID 1）管理 Xvfb、openbox、可选 noVNC 和信号转发。
-- 容器强制加载随发布物交付的沙箱 seccomp 配置（允许非特权用户命名空间的最小 allowlist），提供 `--security-opt seccomp=<profile>` 的官方启动参数；不得把 seccomp 当作可选加固。
-- 管理员初始密码通过 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 引导，不写入镜像层；首次改密后删除引导来源。
+- 容器强制从宿主侧发布物加载沙箱 seccomp 配置（允许非特权用户命名空间的最小 allowlist），提供 `--security-opt seccomp=<host-path>` 的官方启动参数；`<host-path>` 必须是 Docker daemon 可见文件，不得指向镜像内审计副本；不得把 seccomp 当作可选加固。
+- 管理员初始密码通过 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 引导，不写入镜像层；首次改密后删除应用生成的引导文件并清除标记，外部 Secret 由部署者撤销。
 - 每档案下载目录为 `/data/profiles/<id>/downloads`（0700），并作为 Chromium 默认下载目录。
 - Docker 端口：控制面 8080 映射；noVNC 6080 仅在启用查看器时映射；CDP、Xray gRPC 管理 API 与每运行档案 HTTP 入站永不映射。
 - Hysteria2 需要容器允许 UDP 出站；不满足时明确报错，不回退其他协议；TUIC 不进入 v1。

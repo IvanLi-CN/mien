@@ -87,6 +87,8 @@ M0 结束前必须冻结：
 
 任何契约变更必须同时更新对应 SPEC、测试和文档；不得只改代码。
 
+首个纵向切片合并前，`.github/workflows/ci-pr.yml` 的 `CI PR / required` 必须已是真实 required check，且 `contracts` job 已执行本节的 OpenAPI/schema/DDL/链接/`spec_contract_check`；不得以“M0 先写实现、之后再接 CI”跳过契约门禁。
+
 冻结后的契约必须在 CI 中通过 OpenAPI 生成差异、schema 编译、DDL 执行、内部 `$ref` 解析、链接检查与 `spec_contract_check`；任一检查失败即阻断合并。
 
 ### 2.5 许可评审

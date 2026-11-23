@@ -34,23 +34,23 @@
 | 错误码 | HTTP | 可重试 | 含义 |
 | --- | --- | --- | --- |
 | `PROFILE_NOT_FOUND` | 404 | 否 | 档案行不存在（含已永久删除） |
-| `PROFILE_DELETED` | 409 | 否 | 档案处于软删除 `deleted` 状态，必须先 restore 才能启动或修改 |
+| `PROFILE_DELETED` | 409 | 否 | 档案处于软删除 `deleted` 状态；只阻断启动或会改变档案的写操作，restore、purge、读取与删除重试仍可执行 |
 | `PROFILE_PURGE_FAILED` | 500 | 是 | 永久删除时目录移除失败；行保留为 `deleted` 并写入 `deletion_error` 供重试 |
 | `PROXY_NOT_FOUND` | 404 | 否 | 代理配置不存在 |
 | `RUNTIME_NOT_FOUND` | 404 | 否 | 档案没有受监督运行时 |
 | `TOKEN_NOT_FOUND` | 404 | 否 | API Token 不存在 |
 | `PROFILE_ARCHIVED` | 409 | 否 | 档案已归档，不能执行该操作 |
 | `RUNTIME_CONFLICT` | 409 | 否 | 同一档案已有其他启动/停止事务 |
-| `IDEMPOTENCY_CONFLICT` | 409 | 否 | 相同幂等键携带了不同请求 |
+| `IDEMPOTENCY_CONFLICT` | 409 | 否 | 相同幂等键携带了不同请求；或该响应含一次性秘密（`tokensCreate`）而无法重放 |
 | `RESOURCE_IN_USE` | 409 | 否 | 代理或引擎仍被运行档案引用 |
 | `GROUP_NAME_CONFLICT` | 409 | 否 | 分组名称重复 |
 | `TAG_NAME_CONFLICT` | 409 | 否 | 标签名称重复 |
 | `PROFILE_IMPORT_CONFLICT` | 409 | 否 | 导入档案与现有档案冲突且未选择新 ID |
 | `VIEWER_NOT_AVAILABLE` | 404 | 否 | 查看器未启用或运行时没有可查看显示；运行时行缺失时优先返回 `RUNTIME_NOT_FOUND` |
 
-找不到资源的语义必须区分“行不存在”和“资源仍存在但不可操作”：软删除且未 purge 的档案返回 `PROFILE_DELETED`（409），不返回 404；已 purge 的档案与从未存在的 ID 返回 `PROFILE_NOT_FOUND`。查看器请求先检查档案与运行时，再检查查看器能力，不得用 `VIEWER_NOT_AVAILABLE` 掩盖缺失的运行时。
+找不到资源的语义必须区分“行不存在”和“资源仍存在但不可操作”：软删除且未 purge 的档案对启动或会改变档案的写操作返回 `PROFILE_DELETED`（409），不返回 404；restore、purge、读取和删除重试必须继续可用；已 purge 的档案与从未存在的 ID 返回 `PROFILE_NOT_FOUND`。查看器请求先检查档案与运行时，再检查查看器能力，不得用 `VIEWER_NOT_AVAILABLE` 掩盖缺失的运行时。
 
-`tokensCreate` 接受 `Idempotency-Key`，但明文 Token 永远不重放：重复键必须返回 `IDEMPOTENCY_CONFLICT`（409），不得返回缓存的 201 响应。
+`tokensCreate` 接受 `Idempotency-Key`，但明文 Token 永远不重放：相同或不同请求体的重复键都必须返回 `IDEMPOTENCY_CONFLICT`（409），不得返回缓存的 201 响应；这是该码对“不可重放响应”的唯一扩展语义。其他写操作的相同键与相同请求仍返回原响应，只有不同请求体才冲突。
 
 ## 3. 输入与能力
 
@@ -95,7 +95,7 @@
 | `PROXY_CONNECTION_FAILED` | `ProxyCheck`、事件 | 200 | 是 | 未归类的连接失败；不得替代上述稳定分类 |
 | `PROXY_DNS_FAILED` | `ProxyCheck`、事件 | 200 | 是 | 目标域名或节点解析失败 |
 
-代理检查（`POST /api/v1/proxies/{id}/check` 与分享链接检查）成功与失败都以 HTTP 200 返回 `ProxyCheck`：`ok=false` 时网络错误放在 `error_code`，`message` 为脱敏说明，延迟、出口 IP 和地区字段可为 null；事件 `proxy.check.completed` 携带同一 `error_code`。节点网络失败不属于控制面 HTTP 错误，不得用未声明的 502 表达。只有认证、授权、校验、存储、引擎未就绪等控制面失败才使用 HTTP 错误响应；检查未通过只是启动前警告，不阻断启动，因此不提供单独的“检查未就绪”错误码。
+代理检查（`POST /api/v1/proxies/{id}/check` 与分享链接检查）成功与失败都以 HTTP 200 返回 `ProxyCheck`：`ok=false` 时网络错误放在 `error_code`，`message` 为脱敏说明，延迟、出口 IP 和地区字段可为 null；事件 `proxy.check.completed` 携带同一 `error_code`。该字段只能取下面六个 `ProxyCheckErrorCode`，OpenAPI 与事件 schema 使用同一子集，不得接受 `PROFILE_NOT_FOUND` 等控制面错误。节点网络失败不属于控制面 HTTP 错误，不得用未声明的 502 表达。只有认证、授权、校验、存储、引擎未就绪等控制面失败才使用 HTTP 错误响应；检查未通过只是启动前警告，不阻断启动，因此不提供单独的“检查未就绪”错误码。
 
 ## 6. 运行时
 

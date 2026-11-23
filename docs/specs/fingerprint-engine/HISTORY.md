@@ -10,7 +10,7 @@
 - 窗口尺寸 `window` 只在指纹规格内保存，映射为清单声明的 `window-size`（`type: string`，`WIDTH,HEIGHT`）；档案顶层字段、启动偏好、导出 `runtime` 与 `window_json` 列均已移除。
 - `spoof` 及其类别为可选字段，省略即启用；只有显式 `false` 才生成 `--disable-spoofing`。
 - 复制档案（`copy_fingerprint=true`）总是生成新种子；种子冲突不再是错误路径，导入保留导出种子以保证可复现。
-- 能力清单用 `sandbox_kind`（`namespace|seatbelt|appcontainer|none`）取代 `requires_namespace_sandbox` 布尔；`network_controls` 允许 `disabled|unsupported` 与 `block|unsupported`，缺失能力的清单是合法 fixture。
+- 能力清单用 `sandbox_kind`（`namespace|seatbelt|win32-restricted-token|none`）取代 `requires_namespace_sandbox` 布尔；`network_controls` 允许 `disabled|unsupported` 与 `block|unsupported`，缺失能力的清单是合法 fixture。
 - `flagSpec.per_platform_values` 为 CPU、语言、时区等平台限制提供数据驱动来源；声明时优先于 `values`，不得合并放宽。
 - 安装记录同时保存 `asset_sha256` 与 `binary_sha256`；运行时只以解包后可执行文件的 `binary_sha256` 校验，清单 `sha256` 仅代表发布资产摘要。
 

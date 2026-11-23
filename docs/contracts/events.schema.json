@@ -549,7 +549,8 @@
             "profile_id",
             "state",
             "mode",
-            "isolation"
+            "isolation",
+            "direct"
           ],
           "properties": {
             "runtime_id": {
@@ -581,6 +582,10 @@
                 "unsandboxed",
                 "unknown"
               ]
+            },
+            "direct": {
+              "type": "boolean",
+              "description": "True for direct-mode runtimes; reduced_assurance must also be true."
             },
             "reduced_assurance": {
               "type": "boolean"
@@ -713,13 +718,13 @@
             "error_code": {
               "anyOf": [
                 {
-                  "$ref": "#/$defs/errorCode"
+                  "$ref": "#/$defs/proxyCheckErrorCode"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Must be a catalogued ErrorCode; diagnostics are redacted."
+              "description": "Must be a catalogued ProxyCheckErrorCode; diagnostics are redacted."
             },
             "detail": {
               "type": [
@@ -761,6 +766,14 @@
               "type": [
                 "string",
                 "null"
+              ],
+              "enum": [
+                "busy",
+                "permission_denied",
+                "io_error",
+                "not_found",
+                "unknown",
+                null
               ],
               "description": "Set when a purge failed and the row stayed in deleted state for retry."
             }
@@ -861,7 +874,8 @@
             "actor",
             "action",
             "target",
-            "result"
+            "result",
+            "profile_id"
           ],
           "properties": {
             "event_type": {
@@ -978,6 +992,17 @@
           "additionalProperties": false
         }
       }
+    },
+    "proxyCheckErrorCode": {
+      "type": "string",
+      "enum": [
+        "PROXY_CONNECTION_REFUSED",
+        "PROXY_AUTH_FAILED",
+        "PROXY_TLS_FAILED",
+        "PROXY_TIMEOUT",
+        "PROXY_CONNECTION_FAILED",
+        "PROXY_DNS_FAILED"
+      ]
     },
     "errorCode": {
       "type": "string",

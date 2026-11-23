@@ -71,7 +71,7 @@ CREATE TABLE profiles (
   updated_at TEXT NOT NULL,
   archived_at TEXT,
   deleted_at TEXT,
-  deletion_error TEXT,
+  deletion_error TEXT CHECK (deletion_error IS NULL OR deletion_error IN ('busy','permission_denied','io_error','not_found','unknown')),
   CHECK (status <> 'deleted' OR deleted_at IS NOT NULL),
   CHECK (deletion_error IS NULL OR status = 'deleted')
 );
@@ -259,7 +259,7 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
 - 删除档案默认是软删除：`DELETE ?permanent=false` 把 `profiles.status` 置为 `deleted`、写 `deleted_at`，把档案目录移动到 `<data-root>/trash/<id>`；行与目录在 restore 前保留。
 - 永久删除是显式操作：`DELETE ?permanent=true` 先删除 trash 目录，再删除行。目录删除失败时保留 `deleted` 行并写 `deletion_error`，供重试；`deletion_error` 只能是稳定、非敏感的原因标识（例如 `busy`、`permission_denied`），不得包含绝对路径、用户名或原始 OS 消息。
-- 档案生命周期：`active <-> archived` 由 archive/restore 驱动，restore 清空 `archived_at`；`active|archived -> deleted` 由软删除驱动；`deleted -> active` 由 restore 驱动、恢复目录并清空 `archived_at`/`deletion_error`；`deleted -> purge` 由永久删除驱动。`deleted_at` 只记录最近一次软删除时间，状态判据始终是 `profiles.status`；`deleted` 档案不能启动，启动请求返回 `PROFILE_DELETED`，运行控制不得隐式恢复档案。
+- 档案生命周期：`active <-> archived` 由 archive/restore 驱动，restore 清空 `archived_at`；`active|archived -> deleted` 由软删除驱动；`deleted -> active` 由 restore 驱动、恢复目录并清空 `archived_at`/`deletion_error`；`deleted -> purge` 由永久删除驱动。`deleted_at` 只记录最近一次软删除时间，状态判据始终是 `profiles.status`；`deleted` 档案不能启动，启动请求返回 `PROFILE_DELETED`，该错误只阻断启动或会改变档案的写操作，不影响 restore、purge、读取与删除重试。软删除或 purge 前必须先停止运行时并确认无活内核、入站、路由或非终态出站引用；运行中的档案拒绝移动或删除目录。
 - 窗口尺寸只存在于 `fingerprint_json`；顶层启动偏好只保留 `start_url` 和 `automation_api`，数据库不再有 `window_json`，导出与偏好 API 也不得出现顶层 `window`。
 - 下载目录固定为 `<data-root>/profiles/<id>/downloads`（0700），作为 Chromium 默认下载目录；所有路径必须规范化并校验在该档案目录前缀内。
 - `runtimes.profile_id` 唯一，保证一个档案最多一个受监督运行时；启动/停止通过事务和档案锁串行化。
@@ -268,9 +268,9 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 - `kernel_installs` 与 `proxy_engine_installs` 同时记录 `asset_sha256`（下载的发布资产摘要）与 `binary_sha256`（解包后可执行文件摘要）。安装时校验发布资产，运行时只校验 `binary_sha256`；文件缺失返回 `KERNEL_NOT_FOUND`/`PROXY_ENGINE_NOT_FOUND`，摘要不符返回 `KERNEL_CHECKSUM_MISMATCH`/`PROXY_ENGINE_CHECKSUM_MISMATCH`。`manifest_json` 保存安装时的候选清单。
 - `event_log.sequence` 是单调递增的整数回放游标（WebSocket `after=sequence`），`event_id` 是事件标识；不得用字符串游标代替 `sequence`。
 - `event_tickets` 只保存一次性 WebSocket 票据哈希；票据绑定会话或 API Token，短 TTL、单次使用，用过或过期即失效；签发与升级都必须重新检查会话/Token 未撤销（`revoked_at IS NULL`）并校验 Origin 允许列表；会话或 Token 行删除时外键级联删除票据。
-- 管理员凭据单行存于 `admin_credentials`。引导密码来自 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE`（0600）；两者都未提供时生成高熵密码写入 `/data/secrets/admin-bootstrap`（0600）。密码以 Argon2id 哈希写入，并置 `must_change=1`、`bootstrap_pending=1`；改密成功后清空这两个标记并删除引导秘密（环境变量、Secret 或 `admin-bootstrap` 文件）。
+- 管理员凭据单行存于 `admin_credentials`。引导密码来自 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE`（0600）；两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600；Docker 下即 `/data/secrets/admin-bootstrap`，macOS 下位于应用数据根）。密码以 Argon2id 哈希写入，并置 `must_change=1`、`bootstrap_pending=1`；改密成功后清空这两个标记，并只删除应用自己生成的 `admin-bootstrap` 文件。环境变量或外部 Secret 无法由应用删除，必须由部署者撤销/轮换；审计事件记录来源类型，应用不得声称已删除外部 Secret。
 - `proxies.last_check_json` 保存最近一次 `ProxyCheck`。代理节点网络失败（拒绝连接、认证、TLS、超时、DNS）作为检查结果返回，HTTP 200 且 `ok=false`、`error_code` 稳定；检查失败不得改写为未声明的 502 响应。
-- `copy_fingerprint=true` 时复制显式字段但总是生成新 seed；导入保留导出 payload 中的 seed 以复现指纹。seed 不要求全局唯一，不存在种子冲突分支或对应错误码。
+- `copy_fingerprint=true` 时复制显式字段但总是生成新 seed；生成结果与现有 seed 相同时内部重抽。导入保留导出 payload 中的 seed 以复现指纹，不做唯一性拒绝；数据库不建立 seed 唯一约束，也不存在用户可见的种子冲突错误码。
 - 共享引擎状态是单例；`proxy_engine_state.id=1` 固定。
 - 一个平台最多一个 active 内核和一个 active 引擎；切换 active 必须在事务中完成。
 - `event_log`、`idempotency_keys`、`sessions` 和审计事件按保留策略清理；清理不得删除当前运行时所需的行。
@@ -299,12 +299,14 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 - 应用版本与数据库迁移版本独立；启动时发现数据库版本高于应用支持版本必须拒绝启动。
 - 对已发布的数据库，`admin_credentials`、`deletion_error`、`asset_sha256`/`binary_sha256`、`runtimes.isolation` 与 `idx_profile_tags_tag` 这类变更必须先加新表/新列/新索引，再在后续迁移删除旧列；不得在同一迁移里删除并重命名。
 - 首个发布无存量库，以下路径针对发布后升级；全部按“加新、回填、切换、后删旧”拆分迁移。
-- `kernel_installs`/`proxy_engine_installs`：新增 `asset_sha256`、`binary_sha256`；回填现有文件摘要；新代码只读 `binary_sha256`；最后一个迁移删除 `sha256`。
+- `kernel_installs`/`proxy_engine_installs`：先新增可空 `asset_sha256`、`binary_sha256`，再按安装记录逐一计算可执行文件摘要；旧 `sha256` 若存在则作为 `asset_sha256`。文件存在时写入 `binary_sha256`；文件缺失时把该安装置为 `active=0`、保留路径与元数据、将摘要保持 NULL，并在迁移报告中列出 `(version, platform, path)`。在全部行有摘要前，迁移不得把 `binary_sha256` 设为 NOT NULL；启动时这类记录返回 `KERNEL_NOT_FOUND`/`PROXY_ENGINE_NOT_FOUND`，必须重新安装或显式移除，不允许用发布资产摘要冒充二进制摘要。最后一个迁移删除旧 `sha256`。
 - `runtimes.proxy_outbound_key`：停止流程必须先写 NULL 再递减计数；迁移先对 `stopped`/`crashed`/`failed` 行置 NULL，再重建 `proxy_outbounds.ref_count`，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
-- `profiles.window_json`：先回填 `fingerprint_json.window`，再删除旧列；回填时保留用户已设置尺寸，指纹缺少 `window` 的行用旧值补足后走 schema 校验。
-- `event_tickets`、`admin_credentials`：新表直接创建，旧 Token 仍有效；`admin_credentials` 为空时进入引导流程，不自动生成固定口令。
+- `profiles.window_json`：先对所有 `active`、`archived`、`deleted` 行做 preflight；优先保留 `fingerprint_json.window`，缺失时用合法 `window_json` 回填，然后走 schema 校验。两种来源都缺失、或旧值非法时，列出全部 `profile_id` 并阻断迁移；不得写默认窗口，也不得只检查 `deleted`。回填完成后才删除旧列。
+- `event_tickets` 已在基线 DDL 中，不重建、不清空；若旧库确实缺少该表，才按基线创建，并保留已有会话/Token 引用。`admin_credentials` 同样保留已有行；为空时进入引导流程，不生成固定口令。
+- `event_log` 的旧字符串游标迁移：若旧库缺少 `sequence`，先新增可空列，按 `created_at`、旧 `id` 稳定排序回填连续整数，建立唯一索引并切换读取端；保留 `event_id` 作为外部去重标识。不得把旧游标值直接映射为字符串序号，也不得在回填前删除旧列。
+- `audit_events` 的 `event_type`、`profile_id` 迁移：先新增可空列；`event_type` 从 `action` 回填，`profile_id` 从旧 metadata 中的合法档案标识回填，否则保持 NULL；建立索引后才切换筛选读取端，最后按基线约束收紧。不得丢弃旧审计行或把 `action` 当作新 `event_type` 的长期替代。
 - `profiles.deletion_error` 与 `runtimes.isolation`：新列默认 NULL；启动对账把无法确认的历史运行时置 `unknown`，不猜 `enforced`。
-- 已发布且标记 `deleted` 的档案在删除 `window_json` 前必须仍有 `fingerprint_json.window`；否则迁移阻断并报告目录 ID，不写默认窗口。
+- 已发布档案不论状态，在删除 `window_json` 前必须仍有合法 `fingerprint_json.window`；否则迁移阻断并报告档案 ID，不写默认窗口。
 
 ## 6. 保留与清理
 

@@ -19,7 +19,7 @@
 - `one-time secret`: `TokenCreated.token` 与 `EventTicket.ticket` 只在创建响应中出现一次，是仅响应字段，不能作为请求字段，也不能通过幂等重放再次返回。
 - `idempotency key`: 客户端为启动/停止、Token 创建等写操作提供的唯一键，用于安全重试；结果缓存与冲突规则见 REQ-API-010。
 - `profile log tail`: 运行时有界日志尾部，由 `GET /api/v1/profiles/{profile_id}/logs?limit=` 返回；来源为运行时日志环或轮转文件，响应已脱敏。
-- `export/import`: 导出请求体 `ProfileExportRequest` = `{format: plain|encrypted, passphrase?}`，导入请求体 `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy: new_id|abort}`；`passphrase` 为 write-only；载荷语义由 `profile-management` spec 与 `profile-export.schema.json` 定义。
+- `export/import`: 导出请求体 `ProfileExportRequest` = `{format: plain|encrypted, passphrase?}`，导入请求体 `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy?: new_id|abort}`；`conflict_strategy` 默认 `new_id`，`passphrase` 为 write-only；载荷语义由 `profile-management` spec 与 `profile-export.schema.json` 定义。
 - Interface: `/api/v1/*` HTTP JSON；`/api/v1/events` WebSocket（`ticketAuth`）；`/healthz`、`/readyz`；`POST /api/v1/profiles/{profile_id}/export`、`POST /api/v1/profiles/import/validate`、`POST /api/v1/profiles/import`、`GET /api/v1/profiles/{profile_id}/logs`；服务端同源静态 Web UI；桌面 Tauri IPC 镜像相同命令语义。
 
 ## Requirements
@@ -39,7 +39,7 @@
 ### REQ-API-003
 
 - The server host MUST require authentication for every endpoint outside the `public allowlist`, using a login-created session or a scoped API token, and MUST declare a deterministic status-code contract: every protected operation declares 401 and 403, every operation addressing an existing resource declares 404, and existing 409/422 semantics are preserved.
-- Precedence: 认证先于授权与资源存在性判定；无会话或无效凭据一律返回 401，不得因目标不存在而改成 404；已认证但缺少所需 scope 时返回 403，且在检查资源存在性之前判定，避免用 403/404 差异枚举资源；已授权但目标不存在时返回 404。软删除档案不是 404，而是按错误码目录返回 409 `PROFILE_DELETED`；已 purge 的档案与从未存在的 ID 返回 404 `PROFILE_NOT_FOUND`。
+- Precedence: 认证先于授权与资源存在性判定；无会话或无效凭据一律返回 401，不得因目标不存在而改成 404；已认证但缺少所需 scope 时返回 403，且在检查资源存在性之前判定，避免用 403/404 差异枚举资源；已授权但目标不存在时返回 404。软删除档案对启动或会改变档案的写操作返回 409 `PROFILE_DELETED`；restore、purge、读取与删除重试仍可用；已 purge 的档案与从未存在的 ID 返回 404 `PROFILE_NOT_FOUND`。
 - Inputs: 登录凭据、Cookie、Bearer Token、`ticket`、请求路径。
 - Outputs: 公开端点无认证可用；受保护端点认证成功时返回资源；缺失或无效认证返回 401；scope 不足返回 403；资源不存在返回 404；健康与版本发现端点只暴露最小信息。
 
@@ -152,9 +152,9 @@
 
 ### REQ-API-021
 
-- The system MUST expose profile and runtime payloads that make lifecycle, run mode and isolation state explicit: profile `status` is `active|archived|deleted` with `deleted_at` and `deletion_error`; runtime `state` is `starting|running|stopping|stopped|crashed|failed`, `mode` is `headful|headless|pseudo_headful`; both payloads carry `isolation` (`enforced|unsandboxed|unknown`) and `reduced_assurance`, and `pseudo_headful` also carries `ua_scope=chrome`.
+- The system MUST expose profile and runtime payloads that make lifecycle, run mode, direct mode and isolation state explicit: profile `status` is `active|archived|deleted` with `deleted_at` and `deletion_error`; runtime `state` is `starting|running|stopping|stopped|crashed|failed`, `mode` is `headful|headless|pseudo_headful`; both payloads carry `isolation` (`enforced|unsandboxed|unknown`), `direct` and `reduced_assurance`, and `pseudo_headful` also carries `ua_scope=chrome`.
 - Inputs: 档案与运行时记录、启动事务、沙箱探测结果。
-- Outputs: `reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation` 与相应降低保证；`deleted` 档案启动返回 409 `PROFILE_DELETED`；purge 失败返回 `deletion_error` 供重试；API、IPC 与数据库中不存在 `block_start_on_check_failure` 字段，代理检查结果只作警告，不阻断启动。
+- Outputs: `direct=true` 当且仅当档案未配置代理并进入直连模式；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation` 与相应降低保证；`deleted` 档案启动返回 409 `PROFILE_DELETED`；purge 失败返回 `deletion_error` 供重试；API、IPC 与数据库中不存在 `block_start_on_check_failure` 字段，代理检查结果只作警告，不阻断启动。
 - Semantics: 运行时状态机、沙箱校验与隔离推导由 `browser-runtime` 负责，档案生命周期由 `profile-management` 负责，本要求固定对外字段与缺失值的表达。
 
 ## Verification
@@ -175,7 +175,7 @@
 
 - Method: 逐个请求公开与受保护端点；对受保护端点分别使用无凭据、无效 Token、有效会话、缺 scope Token，并对不存在与软删除的档案 ID 发起请求。
 - covers: `REQ-API-003`
-- Pass condition: 仅 `/healthz`、`/readyz`、`GET /api/v1`、`POST /api/v1/auth/login`、`GET /api/v1/openapi.json` 无需认证；无凭据或无效凭据一律 401；缺 scope 返回 403 且不泄露资源是否存在；已授权但资源不存在返回 404；软删除档案返回 409 `PROFILE_DELETED`；OpenAPI 为每个受保护操作声明 401/403，为按 ID 寻址的操作声明 404。
+- Pass condition: 仅 `/healthz`、`/readyz`、`GET /api/v1`、`POST /api/v1/auth/login`、`GET /api/v1/openapi.json` 无需认证；无凭据或无效凭据一律 401；缺 scope 返回 403 且不泄露资源是否存在；已授权但资源不存在返回 404；软删除档案的启动/修改返回 409 `PROFILE_DELETED`，restore/purge/读取仍可用；OpenAPI 为每个受保护操作声明 401/403，为按 ID 寻址的操作声明 404。
 
 ### VER-API-004
 
@@ -283,7 +283,7 @@
 
 - Method: 读取档案与运行时响应（覆盖六态与停止后重读）、软删除档案启动、模拟 purge 失败，并搜索 API/IPC schema 与数据库中是否存在 `block_start_on_check_failure`。
 - covers: `REQ-API-021`
-- Pass condition: 运行时 `state` 为六态之一且 `mode` 为三档之一；档案 `status` 为 `active|archived|deleted` 并带 `deleted_at`/`deletion_error`；两者均含 `isolation`，停止档案返回最后一次 `isolation` 与正确推导的 `reduced_assurance`；`pseudo_headful` 返回 `ua_scope=chrome`；`deleted` 启动返回 409 `PROFILE_DELETED`；purge 失败返回 `deletion_error` 可重试；`block_start_on_check_failure` 不存在，代理检查不阻断启动。
+- Pass condition: 运行时 `state` 为六态之一且 `mode` 为三档之一；档案 `status` 为 `active|archived|deleted` 并带 `deleted_at`/`deletion_error`；两者均含 `isolation` 与 `direct`，停止档案返回最后一次 `isolation` 与正确推导的 `reduced_assurance`；直连档案 `direct=true` 且 `reduced_assurance=true`；`pseudo_headful` 返回 `ua_scope=chrome`；`deleted` 启动返回 409 `PROFILE_DELETED`；purge 失败返回 `deletion_error` 可重试；`block_start_on_check_failure` 不存在，代理检查不阻断启动。
 
 ## Related ADRs
 

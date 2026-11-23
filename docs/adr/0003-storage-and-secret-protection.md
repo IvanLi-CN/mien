@@ -16,7 +16,7 @@
   - Docker：优先读取 `MIEN_MASTER_KEY`；仅在空数据库且不存在任何加密记录时，首次启动生成 `/data/secrets/master.key`，权限 0600，运行用户独占。已有加密数据但密钥缺失时进入“密钥不可用”，绝不生成新密钥。
 - API Token 使用高熵随机值，数据库只保存带服务端 pepper 的不可逆哈希；绝不使用 AES-GCM 或任何可解密形式存储 Token。明文只在签发响应中返回一次，不写入数据库、日志或审计元数据，也不能重放。
 - Token pepper 从主密钥通过带域分离的 HKDF 派生，不单独落盘。主密钥轮换会改变 pepper，使全部 API Token 失效并要求重新签发；不存在保留旧 Token 明文的迁移路径。
-- 管理员凭据存入独立的 `admin_credentials` 表，只保存 Argon2id 哈希；首次引导通过 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 提供，首次登录强制修改密码，修改成功后删除引导密钥（环境变量/文件）并写入审计事件。
+- 管理员凭据存入独立的 `admin_credentials` 表，只保存 Argon2id 哈希；首次引导通过 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 提供，未提供时生成到 `<data-root>/secrets/admin-bootstrap`。首次登录强制修改密码；修改成功后删除应用生成的文件、清除引导标记并写入审计事件。环境变量或外部 Secret 无法由应用删除，必须由部署者撤销/轮换。
 - 导出分为 `plain` 与 `encrypted` 两种格式。`encrypted` 必须提供口令，用 Argon2id 派生密钥并采用带版本号的认证加密封装；`plain` 禁止提供口令。口令只存在于请求内存中，不写入磁盘、URL、日志或错误响应。明文载荷遵循 `profile-export.schema.json` 语义，两种格式都不导出代理凭据：只保留 `credential_fields` 名称与非敏感选项，并标记 `credentials_removed=true`；导出不包含顶层 `window`，窗口尺寸属于指纹规格。
 - 导入先 dry-run 校验再提交：校验请求逐项返回草稿、错误与冲突且不写数据库；提交的冲突策略为 `new_id|abort`，`abort` 必须在任何写入前返回冲突错误。加密导入必须提供口令，明文导入禁止口令；导入同样不包含代理凭据，凭据需重新提供。
 - 数据库 schema 随契约演进：内核与协议引擎安装记录同时保存 `asset_sha256` 与 `binary_sha256`；`profiles` 增加 `deletion_error`，永久删除失败时保留 `deleted` 状态供重试；新增 `idx_profile_tags_tag`；`runtimes.isolation` 持久化 `enforced|unsandboxed|unknown`。
