@@ -10,7 +10,7 @@
 
 ## Implementation Coverage
 
-- Requirement coverage: 尚无实现模块；计划由 `snailfish-core` 的 profile 领域模块、SQLite 迁移和控制面端点覆盖 `REQ-PROFILE-001` 至 `REQ-PROFILE-014`。
+- Requirement coverage: 尚无实现模块；计划由 `mien-core` 的 profile 领域模块、SQLite 迁移和控制面端点覆盖 `REQ-PROFILE-001` 至 `REQ-PROFILE-014`。
 - Verification commands: 尚未建立；实现后使用核心单元测试、SQLite 迁移测试、API 集成测试和导入导出 fixture。
 - Rollout facts: 无运行时数据；数据库 schema 与导入导出 schema 在首个实现切片中确定。
 

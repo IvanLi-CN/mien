@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://snailfish.local/contracts/proxy-engine-manifest.schema.json",
-  "title": "Snailfish proxy engine capability manifest",
+  "$id": "https://mien.local/contracts/proxy-engine-manifest.schema.json",
+  "title": "Mien proxy engine capability manifest",
   "description": "Machine-readable companion to docs/specs/proxy-gateway/SPEC.md. The SPEC remains normative.",
   "type": "object",
   "additionalProperties": false,

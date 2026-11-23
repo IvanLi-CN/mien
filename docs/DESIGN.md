@@ -1,4 +1,4 @@
-# Snailfish 详细设计
+# Mien 详细设计
 
 ## 1. 目的与边界
 
@@ -7,13 +7,13 @@
 ## 2. 模块与依赖方向
 
 ```text
-snailfish-desktop ─┐
-snailfish-server  ─┼─> snailfish-core
-snailfish-cli     ─┘
+mien-desktop ─┐
+mien-server  ─┼─> mien-core
+mien-cli     ─┘
 ```
 
-- `snailfish-core` 不依赖 Tauri、axum、React 或具体数据库驱动；领域层只依赖标准库、`serde`、`time` 和轻量工具 crate。
-- `snailfish-core` 内部按领域模块组织：`profile`、`fingerprint`、`proxy`、`runtime`、`kernel`、`engine`、`storage`、`security`、`events`。
+- `mien-core` 不依赖 Tauri、axum、React 或具体数据库驱动；领域层只依赖标准库、`serde`、`time` 和轻量工具 crate。
+- `mien-core` 内部按领域模块组织：`profile`、`fingerprint`、`proxy`、`runtime`、`kernel`、`engine`、`storage`、`security`、`events`。
 - 端口（trait）定义在核心内，适配器在核心的 `adapters` 或宿主 crate 中实现。
 - 宿主只做 DTO 转换、认证、静态资源、窗口和平台集成；业务规则不得在宿主复制。
 
@@ -151,17 +151,17 @@ pub trait EventSink {
 
 | 变量 | 默认 | 作用 |
 | --- | --- | --- |
-| `SNAILFISH_DATA_DIR` | 平台数据目录或 `/data` | 数据库、档案、内核、引擎和日志根 |
-| `SNAILFISH_BIND` | 服务端 `0.0.0.0:8080`；桌面回环随机端口 | 控制面监听地址 |
-| `SNAILFISH_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `/data/secrets/master.key` |
-| `SNAILFISH_SCREEN` | `1920x1080x24` | Docker Xvfb 分辨率 |
-| `SNAILFISH_MAX_RUNTIMES` | `10` | 最大并发运行档案数 |
-| `SNAILFISH_LOG` | `info` | 日志级别与格式 |
+| `MIEN_DATA_DIR` | 平台数据目录或 `/data` | 数据库、档案、内核、引擎和日志根 |
+| `MIEN_BIND` | 服务端 `0.0.0.0:8080`；桌面回环随机端口 | 控制面监听地址 |
+| `MIEN_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `/data/secrets/master.key` |
+| `MIEN_SCREEN` | `1920x1080x24` | Docker Xvfb 分辨率 |
+| `MIEN_MAX_RUNTIMES` | `10` | 最大并发运行档案数 |
+| `MIEN_LOG` | `info` | 日志级别与格式 |
 | `ALLOW_UNSANDBOXED` | `false` | 是否允许无沙箱内核；必须显式开启并审计 |
-| `SNAILFISH_VIEWER` | `false` | 是否启用 noVNC 查看器 |
-| `SNAILFISH_UPDATE_CHECK` | `false` | 是否检查更新；默认不联网 |
+| `MIEN_VIEWER` | `false` | 是否启用 noVNC 查看器 |
+| `MIEN_UPDATE_CHECK` | `false` | 是否检查更新；默认不联网 |
 
-macOS 使用 `~/Library/Application Support/Snailfish` 与 `~/Library/Logs/Snailfish`；Docker 使用 `/data` 与标准输出日志。
+macOS 使用 `~/Library/Application Support/Mien` 与 `~/Library/Logs/Mien`；Docker 使用 `/data` 与标准输出日志。
 
 ## 8. 存储与迁移
 
@@ -233,7 +233,7 @@ import { listen } from "@tauri-apps/api/event";
 export const createTauriTransport = (): ControlTransport => ({
   command: (name, args) => invoke(name, args),
   subscribe: async (handler) => {
-    const unlisten = await listen<DomainEvent>("snailfish://event", (event) =>
+    const unlisten = await listen<DomainEvent>("mien://event", (event) =>
       handler(event.payload),
     );
     return unlisten;
@@ -271,7 +271,7 @@ tauri::Builder::default()
 
 ### 11.3 事件与重载补齐
 
-- 核心先把事件写入 `event_log`，再调用 Tauri `Emitter` 发送 `snailfish://event`。
+- 核心先把事件写入 `event_log`，再调用 Tauri `Emitter` 发送 `mien://event`。
 - UI 先订阅事件频道，再调用 `events_after(last_event_id)` 补齐；按事件标识去重。
 - WebView 刷新后从内存或 `sessionStorage` 恢复最后标识；没有标识时先拉取档案与运行时快照，再从最新事件继续。
 - 服务端使用 `/api/v1/events?after=<id>` WebSocket，复用同一事件 DTO 与去重逻辑。

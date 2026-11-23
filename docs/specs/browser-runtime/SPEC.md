@@ -58,7 +58,7 @@
 ### REQ-RUNTIME-007
 
 - The system MUST support Docker headful launch using one shared Xvfb display and openbox window manager, with the display resolution configured at container start.
-- Inputs: `SNAILFISH_SCREEN`（默认 `1920x1080x24`）、`DISPLAY=:99`、档案窗口尺寸。
+- Inputs: `MIEN_SCREEN`（默认 `1920x1080x24`）、`DISPLAY=:99`、档案窗口尺寸。
 - Outputs: 内核连接到 Xvfb；openbox 运行；窗口尺寸按档案设置；`screen.*` 为共享显示值并在 UI 中说明。
 
 ### REQ-RUNTIME-008
@@ -155,7 +155,7 @@
 
 ### VER-RUNTIME-007
 
-- Method: 在 Docker 中以默认和自定义 `SNAILFISH_SCREEN` 启动有头档案，读取 `screen.*` 与窗口尺寸。
+- Method: 在 Docker 中以默认和自定义 `MIEN_SCREEN` 启动有头档案，读取 `screen.*` 与窗口尺寸。
 - covers: `REQ-RUNTIME-007`
 - Pass condition: Xvfb 与 openbox 运行；屏幕值与配置一致；窗口尺寸按档案设置；UI 显示共享显示限制。
 

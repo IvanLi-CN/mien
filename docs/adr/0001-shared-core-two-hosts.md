@@ -9,10 +9,10 @@
 
 ## 决策
 
-采用一个 Rust 核心库 `snailfish-core`，由两个宿主进程复用：
+采用一个 Rust 核心库 `mien-core`，由两个宿主进程复用：
 
-- `snailfish-desktop`：Tauri 2 宿主，负责窗口、WKWebView、Tauri IPC、系统钥匙串、自动更新、单实例和本地诊断入口。
-- `snailfish-server`：axum 宿主，负责 HTTP/WebSocket、登录、Token、静态 Web UI、健康检查和优雅关闭。
+- `mien-desktop`：Tauri 2 宿主，负责窗口、WKWebView、Tauri IPC、系统钥匙串、自动更新、单实例和本地诊断入口。
+- `mien-server`：axum 宿主，负责 HTTP/WebSocket、登录、Token、静态 Web UI、健康检查和优雅关闭。
 - Web UI 使用同一套 React + TypeScript 构建产物；桌面通过 Tauri IPC 调用核心，服务端通过 HTTP API 调用核心。
 - 核心库不依赖 Tauri 或 axum；平台差异通过密钥提供者、进程启动器、显示环境和文件权限 trait 注入。
 

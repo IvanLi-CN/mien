@@ -9,11 +9,11 @@
 
 ## 决策
 
-- 使用 SQLite，开启 WAL、外键和显式迁移；数据库位于 `<data-root>/db/snailfish.db`。
+- 使用 SQLite，开启 WAL、外键和显式迁移；数据库位于 `<data-root>/db/mien.db`。
 - 代理凭据（密码、UUID、私钥）等敏感字段使用 AES-256-GCM 字段级认证加密；密文包含随机 nonce、版本号和关联数据，关联数据绑定记录标识与字段名。
 - 主密钥来源：
   - macOS 桌面：32 字节主密钥存入系统登录钥匙串，应用启动时读取，不写入磁盘。
-  - Docker：优先读取 `SNAILFISH_MASTER_KEY`；未提供时首次启动生成 `/data/secrets/master.key`，权限 0600，运行用户独占。
+  - Docker：优先读取 `MIEN_MASTER_KEY`；未提供时首次启动生成 `/data/secrets/master.key`，权限 0600，运行用户独占。
 - API Token 使用高熵随机值，数据库只保存带服务端 pepper 的哈希；登录密码使用 Argon2id。
 - 加密导出使用用户口令和 Argon2id 派生密钥，导出文件使用认证加密；口令不持久化。
 - 浏览器档案目录不进行应用层加密。部署文档要求 macOS 全盘加密、Docker 数据卷所在磁盘加密，并限制数据目录权限为 0700。

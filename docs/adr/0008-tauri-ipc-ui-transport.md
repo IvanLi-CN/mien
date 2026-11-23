@@ -12,8 +12,8 @@
 - 管理网页依赖一个 `ControlTransport` 抽象，领域服务只调用 `profiles.list`、`runtime.start` 等业务方法，不直接使用 `fetch` 或 `invoke`。
 - 桌面实现使用 Tauri IPC：
   - 前端通过 `@tauri-apps/api/core` 的 `invoke` 调用 Rust 命令。
-  - Rust 通过 `#[tauri::command]` 暴露薄适配函数，直接调用 `snailfish-core` 用例。
-  - 事件通过 `@tauri-apps/api/event` 的 `listen` 订阅统一频道 `snailfish://event`；Rust 使用 Tauri `Emitter` 发送同一个 `DomainEvent` DTO。
+  - Rust 通过 `#[tauri::command]` 暴露薄适配函数，直接调用 `mien-core` 用例。
+  - 事件通过 `@tauri-apps/api/event` 的 `listen` 订阅统一频道 `mien://event`；Rust 使用 Tauri `Emitter` 发送同一个 `DomainEvent` DTO。
 - 服务端实现使用 HTTP/WebSocket：同一套领域服务调用 `fetch('/api/v1/...')` 和 `/api/v1/events`。
 - 桌面 UI 不启动本地 HTTP 控制面。桌面自动化 API 是独立可选能力：显式开启、只绑定回环、使用 Bearer Token，与 UI 的 IPC 通道分离。
 - DTO 定义在共享 API 类型层（Rust `serde` + `ts-rs` 生成 TypeScript）；HTTP 侧用 `utoipa` 生成 OpenAPI。命令参数名通过 `#[tauri::command(rename_all = ...)]` 明确固定，避免前端与 Rust 命名漂移。

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://snailfish.local/contracts/kernel-manifest.schema.json",
-  "title": "Snailfish kernel capability manifest",
+  "$id": "https://mien.local/contracts/kernel-manifest.schema.json",
+  "title": "Mien kernel capability manifest",
   "description": "Machine-readable companion to docs/specs/browser-runtime/SPEC.md and docs/specs/fingerprint-engine/SPEC.md. The SPECs remain normative.",
   "type": "object",
   "additionalProperties": false,

@@ -1,4 +1,4 @@
-# Snailfish 架构设计
+# Mien 架构设计
 
 ## 1. 目标与约束
 
@@ -19,7 +19,7 @@
 
 ```mermaid
 flowchart LR
-  Operator["操作者"] -->|"桌面窗口或浏览器"| Control["Snailfish 控制面"]
+  Operator["操作者"] -->|"桌面窗口或浏览器"| Control["Mien 控制面"]
   Automation["自动化客户端"] -->|"REST / WebSocket"| Control
   Control --> Core["共享核心"]
   Core --> Kernel["fingerprint-chromium 148"]
@@ -111,7 +111,7 @@ flowchart TB
 
 | 组件 | 职责 | 不负责 |
 | --- | --- | --- |
-| `snailfish-core` | 档案、指纹规格、校验、内核注册、运行时监督、代理网关、存储、审计 | HTTP 会话、静态资源、系统窗口 |
+| `mien-core` | 档案、指纹规格、校验、内核注册、运行时监督、代理网关、存储、审计 | HTTP 会话、静态资源、系统窗口 |
 | 桌面宿主 | Tauri 命令、窗口、钥匙串、自动更新、单实例、崩溃上报 | 指纹算法、代理协议 |
 | 服务端宿主 | HTTP/WS、登录、Token、静态 UI、健康检查、优雅关闭 | 指纹算法、内核启动细节 |
 | Web UI | 档案管理、指纹编辑、代理配置、运行控制、日志与限制提示 | 直接启动内核、直接读取数据库 |
@@ -128,10 +128,10 @@ flowchart TB
 
 ```text
 crates/
-  snailfish-core/       # 领域模型、存储、指纹、运行时、代理、内核
-  snailfish-server/     # 服务端宿主：axum、认证、静态 UI、健康检查
-  snailfish-desktop/    # Tauri 宿主、IPC、钥匙串、更新
-  snailfish-cli/        # 本地诊断、迁移、内核准入辅助
+  mien-core/            # 领域模型、存储、指纹、运行时、代理、内核
+  mien-server/          # 服务端宿主：axum、认证、静态 UI、健康检查
+  mien-desktop/         # Tauri 宿主、IPC、钥匙串、更新
+  mien-cli/             # 本地诊断、迁移、内核准入辅助
 xtask/                  # 仓库构建、校验、打包任务
 ui/                     # React + TypeScript + Vite，桌面与服务端共用
 contracts/              # JSON Schema（源文件位于 docs/contracts）
@@ -142,7 +142,7 @@ deploy/
 docs/
 ```
 
-`snailfish-core` 通过 trait 抽象平台差异：密钥提供者、进程启动器、显示环境、通知与文件权限。桌面宿主和服务端宿主只实现宿主适配层，不复制业务逻辑。
+`mien-core` 通过 trait 抽象平台差异：密钥提供者、进程启动器、显示环境、通知与文件权限。桌面宿主和服务端宿主只实现宿主适配层，不复制业务逻辑。
 
 ## 6. 数据模型
 
@@ -169,8 +169,8 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 
 ```text
 <data-root>/
-  db/snailfish.db
-  db/snailfish.db-wal
+  db/mien.db
+  db/mien.db-wal
   kernels/<version>/<platform>/...
   engines/<version>/<platform>/...
   profiles/<profile-id>/chrome/
@@ -181,7 +181,7 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
   runtimes/                   # 锁文件、临时代理配置与运行时元数据
 ```
 
-macOS 的 `<data-root>` 为 `~/Library/Application Support/Snailfish`，日志位于 `~/Library/Logs/Snailfish`。Docker 的 `<data-root>` 固定为 `/data`，由卷持久化。
+macOS 的 `<data-root>` 为 `~/Library/Application Support/Mien`，日志位于 `~/Library/Logs/Mien`。Docker 的 `<data-root>` 固定为 `/data`，由卷持久化。
 
 ### 6.1 档案状态机
 
@@ -420,7 +420,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 | --- | --- |
 | 认证 | 服务端会话 Cookie `HttpOnly`、`SameSite=Strict`、`Secure`（TLS 时）；API Token 只存哈希；登录限流；首次启动生成管理员密码。 |
 | 授权 | v1 使用管理员与 Token 范围；所有写操作检查档案归属和 Token scope。 |
-| 密钥 | 桌面使用系统钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 `SNAILFISH_MASTER_KEY`；字段级 AES-256-GCM。 |
+| 密钥 | 桌面使用系统钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 `MIEN_MASTER_KEY`；字段级 AES-256-GCM。 |
 | 进程 | 参数数组启动，不经过 shell；进程组管理；档案锁；并发配额；子进程最小环境变量。 |
 | 文件 | 档案目录 0700；路径规范化并校验前缀；导入文件大小限制；符号链接拒绝。 |
 | 网络 | 协议引擎 mixed 入站与 CDP 绑定回环；服务端默认只允许认证流量；noVNC 一次性令牌；容器网络最小化。 |
@@ -476,7 +476,7 @@ Docker 中有头或无头启动前必须检测 Chromium 沙箱是否生效。首
 - 构建时从固定 URL 下载 fingerprint-chromium 发行包，校验 SHA-256，记录到 `kernels/<version>/manifest.json`。
 - 二进制不提交到 Git；构建缓存与发布物包含内核和 BSD-3-Clause 许可声明。
 - macOS 应用将内核放入应用资源目录，随应用一起签名和公证；首次启动解压到 Application Support 并再次校验。
-- Docker 镜像在构建阶段安装 Linux 内核到 `/opt/snailfish/kernel`，镜像内再次校验。
+- Docker 镜像在构建阶段安装 Linux 内核到 `/opt/mien/kernel`，镜像内再次校验。
 - 内核升级通过独立发行物或镜像标签交付，不通过静默后台下载。
 
 ### 13.2 协议引擎供应

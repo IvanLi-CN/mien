@@ -10,7 +10,7 @@
 
 ## Implementation Coverage
 
-- Requirement coverage: 计划由 `snailfish-core` 的 proxy 模块和固定 sing-box 引擎覆盖 `REQ-PROXY-001` 至 `REQ-PROXY-020`；协议能力由引擎清单驱动。
+- Requirement coverage: 计划由 `mien-core` 的 proxy 模块和固定 sing-box 引擎覆盖 `REQ-PROXY-001` 至 `REQ-PROXY-020`；协议能力由引擎清单驱动。
 - Verification commands: 尚未建立；实现后使用受控 VLESS/VMess/Shadowsocks/Trojan/Hysteria2 节点、DNS canary、引擎故障注入、分享链接 fixture 和凭据扫描。
 - Rollout facts: Tier A 为 VLESS、VMess、Shadowsocks、Trojan；Tier B 为 Hysteria2、TUIC、WireGuard；订阅属于后续范围。
 

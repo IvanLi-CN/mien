@@ -1,6 +1,6 @@
-# Snailfish
+# Mien
 
-Snailfish 是一个基于 [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium) 的多环境指纹浏览器产品，提供 macOS 桌面应用与 Docker 服务端两种运行形态，面向需要稳定隔离、可复现指纹和自动化控制的多账号运营、测试与隐私研究场景。
+Mien 是一个基于 [fingerprint-chromium](https://github.com/adryfish/fingerprint-chromium) 的多环境指纹浏览器产品，提供 macOS 桌面应用与 Docker 服务端两种运行形态，面向需要稳定隔离、可复现指纹和自动化控制的多账号运营、测试与隐私研究场景。
 
 ## 运行形态
 

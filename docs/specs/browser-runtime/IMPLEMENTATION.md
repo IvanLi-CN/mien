@@ -10,7 +10,7 @@
 
 ## Implementation Coverage
 
-- Requirement coverage: 计划由 `snailfish-core` 的 runtime 模块、代理网关、服务端宿主和 Docker 入口脚本覆盖 `REQ-RUNTIME-001` 至 `REQ-RUNTIME-016`；协议引擎先于内核启动并在停止时关闭。
+- Requirement coverage: 计划由 `mien-core` 的 runtime 模块、代理网关、服务端宿主和 Docker 入口脚本覆盖 `REQ-RUNTIME-001` 至 `REQ-RUNTIME-016`；协议引擎先于内核启动并在停止时关闭。
 - Verification commands: 尚未建立；实现后使用生命周期集成测试、强杀对账测试、Docker 端到端测试和沙箱配置测试。
 - Rollout facts: 首个实现仅覆盖 macOS Apple Silicon 与 Docker `linux/amd64`；Windows/Linux 桌面后续接入。
 

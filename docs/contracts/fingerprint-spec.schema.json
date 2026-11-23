@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://snailfish.local/contracts/fingerprint-spec.schema.json",
-  "title": "Snailfish fingerprint spec",
+  "$id": "https://mien.local/contracts/fingerprint-spec.schema.json",
+  "title": "Mien fingerprint spec",
   "description": "Machine-readable companion to docs/specs/fingerprint-engine/SPEC.md. The SPEC remains normative.",
   "type": "object",
   "additionalProperties": false,

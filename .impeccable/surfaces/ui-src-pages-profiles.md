@@ -9,7 +9,7 @@ related_targets: []
 
 ## Scope
 
-- Surface: the Profiles management screen, first screen of the Snailfish Operate surface.
+- Surface: the Profiles management screen, first screen of the Mien Operate surface.
 - Mode: Operate. The user is here to scan spaces and environments, verify state, open a live session, and start or stop a profile.
 - Host: shared web UI in the Tauri macOS app and in the Docker web host. Desktop transport is Tauri IPC; server transport is HTTP/WS.
 

@@ -20,11 +20,11 @@ Tauri 2 + React 19 + TypeScript + Vite + Rust 核心，由用户确认。管理�
 
 ## Product Purpose
 
-Snailfish 管理多个相互隔离的浏览器档案；每个档案拥有独立的数据目录、可复现的指纹规格、正向代理和受监督的运行时。产品以 macOS Apple Silicon 桌面应用和 Docker `linux/amd64` 服务两种形态运行。成功意味着用户可以创建档案、启动一致的环境、验证其代理与指纹行为，并在不泄漏数据或状态的前提下停止它。
+Mien 管理多个相互隔离的浏览器档案；每个档案拥有独立的数据目录、可复现的指纹规格、正向代理和受监督的运行时。产品以 macOS Apple Silicon 桌面应用和 Docker `linux/amd64` 服务两种形态运行。成功意味着用户可以创建档案、启动一致的环境、验证其代理与指纹行为，并在不泄漏数据或状态的前提下停止它。
 
 ## Positioning
 
-Snailfish 是本地优先、双宿主的环境管理平台，而不是单纯的启动器。它把可复现的指纹规格、每档案独立的 VLESS/VMess/Shadowsocks/Trojan 等协议引擎、失败关闭代理，以及对内核与宿主限制的诚实披露组合在一起。竞品无法如实复制的机制，是同一套共享 Rust 核心同时驱动 macOS 桌面应用和 Docker Web 服务，并保持一致的档案、指纹、代理与运行时语义。
+Mien 是本地优先、双宿主的环境管理平台，而不是单纯的启动器。它把可复现的指纹规格、每档案独立的 VLESS/VMess/Shadowsocks/Trojan 等协议引擎、失败关闭代理，以及对内核与宿主限制的诚实披露组合在一起。竞品无法如实复制的机制，是同一套共享 Rust 核心同时驱动 macOS 桌面应用和 Docker Web 服务，并保持一致的档案、指纹、代理与运行时语义。
 
 ## Operating Context
 
@@ -47,7 +47,7 @@ Snailfish 是本地优先、双宿主的环境管理平台，而不是单纯的�
 
 ## Brand Commitments
 
-- 名称：Snailfish。
+- 名称：Mien。
 - 语气：精确、冷静、技术化、诚实。不使用“不可检测”“100% 隔离”“绝对安全”等无法验证的承诺。
 - 界面语言：简体中文与英文。档案语言、时区与代理地区独立于界面语言。
 - 视觉系统：Deep Current，一个深色空间化工作区，包含 Space 身份、由种子派生的身份光晕和四段校验条。规范与设计 token 位于 `DESIGN.md`；已批准首屏视觉稿位于 `docs/design/profiles-dark.png`。

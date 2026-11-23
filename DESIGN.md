@@ -1,15 +1,15 @@
 ---
-name: Snailfish Deep Current
+name: Mien Deep Current
 description: A spatial, fail-closed workspace for isolated browser profiles.
 ---
 
-# Design System: Snailfish Deep Current
+# Design System: Mien Deep Current
 
 ## Overview
 
 **Creative North Star: "Deep Current"**
 
-Snailfish 的操作表面是一个深色、空间化的工作环境，不是后台管理页。Space 是水流，档案是带有各自光色的身份，运行中的会话是必须被看见的信号；界面要同时表达“环境很深”和“操作很稳”。
+Mien 的操作表面是一个深色、空间化的工作环境，不是后台管理页。Space 是水流，档案是带有各自光色的身份，运行中的会话是必须被看见的信号；界面要同时表达“环境很深”和“操作很稳”。
 
 这里没有表格，也没有常驻右侧检查器。首屏由 Space 侧轨、命令栏、Live session 面板和 profile 字段组成。用户先看见空间和正在运行的会话，再扫视档案、打开证据、执行启动或停止。深色不是装饰，它把注意力留给状态与验证；彩色身份光让每个档案可辨认，但绝不代替状态。
 

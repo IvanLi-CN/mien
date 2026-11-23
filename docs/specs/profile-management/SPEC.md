@@ -13,7 +13,7 @@
 - `profile`: 一个可独立启动的浏览器环境，拥有唯一 ULID、独立数据目录、指纹规格、可选代理和运行偏好。
 - `archive`: 软删除状态；档案不再出现在默认列表，但数据在保留窗口内可恢复。
 - `hard delete`: 永久删除元数据和浏览器数据目录；不可恢复。
-- `data root`: macOS 的 `~/Library/Application Support/Snailfish` 或 Docker 的 `/data`。
+- `data root`: macOS 的 `~/Library/Application Support/Mien` 或 Docker 的 `/data`。
 - Interface: 控制面 `/api/v1/profiles` 系列端点；SQLite `profiles`、`groups`、`tags`、`profile_tags` 表；导入导出 JSON schema。
 - 导入导出 schema 版本独立于应用版本，至少包含 `schema_version`、`profiles`、`groups`、`tags`。
 
