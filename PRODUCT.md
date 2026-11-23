@@ -50,13 +50,14 @@ Users work from a macOS desktop or a browser connected to a Docker deployment. P
 - Name: Snailfish.
 - Voice: precise, calm, technical, and honest. No unverifiable claims such as “undetectable”, “100% isolated”, or “absolutely safe”.
 - Interface languages: Simplified Chinese and English. Profile language, timezone, and proxy region are independent of the UI language.
-- No logo, brand palette, typography, photography, or visual identity has been established.
+- Visual system: Deep Current, a dark spatial workspace with space identities, deterministic seed auras, and four-block proof strips. The canonical rules and tokens live in `DESIGN.md`; the approved first-screen comp is `docs/design/profiles-dark.png`.
+- No logo or licensed photography has been established. Future brand work must extend Deep Current rather than introduce a second visual world.
 
 ## Evidence on Hand
 
 - Product requirements, architecture, detailed design, technology selection, security model, test plan, ADRs, and topic specifications live in `docs/`.
 - No user research, customer interviews, testimonials, screenshots, product demos, pricing, or production analytics exist yet.
-- No licensed photography, illustrations, logos, or real product UI assets exist yet. Future design work must not fabricate customers, benchmarks, or screenshots.
+- An approved visual-direction comp exists at `docs/design/profiles-dark.png`; no production UI assets, licensed photography, or illustrations exist yet. Future design work must not fabricate customers, benchmarks, or product screenshots.
 
 ## Product Principles
 
@@ -64,7 +65,7 @@ Users work from a macOS desktop or a browser connected to a Docker deployment. P
 2. Limits are part of the product truth; host-bound fingerprint fields, headless degradation, and kernel defects are disclosed in the interface.
 3. Security defaults are fail-closed; proxy or engine failure must never become a silent direct connection.
 4. Local-first is the default; server deployment is an explicit operating mode, not a requirement for desktop use.
-5. The interface favors scanning, clear state, and recovery over decorative novelty; operational confidence is the brand.
+5. The interface is a spatial workspace: spaces, live sessions, and profile identities are visible at a glance; scanning, proof, and recovery outrank decorative novelty.
 
 ## Accessibility & Inclusion
 
