@@ -17,7 +17,7 @@
 
 - 所有 schema 使用 JSON Schema Draft 2020-12。
 - 字段命名使用 `snake_case`，与 API 和数据库保持可映射。
-- schema 版本通过 `schema_version` 字段表达，不通过文件名后缀表达。
+- API 与导入导出 schema 的版本通过 `schema_version` 字段表达，不通过文件名后缀表达；内核与引擎清单使用各自的主题版本（`kernel_version`/`version`）。
 - 导入校验必须拒绝未知字段、越界值和超出大小限制的数组；schema 中的 `additionalProperties: false` 是默认要求。
 - 指纹种子、内核版本和 schema 版本是复现指纹的三要素；导出必须保留。创建/复制生成新种子，更新不能修改 seed；导入保留导出种子，同一宿主上重复或导入同种子由规范允许，不构成冲突错误。
 - 代理凭据、UUID、密码、私钥、Token、Cookie、完整分享链接和浏览器数据不属于默认配置导出。

@@ -20,7 +20,7 @@
 | 代理凭据 | SQLite 加密字段、协议引擎配置与内存 | 泄露可导致代理额度被盗或流量被滥用 |
 | API Token | SQLite 哈希、客户端 | 泄露可控制档案和运行时 |
 | 浏览器会话数据 | `<data-root>/profiles/<id>/chrome` | Cookie、LocalStorage、站点数据泄露 |
-| 主密钥 | macOS 钥匙串、`/data/secrets/master.key` 或环境变量 | 泄露可解密代理凭据 |
+| 主密钥 | macOS 钥匙串、`<data-root>/secrets/master.key`（Docker 下即 `/data/secrets/master.key`）或环境变量 | 泄露可解密代理凭据 |
 | 档案与运行日志 | SQLite、日志文件 | 泄露操作历史、目标站点和错误细节 |
 | 内核二进制 | 应用资源、镜像、`kernels/` | 篡改可执行任意代码 |
 | 协议引擎二进制 | 应用资源、镜像、`engines/` | 篡改可执行任意代码或窃取代理凭据 |
@@ -105,7 +105,7 @@ flowchart LR
 ### 5.2 密钥与数据
 
 - 代理凭据、UUID、密码、私钥等敏感字段使用 AES-256-GCM；AAD 绑定记录标识和字段名，防止密文搬移。
-- 桌面主密钥存入登录钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 Secret 管理注入的环境变量。
+- 桌面主密钥存入登录钥匙串；服务端使用 `<data-root>/secrets/master.key`（0600，Docker 下即 `/data/secrets/master.key`）或 Secret 管理注入的环境变量。
 - API Token 绝不使用 AES-GCM、SQLCipher 或其他可逆存储；数据库只保存 `token_hash = HMAC-SHA-256(pepper, token)`，其中 `pepper = HKDF-SHA256(master_key, info="mien/api-token-pepper/v1")`，不单独落盘；比较使用常量时间实现。
 - 管理员密码使用 Argon2id，与主密钥独立；主密钥轮换不改变口令哈希。
 - 主密钥轮换同时改变 Token pepper，因此轮换后全部 API Token 立即失效，必须重新签发；轮换步骤包括重新加密敏感字段、重算 `credential_fingerprint`/`outbound_key`、迁移 `proxy_outbounds` 引用、重建运行中出站并通知重新签发 Token。

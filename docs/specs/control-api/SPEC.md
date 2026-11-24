@@ -12,7 +12,7 @@
 
 - `session`: 服务端登录后创建的浏览器会话，使用 `HttpOnly`、`SameSite=Strict` Cookie。
 - `API token`: 自动化客户端使用的 Bearer Token，数据库只保存展示前缀与 HMAC 哈希，带授权范围；前缀不能用于认证。
-- `scope`: Token 允许执行的操作集合，使用点号形式，例如 `profiles.read`、`profiles.write`、`runtime.control`、`tokens.manage`、`events.read`、`viewer.access`。OpenAPI 保持现有 HTTP Bearer Token scheme，以 `x-required-scope` 声明每个操作所需 scope；CI 将该值与 `TokenScope` 枚举逐项比对，不引入 OAuth2 token exchange。
+- `scope`: Token 允许执行的操作集合，使用点号形式，例如 `profiles.read`、`profiles.write`、`runtime.control`、`tokens.manage`、`events.read`、`viewer.access`。OpenAPI 保持现有 HTTP Bearer Token scheme，以 `x-required-scope` 声明每个接受 Bearer Token 的操作所需 scope；仅 cookie/ticket 认证的操作（`auth*`、`GET /api/v1/events`）与公开端点不声明 scope，因为 Bearer Token 不能用于它们。CI 将该值与 `TokenScope` 枚举逐项比对，不引入 OAuth2 token exchange。
 - `public allowlist`: 无需认证即可访问的 API 端点集合，固定为 `GET /healthz`、`GET /readyz`、`GET /api/v1` 版本发现、`POST /api/v1/auth/login` 和 `GET /api/v1/openapi.json`；其他 API 端点一律需要认证。同源静态 Web UI 的登录页与静态资源也必须公开，否则无法登录；它们不属于 API allowlist。
 - `event`: 服务端通过 WebSocket 推送的运行时、代理和审计事件，`sequence` 为单调递增整数；断线重连使用 `after=<sequence>` 补齐。
 - `event ticket`: 单次使用的短 TTL WebSocket 票据；OpenAPI 声明 `ticketAuth`（`type: apiKey`、`in: query`、`name: ticket`），不得用匿名 `security: []` 代替。
@@ -187,7 +187,7 @@
 
 - Method: 创建 Token，检查数据库与创建响应；使用不同 scope 调用，对照 OpenAPI 的 Bearer 与 `x-required-scope` 声明；尝试在请求体携带 `token`/`ticket`；撤销后重试。
 - covers: `REQ-API-005`
-- Pass condition: 明文只在 201 响应出现一次；数据库只存展示前缀与 HMAC 哈希，前缀不能用于认证；OpenAPI 使用 HTTP Bearer 且每个受保护操作带 `x-required-scope`，CI 校验其属于 `TokenScope`；越权 403；请求体出现一次性秘密字段被拒绝；撤销立即生效；last_used 更新。
+- Pass condition: 明文只在 201 响应出现一次；数据库只存展示前缀与 HMAC 哈希，前缀不能用于认证；OpenAPI 使用 HTTP Bearer，每个接受 Bearer 的操作带 `x-required-scope`，CI 校验其属于 `TokenScope`；越权 403；请求体出现一次性秘密字段被拒绝；撤销立即生效；last_used 更新。
 
 ### VER-API-006
 
@@ -221,9 +221,9 @@
 
 ### VER-API-011
 
-- Method: 检查 OpenAPI security；使用注入时钟推进 7 天并写入超过 100 MiB payload，分别覆盖时间/容量裁剪、全部裁空、floor 与 high_water 的相邻游标、重启后游标；同时测试一次性票据、非整数/非正/未来游标、URL 长效 Token 与跨源 Origin。
+- Method: 检查 OpenAPI security；使用注入时钟推进 7 天并写入超过 100 MiB payload，分别覆盖时间/容量裁剪、全部裁空、floor 与 high_water 的相邻游标、重启后游标；同时测试一次性票据、0/负/非整数/未来游标、URL 长效 Token 与跨源 Origin。
 - covers: `REQ-API-002`, `REQ-API-011`
-- Pass condition: ticketAuth/cookieAuth 而非匿名升级；一次性票据与 Origin 防护生效。窗口固定为 7 天/100 MiB 的最旧前缀裁剪；after=floor 可完整回放，floor-1 返回 409，high_water 可接续实时流，未来/非正/非整数游标为 422；全部裁空或重启后仍能区分过期游标，不丢失回放与实时衔接事件；URL 长效 Token 被拒绝。
+- Pass condition: ticketAuth/cookieAuth 而非匿名升级；一次性票据与 Origin 防护生效。窗口固定为 7 天/100 MiB 的最旧前缀裁剪；after=floor 可完整回放，floor-1 返回 409，high_water 可接续实时流，after=0 按新流处理，负/非整数/未来游标为 422；全部裁空或重启后仍能区分过期游标，不丢失回放与实时衔接事件；URL 长效 Token 被拒绝。
 
 ### VER-API-012
 

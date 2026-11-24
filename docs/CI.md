@@ -105,7 +105,7 @@ macOS job 的顺序固定为：
 1. 下载 fingerprint-chromium 148 DMG 和 Xray-core v26.11.9 ARM64；校验 SHA-256，记录最终二进制的 SHA-256。
 2. 构建 `aarch64-apple-darwin` 应用，把内核和 Xray 放入应用资源目录。
 3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。应用、Chromium 内核与 renderer/GPU/utility helper 使用 JIT entitlements；其他 helper 逐个签名但不带 JIT；Xray 与 frameworks 使用 AdHoc 签名但不带 JIT 权限。
-4. 签名应用、Chromium 内核与每个 helper 时传入仓库内 `mien-desktop/entitlements.plist`，只包含 Chromium V8 JIT 必需的两项：`com.apple.security.cs.allow-jit` 和 `com.apple.security.cs.allow-unsigned-executable-memory`。不授予调试、网络、文件访问或其他放宽权限；hardened runtime 下缺这两项会导致页面加载或 renderer 失败。
+4. 只为应用、Chromium 内核与 renderer/GPU/utility helper 传入仓库内 `mien-desktop/entitlements.plist`，只包含 Chromium V8 JIT 必需的两项：`com.apple.security.cs.allow-jit` 和 `com.apple.security.cs.allow-unsigned-executable-memory`；其他 helper、Xray 与 frameworks 逐个签名但不带该文件。不授予调试、网络、文件访问或其他放宽权限；hardened runtime 下缺这两项会导致页面加载或 renderer 失败。
 5. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`；按签名清单逐个断言应用、Chromium 内核与 renderer/GPU/utility helper 只包含上述两项，其他 helper、Xray 与 frameworks 不含 JIT 权限；未分类可执行文件阻断；在干净机器上加载真实页面。
 6. 生成 DMG、`SHA256SUMS`、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、`entitlements.plist` 和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
 7. 在 `release` job 之前，由维护者在干净的 macOS 13+ 机器下载同一 run 的 DMG 和 `SHA256SUMS`（Actions artifact），先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级；结果写入 draft 正文，未通过不得公开。
@@ -198,13 +198,15 @@ GATE-001 由 gate-release 在产物/attestation/人工测试完成后评估；te
 - `stage-release` 只写 draft；全部资产、identity 和 attestation 验证通过后，阶段 7 `promote-docker` 先提升镜像，阶段 8 `release` 再由 release App 创建或验证 `vX.Y.Z` tag 并公开。公开后 `verify-release` 失败时，立即标记 release 无效并通知维护者。
 - 回滚只使用上一版本 release；需要修正构建时必须选择新的 `release_target`，产生新的 version 和 identity。不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
 
-## 10. 实施顺序
+## 10. CI 落地顺序
 
-1. M0：建立 `ci-reusable.yml`、`ci-pr.yml` 和 `ci-main.yml` 的最小骨架，先跑 fmt、lint、单元测试和契约校验；第一个纵向切片合并前把 `CI PR / required` 设为真实 required check，不允许先跳过契约门禁。
-2. M1：加入 SQLite、API、生命周期与 Xray fixture 集成；保持 `CI PR / required` 为真实 required check，不因新增 job 而缺席。
-3. M2：加入 Docker e2e smoke、内核下载校验和代理矩阵 fixture。
-4. M3：加入 macOS 打包 smoke、AdHoc 签名与 entitlements 验证、SBOM 与 Trivy。
-5. M4：启用 `release` environment、draft reservation、手动 `release_target` workflow、tag 保护（`Restrict updates` + `Restrict deletions` + `Restrict creations`，仅 release App 绕过 creations）、强制 attestation、更新清单和发布后验证；加入 Docker 双构建 digest 比对与 Apache-2.0 `LICENSE`/`NOTICE`/`LICENSES/` 门禁。
+以下阶段只描述 CI 与门禁自身的落地顺序，不是 [`ROADMAP.md`](ROADMAP.md) 的功能里程碑编号；功能交付顺序以 ROADMAP 的 M0–M4 为准。
+
+1. 阶段 1：建立 `ci-reusable.yml`、`ci-pr.yml` 和 `ci-main.yml` 的最小骨架，先跑 fmt、lint、单元测试和契约校验；第一个纵向切片合并前把 `CI PR / required` 设为真实 required check，不允许先跳过契约门禁（对应 ROADMAP M0）。
+2. 阶段 2：加入 SQLite、API、生命周期与 Xray fixture 集成；保持 `CI PR / required` 为真实 required check，不因新增 job 而缺席。
+3. 阶段 3：加入 Docker e2e smoke、内核下载校验和代理矩阵 fixture。
+4. 阶段 4：加入 macOS 打包 smoke、AdHoc 签名与 entitlements 验证、SBOM 与 Trivy。
+5. 阶段 5：启用 `release` environment、draft reservation、手动 `release_target` workflow、tag 保护（`Restrict updates` + `Restrict deletions` + `Restrict creations`，仅 release App 绕过 creations）、强制 attestation、更新清单和发布后验证；加入 Docker 双构建 digest 比对与 Apache-2.0 `LICENSE`/`NOTICE`/`LICENSES/` 门禁（对应 ROADMAP M4）。
 
 ## 11. 参考
 

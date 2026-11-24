@@ -171,7 +171,7 @@ pub trait EventSink {
 | `MIEN_DATA_DIR` | 平台数据目录或 `/data` | 数据库、档案、内核、引擎和日志根 |
 | `MIEN_BIND` | 裸机服务端 `127.0.0.1:8080`；Docker 镜像 `0.0.0.0:8080`；桌面未设置 | 服务端控制面监听地址；桌面不监听；容器内监听回环无法被 `docker run -p` 到达，因此 Docker 默认非回环并强制 `MIEN_PUBLIC_URL`；裸机对外发布时显式设为非回环并同时设置 `MIEN_PUBLIC_URL` |
 | `MIEN_DESKTOP_AUTOMATION_BIND` | 未设置 | 桌面可选自动化地址；显式设置后才监听，且必须是 `127.0.0.1`/`::1`，非回环值启动失败 |
-| `MIEN_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `/data/secrets/master.key` |
+| `MIEN_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `<data-root>/secrets/master.key`（Docker 下即 `/data/secrets/master.key`） |
 | `MIEN_ADMIN_PASSWORD` | 无 | 首次启动管理员密码引导值；与 `MIEN_ADMIN_PASSWORD_FILE` 二选一；两者都未提供时生成密码写入 `<data-root>/secrets/admin-bootstrap` |
 | `MIEN_ADMIN_PASSWORD_FILE` | 无 | 以 0600 文件提供管理员密码；首次改密后删除应用生成的文件并清除引导标记；外部挂载 Secret 由部署者撤销 |
 | `MIEN_PUBLIC_URL` | 无；非回环服务端必填 | 服务端对外 https 基址；用于生成绝对链接、校验 `Origin` 和设置 `Secure` Cookie。`MIEN_BIND` 非回环且未设置时启动失败 |

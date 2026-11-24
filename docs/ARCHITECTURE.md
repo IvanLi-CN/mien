@@ -152,15 +152,15 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `profiles` | `id`, `name`, `group_id`, `notes`, `fingerprint_json`, `fingerprint_schema`, `kernel_version`, `proxy_id`, `import_source_id`, `runtime_json`, `status`, `created_at`, `updated_at`, `archived_at`, `deleted_at`, `deletion_error` | 档案本体；`id` 为 ULID；`import_source_id` 记录导入来源 ID 用于冲突检测，不作为新 ID；`status` 为 `active`/`archived`/`deleted`；软删除目录移动失败时保留原状态并记录 `deletion_error`，purge 目录删除失败时保留 `deleted` 并记录 `deletion_error`，均可重试；窗口尺寸只存在于 `fingerprint_json`，不再有 `window_json` |
-| `groups` | `id`, `name`, `sort_order` | 分组；名称在组内唯一 |
-| `tags` | `id`, `name`, `color` | 标签；名称唯一 |
+| `profiles` | `id`, `name`, `group_id`, `notes`, `fingerprint_json`, `fingerprint_schema`, `kernel_version`, `proxy_id`, `import_source_id`, `mode`, `status`, `start_url`, `automation_api`, `runtime_json`, `created_at`, `updated_at`, `archived_at`, `deleted_at`, `deletion_error` | 档案本体；`id` 为 ULID；`import_source_id` 记录导入来源 ID 用于冲突检测，不作为新 ID；`mode` 为档案默认运行模式；`status` 为 `active`/`archived`/`deleted`；软删除目录移动失败时保留原状态并记录 `deletion_error`，purge 目录删除失败时保留 `deleted` 并记录 `deletion_error`，均可重试；窗口尺寸只存在于 `fingerprint_json`，不再有 `window_json` |
+| `groups` | `id`, `name`, `sort_order`, `created_at`, `updated_at` | 分组；名称在组内唯一 |
+| `tags` | `id`, `name`, `color`, `created_at` | 标签；名称唯一 |
 | `profile_tags` | `profile_id`, `tag_id` | 多对多；`idx_profile_tags_tag(tag_id)` 支撑按标签筛选 |
-| `proxies` | `id`, `name`, `kind`, `server`, `port`, `config_ciphertext`, `last_check_json`, `created_at`, `updated_at` | 独立的全局代理资源；`kind` 为 HTTP/HTTPS/SOCKS5/VLESS/VMess/Shadowsocks/Trojan/Hysteria2/WireGuard；协议选项与凭据加密存储，档案 purge 不删除代理行 |
-| `runtimes` | `id`, `profile_id`, `state`, `mode`, `isolation`, `last_known_isolation`, `pid`, `pgid`, `proxy_port`, `proxy_inbound_tag`, `proxy_outbound_key`, `proxy_rule_tag`, `started_at`, `cdp_port`, `exit_code`, `last_error` | 六态记录；本次 `isolation` 供 Runtime/事件，`last_known_isolation` 只在同一事务进入 running 时更新并驱动 Profile/proof；共享引擎按绑定恢复代理资源 |
+| `proxies` | `id`, `name`, `kind`, `server`, `port`, `config_ciphertext`, `credential_fields_json`, `last_check_json`, `created_at`, `updated_at` | 独立的全局代理资源；`kind` 为 `http`/`https`/`socks5`/`vless`/`vmess`/`shadowsocks`/`trojan`/`hysteria2`/`wireguard`；协议选项与凭据加密存储，`credential_fields_json` 只记字段名不记值，档案 purge 不删除代理行 |
+| `runtimes` | `id`, `profile_id`, `state`, `mode`, `isolation`, `last_known_isolation`, `pid`, `pgid`, `proxy_port`, `proxy_inbound_tag`, `proxy_outbound_key`, `proxy_rule_tag`, `cdp_port`, `started_at`, `exit_code`, `last_error`, `updated_at` | 六态记录；本次 `isolation` 供 Runtime/事件，`last_known_isolation` 只在同一事务进入 running 时更新并驱动 Profile/proof；共享引擎按绑定恢复代理资源 |
 | `kernel_installs` | `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `active`, `installed_at` | 已安装内核；`asset_sha256` 是发布资产摘要，`binary_sha256` 是解包后可执行文件摘要，运行时只比对后者；支持并存与回滚 |
-| `proxy_engine_installs` | `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `license`, `source_url`, `active`, `installed_at` | 已安装 Xray-core；双哈希语义同内核；协议矩阵、许可与回滚 |
-| `proxy_engine_state` | `pid`, `api_port`, `state`, `started_at`, `last_error` | 单实例引擎运行态；控制面启动时对账 |
+| `proxy_engine_installs` | `engine`, `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `license`, `source_url`, `active`, `installed_at` | 已安装协议引擎（`engine='xray-core'`）；双哈希语义同内核；协议矩阵、许可与回滚 |
+| `proxy_engine_state` | `id`, `pid`, `api_port`, `state`, `started_at`, `last_error`, `updated_at` | 单实例引擎运行态（`id=1`）；控制面启动时对账 |
 | `proxy_outbounds` | `outbound_key`, `route_key_json`, `ref_count`, `created_at`, `updated_at` | 共享出站引用计数；`ref_count` 只统计非终态运行时；运行时停止时在同一事务中递减引用并清空 `runtimes.proxy_*` |
 | `api_tokens` | `id`, `name`, `token_prefix`, `token_hash`, `scopes_json`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；`token_prefix` 仅用于列表展示且可为 NULL（旧 Token），认证只使用 HMAC 哈希与 scope 集合 |
 | `sessions` | `id`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` | 服务端登录会话；Cookie 只存随机标识，库中只存哈希 |
@@ -168,8 +168,9 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `event_log` | `sequence`, `event_id`, `type`, `payload_json`, `created_at` | WebSocket 事件回放；`sequence` 为自增整数游标，`event_id` 为外部去重标识；按保留策略清理 |
 | `event_tickets` | `ticket_hash`, `session_id`, `token_id`, `expires_at`, `used_at`, `created_at` | 单次 WebSocket 票据哈希；绑定会话或 Token，短 TTL、单次使用 |
 | `idempotency_keys` | `key`, `scope`, `request_hash`, `response_json`, `created_at`, `expires_at` | 写操作幂等；过期清理 |
-| `audit_events` | `id`, `actor`, `action`, `event_type`, `profile_id`, `target`, `result`, `metadata_json`, `created_at` | 审计；`event_type`/`profile_id` 为筛选字段，`action` 保留兼容；元数据脱敏 |
+| `audit_events` | `id`, `actor`, `action`, `event_type`, `profile_id`, `target`, `result`, `request_id`, `metadata_json`, `created_at` | 审计；`event_type`/`profile_id` 为筛选字段，`action` 保留兼容；`request_id` 关联请求与事件；元数据脱敏 |
 | `settings` | `key`, `value_json`, `updated_at` | 全局设置；不存主密钥 |
+| `schema_migrations` | `version`, `name`, `applied_at` | 显式迁移记录；只增不改 |
 
 档案生命周期：`active <-> archived` 由 archive/restore 驱动；`active|archived -> deleted` 由 `DELETE permanent=false` 驱动，目录移动到 `<data-root>/trash/<id>` 并写 `deleted_at`；`deleted -> active` 由 restore 驱动，恢复前必须确认 trash 目录仍是目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409）且不创建空目录；`deleted -> purge` 由 `DELETE permanent=true` 驱动，先删除目录再删除行；目录已缺失时视为已删除并继续删行，目录删除失败或行删除失败则保留 `deleted` 并写 `deletion_error`。软删除或 purge 前必须确认运行时不处于非终态；运行中的档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止。`deleted` 档案不能启动，也不能通过运行控制隐式恢复；启动或修改返回 `PROFILE_DELETED`（409），restore/purge/读取仍可用；已 purge 或从未存在的 ID 返回 `PROFILE_NOT_FOUND`（404）。
 
@@ -385,6 +386,7 @@ flowchart LR
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
+| `GET` | `/api/v1` | API 版本与弃用窗口发现（公开） |
 | `POST` | `/api/v1/auth/login` | 服务端登录，创建会话 |
 | `POST` | `/api/v1/auth/logout` | 销毁会话 |
 | `GET` | `/api/v1/auth/session` | 当前会话与改密标记 |
@@ -397,6 +399,7 @@ flowchart LR
 | `POST` | `/api/v1/profiles/{id}/duplicate` | 复制档案 |
 | `POST` | `/api/v1/profiles/{id}/archive` | 归档档案 |
 | `POST` | `/api/v1/profiles/{id}/restore` | 恢复档案 |
+| `POST` | `/api/v1/profiles/{id}/migrate-kernel` | 显式将停止的档案迁移到另一已安装内核 |
 | `POST` | `/api/v1/profiles/import` | 导入档案 |
 | `POST` | `/api/v1/profiles/import/validate` | 导入 dry-run：返回逐项草稿、错误与冲突，不写库 |
 | `POST` | `/api/v1/profiles/{id}/export` | 导出档案；请求体选择明文或加密（`format`、`passphrase`） |
@@ -476,7 +479,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 | --- | --- |
 | 认证 | 服务端会话 Cookie `HttpOnly`、`SameSite=Strict`；非回环服务端必须设置 `MIEN_PUBLIC_URL` 且 Cookie 恒为 `Secure`；API Token 只存展示前缀与 HMAC 哈希；登录限流；管理员凭据存 `admin_credentials`（Argon2id），由 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 引导，两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600）；首次登录强制改密，改密后删除应用生成的引导文件并清除引导标记；外部环境变量/Secret 由部署者撤销，应用不得声称已删除。 |
 | 授权 | 服务端会话写操作检查管理员权限，Bearer 写操作检查 Token scope，均校验档案归属；桌面 IPC 依赖本机进程信任与领域校验，不要求会话/Token；桌面自动化 HTTP 仍要求 Bearer scope。 |
-| 密钥 | 桌面使用系统钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 `MIEN_MASTER_KEY`；字段级 AES-256-GCM；API Token 从不使用 AES-GCM，只用 HKDF-peppered 哈希，主密钥轮换使全部 Token 失效并要求重发。 |
+| 密钥 | 桌面使用系统钥匙串；服务端使用 `<data-root>/secrets/master.key`（0600，Docker 下即 `/data/secrets/master.key`）或 `MIEN_MASTER_KEY`；字段级 AES-256-GCM；API Token 从不使用 AES-GCM，只用 HKDF-peppered 哈希，主密钥轮换使全部 Token 失效并要求重发。 |
 | 进程 | 参数数组启动，不经过 shell；进程组管理；档案锁；并发配额；子进程 `env_clear` 后只注入白名单变量。 |
 | 文件 | 档案目录 0700；路径规范化并校验前缀；导入文件大小限制；符号链接拒绝。 |
 | 网络 | 每运行档案 HTTP 入站、Xray gRPC 管理 API 与 CDP 都绑定回环，但回环只限制可达范围、不提供调用者鉴权；管理 API 额外要求控制面 UID 独占的 LSM/防火墙策略或独立网络边界（服务端），桌面端只以回环绑定和页面探测为补偿并记录残余风险；非回环服务端必须设置 `MIEN_PUBLIC_URL` 并使用 `Secure` Cookie；仅当来源在 `MIEN_TRUSTED_PROXIES` 中时才采信 `X-Forwarded-For`/`X-Forwarded-Proto`，限流按校验后的客户端 IP；noVNC 一次性令牌；容器网络最小化。 |
@@ -532,7 +535,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 
 ### 13.1 内核供应
 
-- 构建时从固定 URL 下载 fingerprint-chromium 发行包，对下载资产校验 `asset_sha256`，解包后对可执行文件计算 `binary_sha256`，两者一起写入安装记录与 `kernels/<version>/manifest.json`。
+- 构建时从固定 URL 下载 fingerprint-chromium 发行包，对下载资产校验 `asset_sha256`，解包后对可执行文件计算 `binary_sha256`，两者一起写入安装记录与 `kernels/<version>/<platform>/manifest.json`。
 - 二进制不提交到 Git；构建缓存与发布物包含内核和 BSD-3-Clause 许可声明。
 - macOS 应用将内核放入应用资源目录，随应用一起做 AdHoc 签名；首次启动解压到 Application Support 并再次校验。
 - Docker 镜像在构建阶段安装 Linux 内核到 `/opt/mien/kernel`，镜像内再次校验。
@@ -573,7 +576,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 - 启动失败返回稳定错误码，例如 `KERNEL_NOT_FOUND`、`KERNEL_CHECKSUM_MISMATCH`、`FINGERPRINT_INVALID`、`PROXY_ENGINE_NOT_FOUND`、`PROXY_ENGINE_CHECKSUM_MISMATCH`、`PROXY_ENGINE_API_UNAVAILABLE`、`PROXY_INBOUND_CONFLICT`、`PROXY_CONFIG_INVALID`、`SANDBOX_UNAVAILABLE`、`DIRECT_EGRESS_DISABLED`、`RUNTIME_CDP_TIMEOUT`、`QUOTA_EXCEEDED`。
 - 运行时事件通过 WebSocket 推送：`runtime.starting`、`runtime.running`、`runtime.stopping`、`runtime.stopped`、`runtime.crashed`、`runtime.failed`、`proxy.engine.failed`、`proxy.engine.rebuilt`、`proxy.check.completed`。
 - 指标：启动次数、成功率、启动耗时、运行档案数、代理检查失败率、崩溃次数。
-- 日志轮转按档案和总量限制；默认保留最近 7 天或 100 MB，取较小者。
+- 运行时日志按档案轮转，每档案单文件 10 MB、最多 5 个文件；`audit_events` 默认保留 90 天或按部署配置清理；保留边界见 [`DATABASE-SCHEMA.md`](DATABASE-SCHEMA.md) §6。
 
 ## 15. 测试策略
 
@@ -590,6 +593,8 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 - [`ADR-0007`](adr/0007-protocol-engine-forward-proxy.md)：每档案独立协议引擎（已被 ADR-0009 取代）。
 - [`ADR-0008`](adr/0008-tauri-ipc-ui-transport.md)：管理网页通过 Tauri IPC 调用核心。
 - [`ADR-0009`](adr/0009-shared-xray-engine.md)：单实例 Xray 动态协议引擎与连接复用。
+- [`ADR-0010`](adr/0010-adhoc-macos-distribution.md)：macOS AdHoc 分发与 GitHub Actions 发布。
+- [`ADR-0011`](adr/0011-manual-release-identity.md)：手动 release target 与不可变发布 identity。
 
 ## 17. 参考
 

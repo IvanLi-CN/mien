@@ -1910,6 +1910,10 @@ components:
           properties:
             proxy_id:
               type: 'null'
+        then:
+          properties:
+            direct:
+              const: true
       - if:
           required: [mode, direct, isolation]
           properties:
