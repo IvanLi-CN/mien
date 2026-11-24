@@ -16,6 +16,7 @@ const KEYWORDS = new Set([
   "description",
   "examples",
   "default",
+  "x-error-mappings",
   "deprecated",
   "readOnly",
   "writeOnly",

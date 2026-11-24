@@ -18,7 +18,7 @@
     "format": "biome format --write .",
     "license:check": "bun scripts/license-check.mjs",
     "contracts:check": "bun scripts/contracts/check.mjs",
-    "contracts:generate": "cargo xtask contracts"
+    "contracts:generate": "bunx openapi-typescript docs/contracts/openapi.yaml -o docs/contracts/generated/openapi.d.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5",
@@ -38,6 +38,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2",
     "@playwright/test": "^1",
+    "@redocly/cli": "^2.83.0",
     "@tailwindcss/vite": "^4",
     "@testing-library/jest-dom": "^6",
     "@testing-library/react": "^16",
@@ -46,10 +47,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^5",
-    "@redocly/cli": "^2.83.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "jsdom": "^26",
+    "openapi-typescript": "7.9.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^7",

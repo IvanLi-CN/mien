@@ -12,6 +12,30 @@ import { SettingsPage } from "./pages/settings";
 /** 路由与 `docs/UI-SURFACES.md` §1 一一对应；首屏固定为 `/profiles`。 */
 export const HOME_PATH = "/profiles";
 
+/** 静态 surface 路由枚举，contracts:check 与 UI-SURFACES.md 交叉校验。 */
+export const UI_SURFACE_ROUTES = [
+  "/profiles",
+  "/profiles/new",
+  "/profiles/:id",
+  "/profiles/:id/edit",
+  "/proxies",
+  "/kernels",
+  "/activity",
+  "/settings",
+] as const;
+
+/** Each surface must map to at least one OpenAPI path prefix. */
+export const UI_SURFACE_API_PREFIXES = {
+  "/profiles": "/api/v1/profiles",
+  "/profiles/new": "/api/v1/profiles",
+  "/profiles/:id": "/api/v1/profiles",
+  "/profiles/:id/edit": "/api/v1/profiles",
+  "/proxies": "/api/v1/proxies",
+  "/kernels": "/api/v1/kernels",
+  "/activity": "/api/v1/audit",
+  "/settings": "/api/v1/auth",
+} as const;
+
 export const routes = createBrowserRouter([
   {
     path: "/",
