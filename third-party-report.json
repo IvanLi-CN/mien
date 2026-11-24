@@ -528,6 +528,20 @@
       "policy": "frontend"
     },
     {
+      "id": "bun:openapi-typescript@7.9.1",
+      "version": "7.9.1",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/openapi-ts/openapi-typescript",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/openapi-typescript/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
       "id": "bun:react-dom@19.3.1",
       "version": "19.3.1",
       "license": "MIT",
