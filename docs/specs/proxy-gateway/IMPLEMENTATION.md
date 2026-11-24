@@ -23,6 +23,38 @@
 - 类型化代理配置、共享引擎动态入站/出站/路由（含稳定 `ruleTag` 与 `shouldAppend=true`）、非终态引用计数与 teardown、分享链接解析、远程 DNS、失败关闭、直连模式边界与代理检查均未实现。
 - Xray 映射、候选清单与 MPL-2.0 记录已建立；仍需 M0 runtime spike 验证管理 API、`AddRule` 增量语义、blackhole 首出站断言、`binary_sha256` 运行时校验、连接复用、Hysteria2/WireGuard、目标容器 UDP 和故障重建后冻结协议矩阵。
 
+## Verification Status
+
+实现开始前逐项记录状态；`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须只对 `pending` 放行。
+
+| VER | 状态 | 计划命令与 fixture |
+| --- | --- | --- |
+| `VER-PROXY-001` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-002` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-003` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-004` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-005` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-006` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-007` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-008` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-009` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-010` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-011` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-012` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-013` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-014` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-015` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-016` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-017` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-018` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-019` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-020` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-021` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-022` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-023` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-024` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+| `VER-PROXY-025` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
+
 ## Related Changes
 
 - None

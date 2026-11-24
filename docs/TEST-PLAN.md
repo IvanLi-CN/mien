@@ -158,8 +158,9 @@
 | RT-021 | 共享引擎故障与重建失败 | 运行中强杀引擎时全部运行档案网络失败且无直连/其他节点回退，产生 `proxy.engine.failed`；重建成功产生 `proxy.engine.rebuilt` 并恢复原端口；重建失败先转入 `stopping`，拆除内核与进程组、入站/规则，并在同一事务递减出站引用、清空 `proxy_*`、释放配额与锁，再写 `failed`；teardown 失败保持 `stopping` 与 `last_error`，终态后无残留内核或端口 |
 | RT-022 | 沙箱校验先于资源创建 | 启动事务先校验沙箱，失败返回 `SANDBOX_UNAVAILABLE`，且不创建入站/出站/规则、不拉起进程、不占用配额；服务端显式无沙箱且通过包含性探针时写入审计与降级标记，`isolation=unsandboxed`；桌面无法确认时拒绝启动 |
 | RT-023 | 控制面重启对非终态运行时对账 | 重启后对 `starting`/`stopping` 行终止可归属内核、删除入站/规则/出站引用，再置 `stopped`；teardown 失败保留 `stopping` 与 `last_error`；不产生重复运行时，不可归属进程按契约记录而不盲杀 |
-| RT-024 | 隔离 proof 状态 | 启动时沙箱探测写入 `runtimes.isolation`（成功启动只允许 `enforced` 或服务端显式授权的 `unsandboxed`；无记录为 `unknown`）；proof strip 以该字段为唯一数据源派生，Profile payload 暴露同一派生值；停止的档案仍显示最近一次运行的 `unsandboxed`/`unknown` 与降低保证，警告不被 `stopped` 中性样式覆盖；`unknown` 与 `stopped` 不共用同一视觉或语义 |
-| RT-025 | 日志尾部端点 | `GET /api/v1/profiles/{id}/logs?limit=` 从运行时日志环或轮转文件返回有界、脱敏日志；超出上限返回 422，未知档案 404，未认证 401；响应无凭据、Cookie、UUID、完整 URL；桌面 IPC 读取同一日志且无本地 HTTP 端口 |
+| RT-024 | 隔离 proof 状态 | 启动时沙箱探测写入 `runtimes.isolation`，成功启动同步写入 `runtimes.last_known_isolation`（成功启动只允许 `enforced` 或服务端显式授权的 `unsandboxed`；无成功记录为 `unknown`）；`starting` 行与 pre-resource 失败不得覆盖 `last_known_isolation`；proof strip 与 Profile payload 均以 `last_known_isolation` 为唯一数据源派生；停止的档案仍显示最近一次运行的 `unsandboxed`/`unknown` 与降低保证，警告不被 `stopped` 中性样式覆盖；`unknown` 与 `stopped` 不共用同一视觉或语义 |
+| RT-026 | 内核迁移 | 对运行中档案调用 `POST /api/v1/profiles/{id}/migrate-kernel` 返回 `RUNTIME_CONFLICT` 且不写绑定；preflight 失败（目标内核缺失、摘要不符、清单能力不满足）保留原 `kernel_version` 与指纹规格；成功时写入审计事件并记录迁移前后版本；回滚恢复原绑定且原始数据目录不变 |
+| RT-025 | 日志尾部端点 | `GET /api/v1/profiles/{id}/logs?limit=` 从运行时日志环或轮转文件返回有界、脱敏日志；超出上限返回 422，未认证 401；不存在的档案 ID 返回 404 `PROFILE_NOT_FOUND`，档案存在但无运行时且无保留日志返回 404 `RUNTIME_NOT_FOUND`；响应无凭据、Cookie、UUID、完整 URL；桌面 IPC 读取同一日志且无本地 HTTP 端口 |
 
 ## 7. 代理协议与网络泄漏
 
@@ -250,7 +251,7 @@
 | API-017 | 首次登录改密 | 初始密码登录返回 `must_change_password=true`；未改密写操作 403；改密后旧会话失效 |
 | API-018 | 查看器端点 | 默认 `VIEWER_NOT_AVAILABLE`；启用后返回一次性 URL，二次使用失败 |
 | API-019 | 审计筛选契约 | 审计端点与 `AuditEvent` 支持 `event_type` 与 `profile_id` 筛选，保留 `action` 兼容；非法枚举返回 422；组合筛选与游标分页无重复遗漏；UI 使用同一字段名 |
-| API-020 | 日志端点边界 | `GET /api/v1/profiles/{id}/logs?limit=` 有界且脱敏，来源为运行时日志环或轮转文件；limit 上限生效，未知档案 404，未认证 401；无凭据、Cookie、UUID、完整 URL；桌面 IPC 与 HTTP 同语义 |
+| API-020 | 日志端点边界 | `GET /api/v1/profiles/{id}/logs?limit=` 有界且脱敏，来源为运行时日志环或轮转文件；limit 上限生效，未认证 401；不存在的档案 ID 返回 404 `PROFILE_NOT_FOUND`，档案存在但无运行时且无保留日志返回 404 `RUNTIME_NOT_FOUND`；无凭据、Cookie、UUID、完整 URL；桌面 IPC 与 HTTP 同语义 |
 | EXPORT-001 | 明文导出 | 默认导出不含代理凭据、Token、Cookie；schema 可重新校验 |
 | EXPORT-002 | 加密导出/导入 | 正确口令可导入并恢复非敏感配置；代理凭据仍被移除且必须重新输入；错误或篡改口令被拒绝；密文不可读 |
 | EXPORT-003 | 导入冲突 | 冲突项在确认后分配新 ID，否则返回 `PROFILE_IMPORT_CONFLICT` |
@@ -299,7 +300,7 @@
 | 级别 | 定义 | 发布影响 |
 | --- | --- | --- |
 | P0 | 凭据泄露、认证绕过、远程代码执行、容器逃逸、数据损坏 | 阻断发布，无豁免路径 |
-| P1 | 指纹内部矛盾、代理/DNS/WebRTC/IPv6 泄漏、协议引擎失败后直连回退、运行时重复或孤儿、崩溃循环、导入或档案路径穿越、沙箱状态未如实披露 | 泄漏/回退/穿越/崩溃循环/孤儿类别阻断发布且不得整类豁免；其余 P1 仅可逐项具名限期接受 |
+| P1 | 指纹内部矛盾、代理/DNS/WebRTC/IPv6 泄漏、协议引擎失败后直连回退、运行时重复或孤儿、崩溃循环、导入或档案路径穿越、沙箱状态未如实披露 | 泄漏/回退/穿越/崩溃循环/孤儿/沙箱状态未披露类别阻断发布且不得整类豁免；其余 P1 仅可逐项具名限期接受 |
 | P2 | 单站点兼容问题、已知宿主绑定字段差异、无头特征差异、非关键 UI 缺陷 | 可带已知限制发布，需记录 |
 | P3 | 文案、布局、非关键性能问题 | 可排期修复 |
 
@@ -307,16 +308,16 @@
 
 - P0 数量必须为 0；任何书面风险接受、环境决策或人工备注都不能豁免 P0。
 - P1 中的凭据/网络泄漏（DNS、WebRTC、IPv6、DoH）、失败关闭回退（直连或其他节点）、导入与档案路径穿越、崩溃循环、运行时重复或孤儿、沙箱状态未披露必须为 0；不得整类豁免或按环境放宽。
-- 其余 P1 只能逐项接受，必须记录缺陷编号、具名接受人、影响范围、到期日和修复计划；未满足则阻断发布。机器可读结果用 `accepted` 表示具名接受，且必须同时携带 waiver 记录；没有 waiver 的 `accepted` 等同失败。P2/P3 可记录后排期，但不得掩盖 P0/P1。
+- 其余 P1 只能逐项接受，必须记录缺陷编号、`severity`（`P0|P1|P2|P3`）、`blocking_class`（布尔）、具名接受人、影响范围、到期日和修复计划；未满足则阻断发布。机器可读结果用 `accepted` 表示具名接受，且必须同时携带上述 waiver 记录；没有 waiver 的 `accepted` 等同失败。GATE-001 必须拒绝 `severity=P0` 或 `blocking_class=true` 的 `accepted`。P2/P3 可记录后排期，但不得掩盖 P0/P1。
 - PRD-ACC-001 至 PRD-ACC-010 全部有证据，缺失任何一项即阻断，不得以“后续补充”推进。
 - 内核准入 KERNEL-001 至 KERNEL-010 通过。
 - 协议引擎准入 ENGINE-001 至 ENGINE-009 通过，Tier A 协议矩阵、共享出站与分享链接导入通过；Tier B 结果只记录，不作为门禁。
-- EXPORT-001 至 EXPORT-006 通过；UI-001 至 UI-022 通过；RT-017 至 RT-025、API-019 至 API-020 通过。
+- EXPORT-001 至 EXPORT-006 通过；UI-001 至 UI-022 通过；RT-017 至 RT-025、RT-026（内核迁移）、API-019 至 API-020 通过。
 - 指纹、代理泄漏、认证与容器基线测试全部通过。
 - 隔离 proof（`enforced`/`unsandboxed`/`unknown`）与日志尾部端点的脱敏证据存在；停止档案的降低保证可见。
 - 桌面管理 UI 默认无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
 - 已知限制在发布说明和 UI 中可见。
-- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..025`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；只有携带缺陷编号、具名接受人、影响范围、到期日和修复计划的 `accepted` 结果可按第 11 节逐项接受，P0 与阻断类 P1 不得使用 `accepted`；`PROXY-007` 与 `PROXY-030` 为 Tier B，只记录、不作为门禁。
+- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..025`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009`、`PERF-001..007` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；`PRD-ACC-009` 的 `pass` 必须由 `PERF-001..007` 全部 `pass` 支撑，`PERF-008` 明确非门禁。只有携带缺陷编号、`severity`、`blocking_class`、具名接受人、影响范围、到期日和修复计划的 `accepted` 结果可按第 11 节逐项接受，P0 与阻断类 P1 不得使用 `accepted`；`PROXY-007` 与 `PROXY-030` 为 Tier B，只记录、不作为门禁。
 
 ## 12. 证据与报告
 

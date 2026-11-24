@@ -63,7 +63,7 @@
 | 协议引擎 | Xray-core v26.11.9+ | 固定补丁版本与 SHA-256 | 单实例动态入站/出站/路由；VLESS/VMess/SS/Trojan/Hysteria2/WireGuard；MPL-2.0 |
 | 容器基础 | Debian bookworm-slim | 固定摘要 | 需要 X11、Chromium 运行库与字体 |
 | 容器 init | tini | 固定 | 信号转发与僵尸进程回收 |
-| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）；宿主需允许非特权用户命名空间（解除 AppArmor userns 限制或加载等价宿主配置） | 固定文件与 SHA-256（seccomp） | 允许非特权用户命名空间的 Chromium 命名空间沙箱；宿主侧发布物供 Docker 创建前加载，镜像副本仅审计，不得改用默认或 `unconfined` |
+| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）与 `mien-chromium` AppArmor profile；宿主需允许非特权用户命名空间 | 固定文件与 SHA-256（两者） | 允许非特权用户命名空间的 Chromium 命名空间沙箱；两份配置作为宿主侧发布物在容器创建前加载，镜像副本仅审计；不得改用默认 seccomp 或把 `apparmor=unconfined` 当默认值 |
 | 虚拟显示 | Xvfb + openbox | 固定主版本 | 无桌面环境的有头运行 |
 | 远程查看 | x11vnc + noVNC/websockify | 固定主版本 | 可选、一次性令牌、默认关闭；GPL-2.0、MPL-2.0、LGPL-3.0 义务见 `THIRD-PARTY.md` |
 | 任务编排 | cargo xtask | 固定 | 仓库内构建、校验、打包任务 |

@@ -115,7 +115,7 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 
 ## 11. Recovery
 
-- 失败后以相同 `release_target` 重跑；先读取已有 reservation/identity，并 checkout reservation 中绑定的 `source_sha`，即使 `main` 已前进。不得从本次 dispatch 的新 `main` SHA 重建旧 identity；若原 SHA 无法 checkout，则停止并报告。
+- 失败后以相同 `release_target` 重跑；先读取已有 reservation/identity，并 checkout reservation 中绑定的 `source_sha`，即使 `main` 已前进。命中 reservation 时 canonical version 以 reservation 为准，不得按已包含本次 `vX.Y.Z` tag 的 baseline 重新递增，也不得因同一 target 出现多个 identity 而按 `release_target` 单独匹配；未命中时才按 baseline 解析新版本。不得从本次 dispatch 的新 `main` SHA 重建旧 identity；若原 SHA 无法 checkout，则停止并报告。
 - 同 target、同 source 只补齐缺失步骤；不重写 tag、不改变 channel、不创建新版本。
 - 已记录 artifact digest 时，对应构建 job 必须跳过并复用已上传资产；`stage-release` 必须拒绝与 identity digest 不同的产物。公开 release 存在时只做验证，不重新构建或覆盖资产；若重新构建 DMG，先前手动测试证据失效并须重测。
 - 已存在 tag 时，读取 tag 的 peeled commit 并与 `source_sha` 比较；只有 identity 成立才恢复。

@@ -1435,7 +1435,7 @@ paths:
         '403':
           "$ref": "#/components/responses/Forbidden"
         '404':
-          description: 运行时不存在（RUNTIME_NOT_FOUND）。
+          description: 档案不存在（PROFILE_NOT_FOUND）；档案存在但既无运行时记录也无保留日志（RUNTIME_NOT_FOUND）。先检查档案存在性。
           content:
             application/json:
               schema:
@@ -1868,6 +1868,25 @@ components:
           properties:
             direct:
               const: true
+        then:
+          properties:
+            reduced_assurance:
+              const: true
+      - if:
+          properties:
+            isolation:
+              not:
+                const: enforced
+        then:
+          properties:
+            reduced_assurance:
+              const: true
+      - if:
+          properties:
+            mode:
+              enum:
+              - headless
+              - pseudo_headful
         then:
           properties:
             reduced_assurance:
@@ -2436,6 +2455,33 @@ components:
           properties:
             reduced_assurance:
               const: true
+      - if:
+          properties:
+            isolation:
+              not:
+                const: enforced
+        then:
+          properties:
+            reduced_assurance:
+              const: true
+      - if:
+          properties:
+            mode:
+              enum:
+              - headless
+              - pseudo_headful
+        then:
+          properties:
+            reduced_assurance:
+              const: true
+      - if:
+          properties:
+            mode:
+              const: pseudo_headful
+        then:
+          properties:
+            ua_scope:
+              const: chrome
     Kernel:
       type: object
       required:
@@ -2473,9 +2519,11 @@ components:
           pattern: "^[a-f0-9]{64}$"
           description: 公开发行包 digest。
         binary_sha256:
-          type: string
+          type:
+          - string
+          - 'null'
           pattern: "^[a-f0-9]{64}$"
-          description: 安装后实际执行文件 digest。
+          description: 安装后实际执行文件 digest；可执行文件缺失的迁移记录为 null，此时启动返回 KERNEL_NOT_FOUND，不允许用 asset_sha256 冒充。
         sandbox_kind:
           "$ref": "#/components/schemas/SandboxKind"
         network_controls:
@@ -2535,9 +2583,11 @@ components:
           pattern: "^[a-f0-9]{64}$"
           description: 公开发行包 digest。
         binary_sha256:
-          type: string
+          type:
+          - string
+          - 'null'
           pattern: "^[a-f0-9]{64}$"
-          description: 安装后实际执行文件 digest。
+          description: 安装后实际执行文件 digest；可执行文件缺失的迁移记录为 null，此时启动返回 PROXY_ENGINE_NOT_FOUND。
     TokenScope:
       type: string
       enum:
@@ -2591,6 +2641,7 @@ components:
           format: date-time
     TokenInput:
       type: object
+      additionalProperties: false
       required:
       - name
       - scopes
@@ -2900,6 +2951,12 @@ components:
           type: array
           items:
             type: string
+        obfuscation:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+          description: 引擎为该协议声明支持的混淆方式；空数组表示不支持含混淆参数的配置，必须拒绝。
         notes:
           type: string
     ProxyCheckErrorCode:

@@ -25,6 +25,34 @@
 - 有界日志尾部端点、导入导出端点与 `ProfileImportResult`/`ProfileExportEnvelope` 尚未实现；`block_start_on_check_failure` 必须在实现与 schema 中保持不存在。
 - OpenAPI、事件 schema 与错误码已建立；实现后需要用生成客户端和 fixture 建立契约测试。
 
+## Verification Status
+
+实现开始前逐项记录状态；`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须只对 `pending` 放行。
+
+| VER | 状态 | 计划命令与 fixture |
+| --- | --- | --- |
+| `VER-API-001` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-002` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-003` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-004` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-005` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-006` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-007` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-008` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-009` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-010` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-011` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-012` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-013` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-014` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-015` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-016` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-017` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-018` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-019` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-020` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+| `VER-API-021` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
+
 ## Related Changes
 
 - None

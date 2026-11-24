@@ -32,7 +32,7 @@
 
 发布门禁：
 
-- `PRD-ACC-001` 至 `PRD-ACC-010` 全部有当前证据；机器可读测试报告必须为每个强制 ID 标记 `pass`，缺失、失败、跳过或 error 均阻断。
+- `PRD-ACC-001` 至 `PRD-ACC-010` 全部有当前证据；机器可读测试报告必须为每个强制 ID 标记 `pass`，或按 GATE-001 规则对允许逐项接受的 P1 标记带完整 waiver 记录的 `accepted`；缺失、失败、跳过或缺少 waiver 的 `accepted` 均阻断。
 - 产生目标 `main` SHA 的 merged PR 已通过 `CI PR / required`；目标 SHA 本身存在成功的 `CI Main / verify`。
 - `release_target` 合法，trusted baseline 可读取；新 identity 的 canonical version 严格大于 baseline，完全匹配的同一 identity recovery 例外。
 - trusted baseline 是全部 `vX.Y.Z` tag 与 GitHub Release 的核心版本最大值，包含 prerelease、build metadata 和被标记无效的版本；`vX.Y.Z-*`/`vX.Y.Z+*` 与 `vX.Y.Z` 占用同一核心序号。collision 检查排除当前 identity 的完整匹配对象：reservation 自身，以及 policy/target/version/source SHA 完全匹配的 tag/release；其他任一已有 tag/release 大于或等于 target 时 fail closed，不允许重发同版本。
@@ -45,7 +45,7 @@
 - 错误码、事件 schema、OpenAPI、数据库迁移与导出 schema 校验通过。
 - GATE-001 机器可读报告通过：`TEST-PLAN.md` 的固定 required ID 集合（含 `FP-001..013`、全部 `RT/API/SEC`，排除 Tier B `PROXY-007` 与 `PROXY-030`）中所有项均为 `pass`，或仅对允许逐项接受的 P1 使用带完整 waiver 记录的 `accepted`；没有任何缺失、`fail`、`error`、`skipped` 或缺少 waiver 的 `accepted`。
 - macOS 应用、嵌套 Chromium 内核及其全部 renderer/GPU/utility helper 使用且只使用 Chromium JIT 的两项 entitlements（`com.apple.security.cs.allow-jit`、`com.apple.security.cs.allow-unsigned-executable-memory`）；Xray-core 与 frameworks 做 AdHoc 签名但不带 JIT 权限。全部签名通过 `codesign --verify --deep --strict`，每个 helper 单独断言 entitlements，`--options runtime` 与 `Signature=adhoc` 已断言，真实页面加载通过；不要求公证或 Gatekeeper 成功。
-- `SHA256SUMS`、SBOM、`LICENSE`、`NOTICE`、`LICENSES/`、更新清单、宿主侧 seccomp 发布物和 artifact attestation 完整；attestation 覆盖 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、seccomp 文件与许可包，是必选门禁，没有“仓库计划不支持则跳过”的例外。
+- `SHA256SUMS`、SBOM、`LICENSE`、`NOTICE`、`LICENSES/`、更新清单、宿主侧 seccomp 与 `mien-chromium` AppArmor 发布物、artifact attestation 完整；attestation 覆盖 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、seccomp 文件、AppArmor profile 与许可包，是必选门禁，没有“仓库计划不支持则跳过”的例外。
 - `release` job 必须存在绑定当前 DMG SHA-256 的手动首次启动/升级通过记录；记录缺失、未通过或绑定旧 DMG 时拒绝公开。
 - Docker 镜像扫描无未接受的高危/严重漏洞；镜像 digest 固定并签名。
 - MPL-2.0、BSD-3-Clause 与容器内 GPL 组件许可复核通过。
@@ -78,7 +78,7 @@
 1. `buildx` 构建 `linux/amd64`。
 2. 固定基础镜像 digest；非 root；只读根；`/data` 唯一可写卷。
 3. 镜像内安装 Xvfb、openbox、x11vnc、noVNC、字体、fingerprint-chromium 与 Xray。
-4. 启动时校验内核与 Xray SHA-256；失败拒绝启动。seccomp 发布物由部署者安装到宿主路径，容器以该宿主路径启动。
+4. 启动时校验内核与 Xray SHA-256；失败拒绝启动。seccomp 与 AppArmor 发布物由部署者安装到宿主路径，容器以该宿主路径和 `apparmor=mien-chromium` 启动。
 5. 健康检查 `/healthz`；就绪检查 `/readyz`。
 6. 从同一 `source_sha` 独立构建两次（清空构建缓存、相同基础镜像 digest 与锁文件），比对两次镜像 digest；不相等即失败，不推送 staging tag；第二次构建不发布。
 7. 生成 SBOM、漏洞扫描、容器许可扫描、cosign keyless 签名或固定 digest。
@@ -94,11 +94,11 @@
 2. `reserve` 创建或复用 draft GitHub Release，使用非 `v*` 的 reservation 标识作为 `tag_name`，写入 policy、target、version、source SHA 和 run ID；不创建 `vX.Y.Z`。
 3. `test` 调用共享 CI workflow，运行完整测试和 e2e；不接触 release secrets。
 4. `macos-arm64` 与 `docker-amd64` 并行构建，分别上传 DMG、SBOM、校验和、宿主侧 seccomp 发布物与镜像 digest；`docker-amd64` 必须双构建且 digest 相等，第二次构建只做可复现性验证，不发布。
-5. `stage-release` 把产物、seccomp 发布物与 `LICENSE`/`NOTICE`/`LICENSES/` 写入 draft，校验 SHA-256/digest，写入 `release-identity.json`；本次构建 digest 与 identity 已记录 digest 不一致时拒绝。
-6. `attest` 为 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包和 seccomp 发布物生成 GitHub artifact attestation；没有降级或跳过分支。
+5. `stage-release` 把产物、seccomp/AppArmor 发布物与 `LICENSE`/`NOTICE`/`LICENSES/` 写入 draft，校验 SHA-256/digest，写入 `release-identity.json`；本次构建 digest 与 identity 已记录 digest 不一致时拒绝。
+6. `attest` 为 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包、seccomp 文件和 AppArmor profile 生成 GitHub artifact attestation；没有降级或跳过分支。
 7. 阶段 7 `promote-docker` 把 staging digest 提升为 `vX.Y.Z` GHCR tag；绑定 `release` environment。
 8. 阶段 8 `release` 校验 identity 与当前 DMG 的手动测试通过记录后创建或验证 tag，公开 release；绑定 `release` environment。
-9. `verify-release` 下载公开资产，校验 checksums、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、seccomp 发布物、AdHoc 签名、entitlements、更新清单和 identity；失败时标记 release 无效。
+9. `verify-release` 下载公开资产，校验 checksums、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、seccomp/AppArmor 发布物、AdHoc 签名、entitlements、更新清单和 identity；失败时标记 release 无效。
 
 失败后用相同 `release_target` 和相同 `source_sha` 重跑，checkout reservation 的 `source_sha`，复用已绑定 canonical version、draft reservation 和已记录 digest；identity 已记录 digest 的产物不再构建，不重新分配版本，不创建 successor，不改写已有 tag。重新构建 macOS 产物会使手动测试证据作废，必须重做。需要修正构建时选择新的 `release_target`，产生新 version；release 资产不可变，回滚使用上一版本 release，不覆盖已发布文件。
 

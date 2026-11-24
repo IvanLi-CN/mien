@@ -44,7 +44,7 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 ### 6.1 产品目标
 
 1. 用户可以在 macOS 桌面或 Docker 服务中，以不超过十分钟完成首次部署并启动第一个隔离档案。
-2. 每个档案的指纹在相同内核、相同规格和相同启动参数下可重复；不同档案之间不共享种子和浏览器数据。
+2. 每个档案的指纹在相同内核、相同规格和相同启动参数下可重复；新建与复制档案不共享种子，导入是唯一允许共享导出种子的例外，且必须显式标注指纹相同。
 3. 代理流量失败关闭，默认不产生 DNS、WebRTC 或 IPv6 直连泄漏。
 4. 正向代理以 Tier A 协议（VLESS、VMess、Shadowsocks、Trojan）的受控节点矩阵作为首发必过项，Hysteria2 与 WireGuard 作为 Tier B 按能力清单提供并显式标注，通过单实例共享 Xray 引擎与每运行档案入站/路由隔离浏览器网络，并复用相同节点与凭据的上游连接。
 5. 控制面、运行时、内核与协议引擎升级彼此解耦，升级不会静默改变已有档案的指纹。
@@ -146,7 +146,7 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 
 | 编号 | 需求 |
 | --- | --- |
-| PRD-FR-007 | 用户可以配置种子、操作系统、操作系统版本、浏览器品牌、品牌版本、CPU 核心数、语言列表、时区、窗口尺寸、伪装开关和 WebRTC 策略。 |
+| PRD-FR-007 | 用户可以配置操作系统、操作系统版本、浏览器品牌、品牌版本、CPU 核心数、语言列表、时区、窗口尺寸、伪装开关和 WebRTC 策略；种子由系统生成，只读展示，不可配置。 |
 | PRD-FR-008 | 系统必须使用密码学安全随机源生成非零的 32 位种子；生成结果与任何现有档案种子相同时必须内部重抽，不向用户暴露冲突错误；复制档案也总是生成新种子。 |
 | PRD-FR-009 | 系统必须提供主机对齐预设：macOS 宿主默认 macOS 画像，Docker 默认 Linux 画像。Windows 宿主预设只在 Windows 桌面版本发布后生效；跨系统画像必须显式选择并显示降低保证提示。 |
 | PRD-FR-010 | 系统必须校验画像内部一致性，包括平台与 UA、UA-CH 平台版本、品牌与品牌版本、CPU 核心数、语言与时区、代理地区与语言时区建议；不可能组合必须拒绝保存或启动。 |
@@ -310,13 +310,13 @@ Tier A 参与发布门禁；Tier B 必须明确标注能力与失败原因，不
 | PRD-ACC-001 | macOS 首次部署 | 安装、内核校验、创建档案、启动有头浏览器、访问探针页、停止并再次启动成功。 |
 | PRD-ACC-002 | Docker 首次部署 | 非 root 容器启动、登录、创建档案、Xvfb 有头启动、Web UI 状态正确、数据卷重启后保留。 |
 | PRD-ACC-003 | 指纹一致性 | 同一档案三次启动的探针哈希一致；不同档案的种子派生特征不同；平台、UA、UA-CH、语言、时区内部一致。 |
-| PRD-ACC-004 | 代理与泄漏 | HTTP/SOCKS5 认证代理与 VLESS、VMess、Shadowsocks、Trojan 节点可用；Hysteria2 按矩阵验证；分享链接可导入；DNS 无目标泄漏；WebRTC 无直连候选；共享引擎停止或节点断开后所有运行档案失败关闭；相同出站 key 的档案复用连接；IPv6 无绕过。 |
+| PRD-ACC-004 | 代理与泄漏 | HTTP/SOCKS5 认证代理与 VLESS、VMess、Shadowsocks、Trojan 节点可用；分享链接可导入；DNS 无目标泄漏；WebRTC 无直连候选；共享引擎停止或节点断开后所有运行档案失败关闭；相同出站 key 的档案复用连接；IPv6 无绕过；Hysteria2/WireGuard 为 Tier B，只记录结果与失败标注，不作为门禁。 |
 | PRD-ACC-005 | 无头降级 | 无头与伪有头档案可启动并被标记降低保证；UI 与 API 均显示限制；伪有头只改变 UA，其他 Headless 特征仍被记录；切换到有头模式后可重新验证。 |
 | PRD-ACC-006 | 生命周期与恢复 | 100 次启动/停止无孤儿；运行档案可动态增删而不重启共享引擎；强杀共享引擎后所有运行档案失败关闭，重启后按原端口重建；控制面重启后状态对账正确。 |
 | PRD-ACC-007 | 导入导出 | 明文与加密导出可导入；错误 schema、超长字段、路径穿越和非法代理被拒绝；两种导出都不含代理凭据；加密导出可恢复非敏感配置，凭据仍需重新输入；导入冲突按 `source_profile_id` 或分组/标签名称处理。 |
 | PRD-ACC-008 | 安全基线 | 未登录不能写操作；错误密码限流；Token 可撤销；代理凭据为密文；内核与协议引擎校验失败拒绝启动；容器非 root；Xray 管理 API 只绑定回环；沙箱状态可确认，无法确认时拒绝启动，显式无沙箱有审计；日志与 API 无秘密。 |
 | PRD-ACC-009 | 容量与性能 | 10 个档案并发运行；启动与停止满足性能目标；24 小时浸泡通过。 |
-| PRD-ACC-010 | 发布物 | macOS 应用、嵌套内核、Xray-core 与 frameworks 为 AdHoc 签名，`codesign --verify --deep --strict` 通过且 `Signature=adhoc`；不公证，Gatekeeper 首次启动被阻止且有经校验的手动放行说明；Docker 镜像由 CI 从同一 `source_sha` 连续构建两次并比对镜像 digest，两次相等、带健康检查、通过漏洞扫描；项目 `LICENSE`（Apache-2.0）随发布物分发，内核 BSD-3-Clause、Xray-core MPL-2.0、来源信息和已知限制文档齐全。 |
+| PRD-ACC-010 | 发布物 | macOS 应用、嵌套内核、Xray-core 与 frameworks 为 AdHoc 签名并启用 hardened runtime；应用、Chromium 内核与全部 renderer/GPU/utility helper 带且只带两项 JIT entitlements，Xray 与 frameworks 不带 JIT 权限；`codesign --verify --deep --strict` 通过、`Signature=adhoc`、真实页面加载成功；不公证，Gatekeeper 首次启动被阻止且有经校验的手动放行说明；Docker 镜像由 CI 从同一 `source_sha` 连续构建两次（固定 `SOURCE_DATE_EPOCH`、`--rewrite-timestamp`、`--provenance=false`）并比对 digest，两次相等、带健康检查、通过漏洞扫描；DMG 与容器 digest 的 GitHub artifact attestation 必选；项目 `LICENSE`（Apache-2.0）随发布物分发，内核 BSD-3-Clause、Xray-core MPL-2.0、来源信息和已知限制文档齐全。 |
 
 ### 12.2 发布门槛
 
@@ -326,7 +326,7 @@ Tier A 参与发布门禁；Tier B 必须明确标注能力与失败原因，不
 - VLESS、VMess、Shadowsocks、Trojan 的受控节点测试必须通过；Hysteria2 的失败必须记录为已知限制，不能静默降级。
 - 内核的 BSD-3-Clause、Xray-core 的 MPL-2.0 许可、来源信息和发布物合规检查必须完成；TUIC 不得作为 v1 能力宣传。
 - 项目以 Apache-2.0 发布：`LICENSE` 随发布物分发；`NOTICE`、`LICENSES/`、SBOM 与许可扫描无未处置项，第三方再分发义务闭合。
-- Docker 镜像可复现性以 CI 双重构建证明：同一 `source_sha` 连续两次构建必须得到相同的镜像 digest。
+- Docker 镜像可复现性以 CI 双重构建证明：同一 `source_sha` 连续两次构建必须得到相同的镜像 digest；构建固定 `SOURCE_DATE_EPOCH`、启用 `buildx --rewrite-timestamp` 并关闭 provenance，否则该门禁不可满足。
 - 任何未关闭的高危安全问题阻断发布。
 
 ## 13. 风险与缓解

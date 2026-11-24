@@ -103,7 +103,7 @@
 | `api/audit/` | `event_type`/`profile_id`/`action` 筛选与分页 | 活动记录契约 |
 | `events/*.json` | 每个事件类型的合法/非法实例 | 事件 schema |
 | `events/replay/` | 整数 `after=sequence` 游标、空洞、重启后续播 | 事件回放与单调序列 |
-| `db/migrations/` | 空库、含 `admin_credentials`/`deleted_at`/`deletion_error`/`isolation` 的旧 schema、迁移中断、恢复 | 迁移与完整性 |
+| `db/migrations/` | 空库；含 `admin_credentials`/`deleted_at`/`deletion_error`/`isolation` 的旧 schema；`profiles.window_json` 缺失/非法且 `fingerprint_json.window` 也缺失的 active/archived/deleted 行；字符串 `event_log` 游标表；`kernel_installs`/`proxy_engine_installs` 中 `binary_sha256` 为 NULL 的迁移记录；迁移中断；恢复 | 迁移、preflight 阻断与完整性 |
 | `db/restore/` | 备份、恢复、主密钥缺失 | 数据恢复 |
 | `ui/` | viewport、locale、视觉基线、axe 配置 | UI、可访问性与响应式 |
 

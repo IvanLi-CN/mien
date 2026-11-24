@@ -124,8 +124,8 @@
 
 ### REQ-PROXY-017
 
-- The system MUST bind the Xray management API and every runtime HTTP inbound to `127.0.0.1` only, allocate a stable per-runtime port, and restrict the management API to the control-plane UID with an LSM/firewall boundary; the browser kernel MUST run under a separate UID.
-- Inputs: 端口分配、运行时生命周期、本机进程、管理 API、控制面 UID、浏览器内核 UID。
+- The system MUST bind the Xray management API and every runtime HTTP inbound to `127.0.0.1` only and allocate a per-runtime port once, persisting it for the lifetime of the runtime. On the server host the management API MUST be reachable only from the control-plane identity, using an LSM/firewall boundary scoped to the control-plane UID or an equivalent separate network boundary; in an unsandboxed server deployment the kernel MUST NOT be able to reach it. The desktop host has no non-root UID-scoped firewall primitive, so it MUST bind only to loopback and prove via an M0 page-originated probe that the page cannot reach the management API, with the same-UID residual risk recorded in `SECURITY.md` T-15/T-22/T-27.
+- Inputs: 端口分配、运行时生命周期、本机进程、管理 API、控制面身份、宿主类型（桌面/服务端）、沙箱模式。
 - Outputs: 非回环地址无法连接；页面发起的回环探测无法访问管理 API；运行时结束后入站端口关闭；管理 API 不暴露到容器外。
 
 ### REQ-PROXY-018
@@ -212,7 +212,7 @@
 
 - Method: 启动后扫描 argv、日志、事件、API 响应和持久化文件，检查凭据是否只经回环 API 传递。
 - covers: `REQ-PROXY-006`
-- Pass condition: 凭据不出现在 argv、日志、事件、API 响应或持久化引擎配置；重启可重新生成；管理 API 只绑定控制面回环并由控制面 UID 独占的 LSM/防火墙策略限制。
+- Pass condition: 凭据不出现在 argv、日志、事件、API 响应或持久化引擎配置；重启可重新生成；管理 API 只绑定控制面回环，并按宿主类型由控制面 UID 独占的 LSM/防火墙策略或独立网络边界限制。
 
 ### VER-PROXY-007
 
@@ -278,7 +278,7 @@
 
 - Method: 从非回环地址连接管理 API 和运行档案入站，并在运行时结束后重试；检查安全文档。
 - covers: `REQ-PROXY-017`
-- Pass condition: 非回环连接被拒绝；运行时结束后入站端口关闭；管理 API 不可从非回环访问，且浏览器内核 UID 与页面发起的回环探测不能访问；控制面 UID 的残余风险已记录。
+- Pass condition: 非回环连接被拒绝；运行时结束后入站端口关闭；管理 API 不可从非回环访问；服务端无沙箱模式下内核身份不可达，服务端沙箱模式下页面发起的回环探测不可达；桌面端记录同 UID 残余风险并以页面探测为补偿控制。
 
 ### VER-PROXY-018
 
@@ -314,7 +314,7 @@
 
 - Method: 并发启动/停止档案，重启引擎，检查 Xray API 访问控制、幂等和引用计数对账。
 - covers: `REQ-PROXY-023`
-- Pass condition: 无重复出站、无孤儿入站/规则；引用计数按非终态运行时重建；控制面重启时能归属且资源完整的 `running` 行保持 `running`，无主的 `starting`/`running`/`stopping` 行先清理资源再转 `stopped`；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 仅回环可达，但回环不提供调用者鉴权，必须由控制面 UID 独占的 LSM/防火墙策略限制，浏览器内核使用独立 UID，页面发起的回环探测不可达；无沙箱模式还要求内核与管理 API 之间不可路由。并发操作不产生竞争状态。
+- Pass condition: 无重复出站、无孤儿入站/规则；引用计数按非终态运行时重建；控制面重启时能归属且资源完整的 `running` 行保持 `running`，无主的 `starting`/`running`/`stopping` 行先清理资源再转 `stopped`，且该清理必须经过 `stopping` 并发布对应事件；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 仅回环可达，但回环不提供调用者鉴权，服务端必须由控制面 UID 独占的 LSM/防火墙策略或独立网络边界限制，页面发起的回环探测不可达；无沙箱模式还要求内核与管理 API 之间不可路由；桌面端记录同 UID 残余风险。并发操作不产生竞争状态。
 
 ### VER-PROXY-024
 

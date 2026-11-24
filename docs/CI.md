@@ -49,7 +49,7 @@ flowchart TD
 | `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bun run license:check`、`bunx biome check .`、`bunx tsc --noEmit`、`actionlint` | Rust、前端依赖与静态检查；前端许可扫描失败阻断；不使用 `continue-on-error` |
 | `rust` | `cargo nextest run --workspace` | 单元和库级集成；失败上传 nextest JUnit 报告 |
 | `web` | `bun install --frozen-lockfile`、`bun run typecheck`、`bun run test`、`bun run build` | 前端类型、测试和静态资源构建 |
-| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 与相对链接/锚点解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；生成差异、未知错误码、映射漂移、断链或任一校验失败均阻断 |
+| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 与相对链接/锚点解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 与 AppArmor 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；生成差异、未知错误码、映射漂移、断链或任一校验失败均阻断 |
 | `integration` | 服务端启动、SQLite、档案生命周期、API 鉴权、代理配置与 Xray fixture | 使用真实进程和临时数据目录；不连接外部网络 |
 | `e2e smoke` | Docker `linux/amd64` + Xvfb + Playwright | PR 只跑一条代表性有头启动/停止链路；完整矩阵留在 main 与 release |
 | `required` | 聚合 `needs` 结果 | `if: always()`；任何上游 `failure`、`cancelled` 或意外 `skipped` 都判失败 |
@@ -86,11 +86,11 @@ flowchart TD
 | `test` | 在 reservation 的 `source_sha` 上调用 `ci-reusable.yml`，`profile=release`，运行全量测试与 e2e | 不构建发布物 |
 | `macos-arm64` | 在 `release` environment 中于 `source_sha` 上构建 Tauri 应用，下载并校验内核/Xray；应用、Chromium 内核与全部 helper 使用 JIT entitlements，Xray/frameworks 不带；生成 DMG、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、entitlements 与更新清单，记录 DMG SHA-256 | identity 已记录 DMG digest 时跳过构建并复用已上传资产；重新构建使先前手动测试证据作废 |
 | `docker-amd64` | 在 `source_sha` 上用 `buildx` 从同一 source 独立构建两次 `linux/amd64` 并比对 digest；不相等即失败。相等后以 `staging-<run_id>` 临时 tag 推送并记录 digest；Trivy、SBOM、容器许可扫描与 cosign keyless 签名 | 不进入 stage-release；许可扫描失败或 identity 已记录 digest 不一致时拒绝 |
-| `stage-release` | 在 `release` environment 中汇总产物到 draft，包含宿主侧 seccomp 发布物与 `LICENSE`/`NOTICE`/`LICENSES/`，校验 SHA-256/digest，写入 `release-identity.json` | 本次构建 digest 与 identity 已记录 digest 不一致时拒绝；draft 保持未公开，不创建 `v*` tag |
-| `attest` | 对 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包和 seccomp 发布物生成 GitHub artifact attestation；无跳过分支 | attestation 失败或缺失则不进入 promote-docker，不公开 release |
+| `stage-release` | 在 `release` environment 中汇总产物到 draft，包含宿主侧 seccomp 与 AppArmor 发布物与 `LICENSE`/`NOTICE`/`LICENSES/`，校验 SHA-256/digest，写入 `release-identity.json` | 本次构建 digest 与 identity 已记录 digest 不一致时拒绝；draft 保持未公开，不创建 `v*` tag |
+| `attest` | 对 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包、seccomp 文件和 AppArmor profile 生成 GitHub artifact attestation；无跳过分支 | attestation 失败或缺失则不进入 promote-docker，不公开 release |
 | `promote-docker`（阶段 7） | 把已验证 digest 提升为 `ghcr.io/<owner>/mien-server:vX.Y.Z` 并记录最终 digest；绑定 `release` environment | 不公开 release |
 | `release`（阶段 8） | 校验 draft identity 和当前 DMG 的手动测试通过记录（绑定 DMG SHA-256）后创建或验证 tag，公开 GitHub Release；绑定 `release` environment | 手动测试记录缺失、未通过或绑定旧 DMG 时拒绝公开；保留 draft 供同 identity recovery |
-| `verify-release` | 下载公开资产，校验 checksums、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、seccomp 发布物、AdHoc 签名、entitlements、更新清单和 identity | 标记 release 无效；不得静默忽略 |
+| `verify-release` | 下载公开资产，校验 checksums、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、seccomp/AppArmor 发布物、AdHoc 签名、entitlements、更新清单和 identity | 标记 release 无效；不得静默忽略 |
 
 tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑：先读取已有 reservation 和 identity，checkout reservation 的 `source_sha`；identity 已记录某产物 digest 时对应构建 job 跳过，`stage-release` 遇到 digest 不一致即拒绝，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
 
@@ -140,18 +140,18 @@ PR workflow 默认 `permissions: contents: read`；release workflow 按 job 最�
 
 | Job | 权限 |
 | --- | --- |
-| `resolve-target` | `contents: read`、`checks: read`、`pull-requests: read`、`actions: read`；需要读取 baseline tag/release、`CI Main / verify` check run 与 merged PR |
+| `resolve-target` | `contents: write`、`checks: read`、`pull-requests: read`、`actions: read`；draft reservation 只有 `contents: write` 才能被读取，另需读取 baseline tag/release、`CI Main / verify` check run 与 merged PR |
 | `test` | `contents: read` |
 | `reserve` | `contents: write` |
-| `macos-arm64` | `contents: read`；使用 `release` environment 读取更新签名密钥 |
+| `macos-arm64` | `contents: write`（同 identity 重跑时需读取 session 之外由 `resolve-target` 记录的 draft identity 与已上传资产，并复用 digest）；使用 `release` environment 读取更新签名密钥 |
 | `docker-amd64` | `contents: read`、`packages: write`、`id-token: write` |
 | `stage-release` | `contents: write`、`packages: read`（读取 GHCR digest）；绑定 `release` environment |
 | `attest` | `contents: read`、`packages: write`、`attestations: write`、`id-token: write` |
 | `release` | `contents: write`；绑定 `release` environment |
-| `promote-docker` | `contents: read`、`packages: write`、`id-token: write`；绑定 `release` environment |
+| `promote-docker` | `contents: write`、`packages: write`、`id-token: write`；需要读取 draft release 中记录的已验证 digest 并写回 promotion 结果；绑定 `release` environment |
 | `verify-release` | `contents: write`、`issues: write`、`packages: read`（读取 GHCR digest） |
 
-`release` environment 的人工批准在 `macos-arm64` 入口执行；阶段 7 `promote-docker` 与阶段 8 `release` 也绑定同一 `release` environment，确保单独 re-run 任一发布阶段不能绕过批准。
+`release` environment 绑定到 `macos-arm64`、`stage-release`、`promote-docker` 与 `release` 四个 job，因此每个 job 首次进入时都会请求人工批准；这是预期行为，不是重复审批缺陷，单独 re-run 任一发布阶段也不能绕过批准。
 
 `attest` 没有计划探测分支，也没有“仓库不支持时跳过”的路径：attestation 生成或验证失败时 workflow 停在 `attest`，不进入 `promote-docker`，也不公开 release。已记录的 environment 决策不能把它降级为可选。
 

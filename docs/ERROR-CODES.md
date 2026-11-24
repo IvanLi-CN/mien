@@ -14,7 +14,7 @@
 
 `code` 是稳定契约；`message` 是给人阅读的英文或本地化消息，不作为程序分支依据。`details` 只能包含字段级错误、资源标识和非敏感诊断；不得包含代理凭据、UUID、私钥、Cookie、Token、完整分享链接或目标 URL。
 
-本文的代码集合就是 `ErrorCode` 枚举的契约。OpenAPI 的 `Error.code` 必须引用由本目录生成的 `ErrorCode` 枚举；事件 `error_code` 与测试 fixture 的取值必须是该集合成员（事件字段允许 `null`）。CI 双向比对本文与契约枚举，出现新增、删除或 HTTP 映射漂移即失败（见第 8 节）。
+本文的代码集合就是 `ErrorCode` 枚举的契约。OpenAPI 的 `Error.code` 必须引用由本目录生成的 `ErrorCode` 枚举；事件 `error_code` 与测试 fixture 的取值必须是该集合成员（事件字段允许 `null`）。CI 双向比对本文与契约枚举，出现新增、删除或 HTTP 映射漂移即失败（见第 7 节）。
 
 ## 1. 认证与授权
 
@@ -55,7 +55,7 @@
 
 找不到资源的语义必须区分“行不存在”和“资源仍存在但不可操作”：软删除且未 purge 的档案对启动或会改变档案的写操作返回 `PROFILE_DELETED`（409），不返回 404；restore、purge、读取和删除重试必须继续可用；已 purge 的档案与从未存在的 ID 返回 `PROFILE_NOT_FOUND`。查看器请求先检查档案与运行时，再检查查看器能力，不得用 `VIEWER_NOT_AVAILABLE` 掩盖缺失的运行时。
 
-restore 前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；目录缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409），不得创建空目录。该行保持 `deleted` 与稳定 `deletion_error`，由 purge 重试完成清理。
+restore 前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；目录缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409），不得创建空目录。该行保持 `deleted`，`deletion_error` 不变（可为 NULL，不由 restore 写入新值），由 purge 重试完成清理；purge 失败时才写 `deletion_error`。
 
 `tokensCreate` 接受 `Idempotency-Key`，但明文 Token 永远不重放：相同或不同请求体的重复键都必须返回 `IDEMPOTENCY_CONFLICT`（409），不得返回缓存的 201 响应；这是该码对“不可重放响应”的唯一扩展语义。其他写操作的相同键与相同请求仍返回原响应，只有不同请求体才冲突。
 

@@ -145,6 +145,7 @@ CREATE TABLE runtimes (
   state TEXT NOT NULL CHECK (state IN ('starting','running','stopping','stopped','crashed','failed')),
   mode TEXT NOT NULL CHECK (mode IN ('headful','headless','pseudo_headful')),
   isolation TEXT NOT NULL DEFAULT 'unknown' CHECK (isolation IN ('enforced','unsandboxed','unknown')),
+  last_known_isolation TEXT NOT NULL DEFAULT 'unknown' CHECK (last_known_isolation IN ('enforced','unsandboxed','unknown')),
   pid INTEGER,
   pgid INTEGER,
   proxy_port INTEGER,
@@ -260,11 +261,11 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
 - 删除档案默认是软删除：`DELETE ?permanent=false` 把 `profiles.status` 置为 `deleted`、写 `deleted_at`，把档案目录移动到 `<data-root>/trash/<id>`；行与目录在 restore 前保留。
 - 永久删除是显式操作：`DELETE ?permanent=true` 先删除 trash 目录，再删除行。目录已缺失时视为目录删除已完成并继续删行；目录删除失败或行删除失败时保留 `deleted` 行并写 `deletion_error`，供重试。`deletion_error` 只能是稳定、非敏感的原因标识（例如 `busy`、`permission_denied`），不得包含绝对路径、用户名或原始 OS 消息。
-- 档案生命周期：`active <-> archived` 由 archive/restore 驱动，restore 清空 `archived_at`；`active|archived -> deleted` 由软删除驱动；`deleted -> active` 由 restore 驱动，恢复前必须确认 `<data-root>/trash/<id>` 仍是目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录，恢复成功时清空 `archived_at`/`deletion_error`；`deleted -> purge` 由永久删除驱动。`deleted_at` 只记录最近一次软删除时间，状态判据始终是 `profiles.status`；`deleted` 档案不能启动，启动请求返回 `PROFILE_DELETED`，该错误只阻断启动或会改变档案的写操作，不影响 restore、purge、读取与删除重试。软删除或 purge 前必须先确认运行时不处于非终态；运行中的档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止，也不得移动或删除目录。
+- 档案生命周期：`active <-> archived` 由 archive/restore 驱动，restore 清空 `archived_at`；`active|archived -> deleted` 由软删除驱动；`deleted -> active` 由 restore 驱动，恢复前必须确认 `<data-root>/trash/<id>` 仍是目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录，恢复成功时清空 `archived_at`、`deleted_at` 与 `deletion_error`；`deleted -> purge` 由永久删除驱动。`deleted_at` 只记录最近一次软删除时间，状态判据始终是 `profiles.status`；`deleted` 档案不能启动，启动请求返回 `PROFILE_DELETED`，该错误只阻断启动或会改变档案的写操作，不影响 restore、purge、读取与删除重试。软删除或 purge 前必须先确认运行时不处于非终态；运行中的档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止，也不得移动或删除目录。
 - 窗口尺寸只存在于 `fingerprint_json`；顶层启动偏好只保留 `start_url` 和 `automation_api`，数据库不再有 `window_json`，导出与偏好 API 也不得出现顶层 `window`。
 - 下载目录固定为 `<data-root>/profiles/<id>/downloads`（0700），作为 Chromium 默认下载目录；所有路径必须规范化并校验在该档案目录前缀内。
 - `runtimes.profile_id` 唯一，保证一个档案最多一个受监督运行时；启动/停止通过事务和档案锁串行化。
-- `runtimes.isolation` 保存实际沙箱状态：`enforced`、`unsandboxed` 或 `unknown`；成功启动只能写 `enforced` 或服务端显式授权的 `unsandboxed`，`unknown` 只用于没有成功运行时记录或历史迁移行；`unknown` 不得当作安全，proof strip 由该字段派生。
+- `runtimes.isolation` 保存本次启动的实际沙箱状态：`enforced`、`unsandboxed` 或 `unknown`；成功启动只能写 `enforced` 或服务端显式授权的 `unsandboxed`，`unknown` 只用于没有成功运行时记录或历史迁移行。`runtimes.last_known_isolation` 保存最近一次成功结论，写 `starting` 或 pre-resource 失败不得覆盖它；`Profile.isolation` 与 proof strip 均派生自 `last_known_isolation`，`unknown` 不得当作安全。
 - `proxy_outbounds.ref_count` 只统计非终态运行时（`starting`/`running`/`stopping`）；`stopped`/`crashed`/`failed` 为终态。停止或失败 teardown 必须在同一事务中按 `proxy_outbound_key` 递减 `ref_count` 并清空该运行时的 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port`；提交后再删除归零的 Xray 出站。teardown 幂等，引用只释放一次；删除 Xray 出站失败时保留 `ref_count=0` 的孤儿行供对账，不从已清空的运行时重复递减。启动时对账并修复，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
 - `kernel_installs` 与 `proxy_engine_installs` 同时记录 `asset_sha256`（下载的发布资产摘要）与 `binary_sha256`（解包后可执行文件摘要）。安装时校验发布资产，运行时只校验 `binary_sha256`；文件缺失返回 `KERNEL_NOT_FOUND`/`PROXY_ENGINE_NOT_FOUND`，摘要不符返回 `KERNEL_CHECKSUM_MISMATCH`/`PROXY_ENGINE_CHECKSUM_MISMATCH`。`manifest_json` 保存安装时的候选清单。
 - `event_log.sequence` 是单调递增的整数回放游标（WebSocket `after=sequence`），`event_id` 是事件标识；不得用字符串游标代替 `sequence`。
@@ -305,9 +306,9 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 - `profiles.import_source_id` 与 `api_tokens.token_prefix`：均为可回退的新列；前者允许 NULL；后者从已有哈希无法反推，旧 Token 保持 NULL 并在 UI 隐藏前缀，新 Token 必须写入 4–16 字符展示前缀，不允许空串。
 - `profiles.window_json`：先对所有 `active`、`archived`、`deleted` 行做 preflight；优先保留 `fingerprint_json.window`，缺失时用合法 `window_json` 回填，然后走 schema 校验。两种来源都缺失、或旧值非法时，列出全部 `profile_id` 并阻断迁移；不得写默认窗口，也不得只检查 `deleted`。回填完成后才删除旧列。
 - `event_tickets` 已在基线 DDL 中，不重建、不清空；若旧库确实缺少该表，才按基线创建，并保留已有会话/Token 引用。`admin_credentials` 同样保留已有行；为空时进入引导流程，不生成固定口令。
-- `event_log` 的旧字符串游标迁移：若旧库缺少 `sequence`，先新增可空列，按 `created_at`、旧 `id` 稳定排序回填连续整数，建立唯一索引并切换读取端；随后必须用表重建收敛到基线 `sequence INTEGER PRIMARY KEY AUTOINCREMENT`（复制行、删除旧表、重命名）并删除旧 `id`。重建完成前写路径必须显式写入 `max(sequence)+1`，否则唯一索引允许多个 `NULL`，新事件没有可回放游标。保留 `event_id` 作为外部去重标识，不得在回填前删除旧列。
+- `event_log` 的旧字符串游标迁移（已发布的表重建例外：本节明确要求备份与显式确认，且必须在同一发布周期内完成；除此之外仍遵守“只增不改”）：若旧库缺少 `sequence`，先新增可空列，按 `created_at`、旧 `id` 稳定排序回填连续整数，建立唯一索引并切换读取端；随后必须用表重建收敛到基线 `sequence INTEGER PRIMARY KEY AUTOINCREMENT`（复制行、删除旧表、重命名）并删除旧 `id`。重建完成前写路径必须显式写入 `max(sequence)+1`，否则唯一索引允许多个 `NULL`，新事件没有可回放游标。保留 `event_id` 作为外部去重标识，不得在回填前删除旧列。
 - `audit_events` 的 `event_type`、`profile_id` 迁移：先新增可空列；`event_type` 从 `action` 回填，`profile_id` 从旧 metadata 中的合法档案标识回填，否则保持 NULL；建立索引后才切换筛选读取端，最后按基线约束收紧。不得丢弃旧审计行或把 `action` 当作新 `event_type` 的长期替代。
-- `profiles.deletion_error` 与 `runtimes.isolation`：新列默认 NULL；启动对账把无法确认的历史运行时置 `unknown`，不猜 `enforced`。
+- `profiles.deletion_error`、`runtimes.isolation` 与 `runtimes.last_known_isolation`：新列默认 NULL 或 `unknown`；启动对账把无法确认的历史运行时置 `unknown`，不猜 `enforced`；`last_known_isolation` 只由成功启动写入，迁移与对账不得用 `starting` 行覆盖。
 - 已发布档案不论状态，在删除 `window_json` 前必须仍有合法 `fingerprint_json.window`；否则迁移阻断并报告档案 ID，不写默认窗口。
 
 ## 6. 保留与清理

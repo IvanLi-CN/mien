@@ -24,6 +24,33 @@
 - 需要先确定 148 的实际能力清单与探针基线，再冻结 golden fixture；窗口尺寸只允许来自指纹规格，档案 payload、启动偏好与导出不得新增顶层 `window`。
 - 沙箱校验顺序、`isolation` 结论与安装记录摘要校验需要与 `browser-runtime` 实现同步接入。
 
+## Verification Status
+
+实现开始前逐项记录状态；`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须只对 `pending` 放行。
+
+| VER | 状态 | 计划命令与 fixture |
+| --- | --- | --- |
+| `VER-FP-001` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-002` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-003` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-004` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-005` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-006` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-007` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-008` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-009` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-010` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-011` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-012` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-013` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-014` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-015` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-016` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-017` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-018` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-019` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+| `VER-FP-020` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
+
 ## Related Changes
 
 - None

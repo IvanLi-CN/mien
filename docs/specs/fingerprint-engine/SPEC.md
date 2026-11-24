@@ -32,7 +32,7 @@
 
 ### REQ-FP-002
 
-- The system MUST generate a non-zero 32-bit seed using a cryptographically secure random source; every create and every duplicate copy (`copy_fingerprint=true`) MUST generate a fresh seed rather than reusing the source profile's seed. A duplicate's generated seed differs from its source; collisions between generated seeds of unrelated profiles are not conflict errors. Import preserves the exported seed for reproducibility, so an imported profile may share a seed with its source; that is allowed and is not a conflict error. `FINGERPRINT_SEED_CONFLICT` is not part of the contract.
+- The system MUST generate a non-zero 32-bit seed using a cryptographically secure random source; every create and every duplicate copy (`copy_fingerprint=true`) MUST generate a fresh seed rather than reusing the source profile's seed. If a freshly generated seed equals any existing profile's seed in any status, the generator MUST draw again before persisting; the retry is silent and never surfaces a conflict error. Import preserves the exported seed for reproducibility, so an imported profile may share a seed with its source; that is the only intentional exception and is not a conflict error. `FINGERPRINT_SEED_CONFLICT` is not part of the contract.
 - Import exception: importing an exported profile preserves the exported seed so the fingerprint remains reproducible; two profiles sharing a seed after import is allowed and is not an error.
 - Inputs: 创建或复制档案请求、导入载荷、密码学随机源。
 - Outputs: 非零种子；复制总是得到新种子；不得使用时间戳、邮箱、档案名称或其他可预测值作为种子；种子不被视为秘密。
@@ -63,9 +63,9 @@
 
 ### REQ-FP-007
 
-- The system MUST restrict `hardware_concurrency` to a realistic allowed set per platform, sourced from the manifest `flagSpec.per_platform_values` for the CPU flag when present, and MUST reject zero, negative, or implausibly large values.
+- The system MUST restrict `hardware_concurrency` to a realistic allowed set per platform, sourced from the manifest `flagSpec.per_platform_values` for the CPU flag when present and otherwise from its `values` set, and MUST reject zero, negative, or implausibly large values.
 - Inputs: CPU 核心数、平台、能力清单。
-- Outputs: 允许值列表中的整数；清单声明 `per_platform_values` 时以其为权威，不得与 `values` 合并放宽集合；越界值被拒绝并给出可选范围。
+- Outputs: 允许值列表中的整数；清单声明 `per_platform_values` 时以其为权威，缺失时用 `values`，两者不得合并放宽集合；两个来源都缺失的 CPU 开关是无效清单；越界值被拒绝并给出可选范围。
 
 ### REQ-FP-008
 
@@ -97,7 +97,7 @@
 
 - The system MUST build launch argv as a typed argument array, MUST NOT invoke a shell, and MUST reject duplicate or conflicting arguments.
 - Inputs: 规格、内核安装记录（含解包后可执行文件路径与 `binary_sha256`）、用户数据目录、每运行档案回环 HTTP 入站、显示与运行模式。
-- Outputs: 确定性参数数组；每个内核开关最多出现一次；`window` 只在 `window-size` 参数中出现一次；敏感值不进入 argv。
+- Outputs: 确定性参数数组；每个内核开关最多出现一次；多个 `spoof` 类别关闭时必须合并为单个 `--disable-spoofing=<category>[,<category>...]` 参数，类别按 `font`、`audio`、`canvas`、`clientrects`、`gpu` 固定顺序排列；`window` 只在 `window-size` 参数中出现一次；敏感值不进入 argv。
 
 ### REQ-FP-013
 
@@ -127,7 +127,7 @@
 
 - The system MUST require `network.doh_mode=disabled` and `network.ipv6_mode=block` for proxied profiles, and MUST verify that the selected kernel manifest declares the corresponding controls before launch.
 - Inputs: 指纹规格、内核能力清单、启动参数、启动探针。
-- Outputs: 有效配置中 DoH 不绕过代理且 IPv6 直连被阻止；清单声明 `doh_mode=unsupported` 或 `ipv6_mode=unsupported` 时清单仍合法，但代理档案 MUST NOT 启动，返回 `KERNEL_UNSUPPORTED`（422）且不得静默降级为直连；直连档案仍应用内核支持的 DoH/IPv6/非代理 UDP 标志并记录降低保证，无法应用时拒绝启动或记录为已声明限制，不声称代理级远程 DNS/失败关闭；探针失败同样阻止启动。
+- Outputs: 有效配置中 DoH 不绕过代理且 IPv6 直连被阻止；清单声明 `doh_mode=unsupported` 或 `ipv6_mode=unsupported` 时清单仍合法，但代理档案 MUST NOT 启动，返回 `KERNEL_UNSUPPORTED`（422）且不得静默降级为直连；直连档案不创建代理入站或出站，仍应用内核支持的 DoH/IPv6/非代理 UDP 标志，并在响应中返回 `direct=true` 与 `reduced_assurance=true`，不声称代理级远程 DNS、DoH 或 IPv6 失败关闭；对应内核标志无法应用时 MUST NOT 启动并返回稳定错误，不得仅记录为已声明限制；探针失败同样阻止启动。
 
 ### REQ-FP-018
 
@@ -189,9 +189,9 @@
 
 ### VER-FP-007
 
-- Method: 测试 0、负数、1、2、4、8、16、64、256 等 CPU 核心数，并使用带 `per_platform_values` 与仅带 `values` 的清单。
+- Method: 测试 0、负数、1、2、4、8、16、64、256 等 CPU 核心数，并使用带 `per_platform_values`、仅带 `values`、两者都缺失三种清单。
 - covers: `REQ-FP-007`
-- Pass condition: 仅允许集合中的值通过；声明 `per_platform_values` 时以其为权威且不与 `values` 合并；越界值返回可选范围。
+- Pass condition: 仅允许集合中的值通过；声明 `per_platform_values` 时以其为权威且不与 `values` 合并，缺失时使用 `values`；两者都缺失的清单被拒绝；越界值返回可选范围。
 
 ### VER-FP-008
 
@@ -249,9 +249,9 @@
 
 ### VER-FP-017
 
-- Method: 使用 `doh_mode=disabled`/`ipv6_mode=block`、值为 `unsupported`、以及探针失败三种内核清单启动代理档案，运行 DNS/IPv6 探针并检查启动结果与错误。
+- Method: 使用 `doh_mode=disabled`/`ipv6_mode=block`、值为 `unsupported`、以及探针失败三种内核清单分别启动代理档案与直连档案，运行 DNS/IPv6 探针并检查启动结果与错误。
 - covers: `REQ-FP-017`
-- Pass condition: 声明并生效时启动成功且无 DoH/IPv6 绕过；`unsupported` 清单是合法 fixture，但代理启动返回 `KERNEL_UNSUPPORTED` 且无直连回退；探针失败同样拒绝启动。
+- Pass condition: 声明并生效时启动成功且无 DoH/IPv6 绕过；`unsupported` 清单是合法 fixture，但代理启动返回 `KERNEL_UNSUPPORTED` 且无直连回退；直连档案返回 `direct=true`/`reduced_assurance=true`，标志无法应用或探针失败时拒绝启动；探针失败同样拒绝启动。
 
 ### VER-FP-018
 

@@ -31,8 +31,8 @@ Xray-core 提供 `HandlerService` 的 `AddInbound`、`RemoveInbound`、`AddOutbo
 - 在协议能力允许时启用 Xray mux；Hysteria2 使用其 QUIC 连接复用。连接复用能力由引擎能力清单声明，不能对不支持的协议假装复用。
 - Xray 的默认路由出站必须是 block；不得生成 direct 出站、系统代理回退或其他节点的静默降级。
 - 代理网关负责 API 调用的串行化、幂等、引用计数、失败回滚和启动时对账。引擎重启后，网关按原始 `proxy_port` 重建入站、出站和路由规则。
-- 引擎进程故障时，所有运行档案立即失去网络并产生 `proxy.engine.failed`；网关按有界退避重启引擎。重建成功则恢复运行档案的网络；重建失败则把受影响运行时标记为 `failed`，不自动直连。
-- 固定 Xray-core `v26.11.9` 或经准入的后继补丁版本，并维护协议能力清单。协议以对象映射声明：`protocols.<name> = {tier, transports, tls_modes, methods?, plugins?, notes?}`，`tier` 取值 `A|B|basic`。Tier A 为 VLESS、VMess、Shadowsocks、Trojan；Tier B 为 Hysteria2、WireGuard；basic 为 HTTP、HTTPS、SOCKS5。TUIC 不在 v1。
+- 引擎进程故障时，所有运行档案立即失去网络并产生 `proxy.engine.failed`；网关按有界退避重启引擎。重建成功只重新建立引擎侧资源，`proxy.engine.rebuilt` 不自动把已 teardown 的运行时改回 `running`，用户必须显式重启；重建失败时先把受影响运行时转入 `stopping`，执行 teardown 后才写 `failed`，不自动直连。
+- 固定 Xray-core `v26.11.9` 或经准入的后继补丁版本，并维护协议能力清单。协议以对象映射声明：`protocols.<name> = {tier, transports, tls_modes, methods?, plugins?, obfuscation?, notes?}`，`tier` 取值 `A|B|basic`。Tier A 为 VLESS、VMess、Shadowsocks、Trojan；Tier B 为 Hysteria2、WireGuard；basic 为 HTTP、HTTPS、SOCKS5。TUIC 不在 v1。
 - 引擎二进制同时记录发布资产摘要 `asset_sha256` 与可执行文件摘要 `binary_sha256`；运行时以安装记录的 `binary_sha256` 校验可执行文件，不用发布资产摘要代替。可执行文件缺失返回 `PROXY_ENGINE_NOT_FOUND`，摘要不符返回 `PROXY_ENGINE_CHECKSUM_MISMATCH`，两者都拒绝启动且不创建入站、出站或规则。
 - Xray-core 以 MPL-2.0 分发；发布物保留许可证、版权与来源信息，不修改二进制。
 

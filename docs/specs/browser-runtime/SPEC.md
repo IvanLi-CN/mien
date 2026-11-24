@@ -83,7 +83,7 @@
 
 - The system MUST detect kernel exit, record exit code and recent logs, and apply bounded restart behavior without an infinite crash loop.
 - Inputs: 内核退出事件、自动重启配置、退避窗口。
-- Outputs: 内核退出后先进入 `stopping` 执行同一 teardown，清理完成再写 `crashed`；记录退出码与最近日志；默认不自动重启；启用自动重启时最多 3 次，使用递增退避；稳定运行后重置计数。内核退出发生在已发起的停止/优雅关闭过程中时，终态为 `stopped`，不记为 `crashed`，不发 `runtime.crashed`；仅无在途停止请求的意外退出写 `crashed`。teardown 失败时保持 `stopping` 并重试，不得在资源仍存在时写 `crashed`。
+- Outputs: 内核退出后先进入 `stopping` 执行同一 teardown，清理完成再写 `crashed`；记录退出码与最近日志；默认不自动重启；启用自动重启时最多 3 次，使用递增退避；稳定运行后重置计数。内核退出发生在用户发起的停止流程中时，终态为 `stopped`，不记为 `crashed`，不发 `runtime.crashed`；由 teardown 自身终止进程组导致的内核退出，按发起 teardown 的原因决定终态（用户停止写 `stopped`，共享引擎故障或 post-resource 启动失败写 `failed`）；仅无在途停止请求的意外退出写 `crashed`。teardown 失败时保持 `stopping` 并重试，不得在资源仍存在时写 `crashed`。
 
 ### REQ-RUNTIME-011
 
@@ -96,7 +96,7 @@
 
 - The system MUST reconcile non-terminal runtime records after a control-plane or container restart using PID, process start time, and command line, without killing processes it cannot safely attribute.
 - Inputs: `runtimes` 记录、进程表、档案锁、数据目录。
-- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时；对 `starting`/`stopping` 中断行，终止可归属内核进程组、删除该档案的入站与规则、清空 `proxy_*`、仅当 `proxy_outbound_key` 非空时递减非终态引用（已为空时只重试孤儿出站清理，不重复递减）后写 `stopped`；teardown 失败时保留 `stopping` 或原非终态并记录 `last_error`，不得在资源仍存在时写 `failed`，后续对账重试；恢复完成后不保留中间态。
+- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时；对 `starting`/`stopping` 中断行，先转入 `stopping` 并发布 `runtime.stopping`，再终止可归属内核进程组、删除该档案的入站与规则、清空 `proxy_*`、仅当 `proxy_outbound_key` 非空时递减非终态引用（已为空时只重试孤儿出站清理，不重复递减）后写 `stopped`；teardown 失败时保留 `stopping` 或原非终态并记录 `last_error`，不得在资源仍存在时写 `failed`，后续对账重试；恢复完成后不保留中间态。
 
 ### REQ-RUNTIME-013
 
@@ -132,7 +132,7 @@
 
 - The system MUST persist and expose the isolation verdict as `isolation` with values `enforced`, `unsandboxed`, or `unknown`, and MUST derive the isolation proof and reduced-assurance markers from it.
 - Inputs: 沙箱校验结果、运行模式、`runtimes` 记录、档案详情。
-- Outputs: `runtimes.isolation` 持久化；运行时与档案响应包含 `isolation`、`direct` 和 `reduced_assurance`；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation`。没有运行时记录时为 `unknown`，成功启动的运行时只能是 `enforced` 或服务端显式授权的 `unsandboxed`。
+- Outputs: `runtimes.isolation` 持久化；运行时与档案响应包含 `isolation`、`direct` 和 `reduced_assurance`；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation`；该值来自 `runtimes.last_known_isolation`，`starting` 行与 pre-resource 失败行不得覆盖它。没有成功运行时记录或历史迁移行时为 `unknown`，成功启动的运行时只能是 `enforced` 或服务端显式授权的 `unsandboxed`。
 - UI semantics: proof strip 的 isolation 段由该字段驱动；`unknown` 使用虚线轮廓与 `?` 文本说明，`stopped` 使用中性低透明度；但 `isolation` 警告高于 `stopped` 的“未运行”中性样式，停止的 `unsandboxed`/`unknown` 档案仍必须显示降低保证，不得被 `stopped` 覆盖。
 
 ### REQ-RUNTIME-019

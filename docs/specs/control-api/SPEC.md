@@ -32,13 +32,13 @@
 
 ### REQ-API-002
 
-- The API MUST publish a machine-readable OpenAPI document that covers all REST endpoints, request/response schemas, auth schemes (`cookieAuth`、HTTP `bearerAuth`、`ticketAuth`), error codes, and pagination parameters, and CI MUST run a generation-diff check so the committed document cannot drift from route/schema definitions. Each protected operation declares `x-required-scope`; CI MUST validate it against `TokenScope`.
+- The API MUST publish a machine-readable OpenAPI document that covers all REST endpoints, request/response schemas, auth schemes (`cookieAuth`、HTTP `bearerAuth`、`ticketAuth`), error codes, and pagination parameters, and CI MUST run a generation-diff check so the committed document cannot drift from route/schema definitions. Each operation that accepts `bearerAuth` declares `x-required-scope`, and CI MUST validate every such value against `TokenScope`; session-only and `ticketAuth`-only operations (`authSession`、`authLogout`、`authChangePassword`、`eventsWebSocket`) declare no scope and are covered by an explicit CI allowlist.
 - Inputs: 构建时的路由与 schema 定义。
 - Outputs: 可被客户端生成器读取的 OpenAPI 文件；运行时 `/api/v1/openapi.json` 可获取同一契约；重新生成产生非空 diff 时契约作业失败。
 
 ### REQ-API-003
 
-- The server host MUST require authentication for every endpoint outside the `public allowlist`, using a login-created session or a scoped API token, and MUST declare a deterministic status-code contract: every protected operation declares 401 and 403, every operation addressing an existing resource declares 404, and existing 409/422 semantics are preserved.
+- The server host MUST require authentication for every API endpoint outside the `public allowlist`, using a login-created session or a scoped API token, and MUST declare a deterministic status-code contract: every protected operation declares 401 and 403, every operation addressing an existing resource declares 404, and existing 409/422 semantics are preserved. Same-origin static Web UI assets (login page, bundles) are served without authentication but are not part of the API allowlist.
 - Precedence: 认证先于授权与资源存在性判定；无会话或无效凭据一律返回 401，不得因目标不存在而改成 404；已认证但缺少所需 scope 时返回 403，且在检查资源存在性之前判定，避免用 403/404 差异枚举资源；已授权但目标不存在时返回 404。软删除档案对启动或会改变档案的写操作返回 409 `PROFILE_DELETED`；restore、purge、读取与删除重试仍可用；已 purge 的档案与从未存在的 ID 返回 404 `PROFILE_NOT_FOUND`。
 - Inputs: 登录凭据、Cookie、Bearer Token、`ticket`、请求路径。
 - Outputs: 公开端点无认证可用；受保护端点认证成功时返回资源；缺失或无效认证返回 401；scope 不足返回 403；资源不存在返回 404；健康与版本发现端点只暴露最小信息。
@@ -54,7 +54,7 @@
 - The system MUST hash API tokens at rest, support revocation and last-used tracking, and MUST enforce token scopes on every operation. Scopes are the `TokenScope` enum; HTTP Bearer authenticates the token and each operation declares its required scope with `x-required-scope`, which CI validates against that enum. No OAuth2 token exchange endpoint is introduced; token creation MUST NOT grant scopes the creator does not hold.
 - One-time secrets: `TokenCreated.token` is response-only; `EventTicket.ticket` is returned once and may only be submitted through the WebSocket `ticketAuth` query parameter. Neither may be a request-body field, be logged, be echoed, or be replayed by an idempotent retry; access logs must redact the ticket query parameter.
 - Inputs: Token 创建、Token 值、请求操作、Token 记录、scope 声明。
-- Outputs: 明文 Token 只在创建响应中出现一次；数据库只存展示前缀与 HMAC 哈希，前缀不能用于认证；撤销后立即失效；越权操作返回 403；请求体中出现一次性秘密字段被视为无效请求。
+- Outputs: 明文 Token 只在创建响应中出现一次；数据库只存展示前缀与 HMAC 哈希，前缀不能用于认证；撤销后立即失效；越权操作返回 403；所有请求体 schema 声明 `additionalProperties: false`，请求体出现 `token`/`ticket` 等一次性秘密字段时返回 422 `VALIDATION_FAILED`。
 
 ### REQ-API-006
 
@@ -147,7 +147,7 @@
 - The system MUST expose profile export and import as `POST /api/v1/profiles/{profile_id}/export`, `POST /api/v1/profiles/import/validate` and `POST /api/v1/profiles/import`, matching the request/response shapes and payload semantics defined by `profile-management`.
 - Inputs: `ProfileExportRequest`、`ProfileImportInput`、CSRF Token 或 Bearer Token、`profiles.read`/`profiles.write` scope。
 - Outputs: 导出返回 `ProfileExportEnvelope`；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止，且不得出现在 URL、查询串、日志、审计或错误消息；明文 `payload` 遵循 `profile-export.schema.json`；加密 `payload` 是不透明、带版本号的容器，使用 Argon2id 派生密钥与认证加密，envelope 版本参与 AAD。
-- Import: `import/validate` 是 dry-run，不写行、不建目录，返回逐项草稿/errors/冲突；`import` 返回 `ProfileImportResult`，档案冲突以导出项 `source_profile_id` 匹配 `profiles.import_source_id` 或现有 `profiles.id`，分组/标签冲突按名称匹配；`conflict_strategy=new_id` 分配新档案 ID 并保留 `import_source_id`，`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`。
+- Import: `import/validate` 是 dry-run，不写行、不建目录，返回逐项草稿/errors/冲突；`import` 仅在整批提交成功时返回 `ProfileImportResult`（`status` 恒为 `imported`），任一写入失败时回滚全部行与目录并返回 422 `VALIDATION_FAILED` 或 409 `PROFILE_IMPORT_CONFLICT`，不返回 `ProfileImportResult`；档案冲突以导出项 `source_profile_id` 匹配 `profiles.import_source_id` 或现有 `profiles.id`，分组/标签冲突按名称匹配；`conflict_strategy=new_id` 分配新档案 ID 并保留 `import_source_id`，`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`。
 - Redaction: 导出中的代理只含 `credential_fields` 名称与非秘密 `options`，`credentials_removed=true`；秘密键被拒绝；导出不包含顶层 `runtime.window`，窗口尺寸只在指纹规格内。
 
 ### REQ-API-021

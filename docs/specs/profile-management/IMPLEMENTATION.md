@@ -21,10 +21,32 @@
 ## Remaining Gaps
 
 - 档案 CRUD、分页、分组标签、导入导出、路径安全和脱敏均未实现。
-- 导入仍缺 `POST /api/v1/profiles/import/validate` 的零写入 dry-run、逐项 `ProfileImportResult`、`new_id|abort` 冲突策略，以及加密导出/导入的 Argon2id 密钥派生与信封版本。
+- 导入仍缺 `POST /api/v1/profiles/import/validate` 的零写入 dry-run 与逐项预览（draft/errors/conflict）；`ProfileImportResult` 只属于 commit 端点、`new_id|abort` 冲突策略，以及加密导出/导入的 Argon2id 密钥派生与信封版本。
 - 生命周期仍缺 `trash/<id>` 迁移、从回收站恢复、`permanent=true` 先删目录后删行、`deletion_error` 持久化与重试入口。
 - 未落地每档案 `downloads` 目录绑定、`copy_fingerprint=true` 新种子派生、顶层 `window` 字段移除和每档案内核迁移（预检/审计/回滚）。
 - 数据库迁移工具按 sqlx 方案落地；API 错误码与 OpenAPI 已建立，待实现后补齐迁移与契约测试。
+
+## Verification Status
+
+实现开始前逐项记录状态；`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须只对 `pending` 放行。
+
+| VER | 状态 | 计划命令与 fixture |
+| --- | --- | --- |
+| `VER-PROFILE-001` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-002` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-003` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-004` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-005` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-006` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-007` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-008` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-009` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-010` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-011` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-012` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-013` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-014` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
+| `VER-PROFILE-015` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
 
 ## Related Changes
 

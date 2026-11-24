@@ -50,7 +50,7 @@
 | 发布环境 | release environment | GitHub Actions 中受保护的 environment，要求人工批准并限制 release secrets 的使用。 |
 | 制品证明 | artifact attestation | 由构建平台生成的制品来源与完整性证明，用于补充 SHA-256 和 GitHub Release 的信任链；属必选发布门禁，不因仓库计划或环境决策跳过。 |
 | 发布目标 | release target | 维护者提供的单个输入，可为 `patch`、`minor`、`major` 或 explicit `X.Y.Z`；由 workflow 解析为 canonical version。 |
-| 可信基线 | trusted baseline | 所有 `vX.Y.Z` tag 与 GitHub Release（含 prerelease 与已作废版本）中的最大 SemVer，用于版本单调性判断；已作废版本仍占用其版本号，若任何已有 tag 或 release 大于等于目标版本，则发布失败关闭。 |
+| 可信基线 | trusted baseline | 所有 `vX.Y.Z` tag 与 GitHub Release（含 draft、prerelease 与已作废版本）中的最大 SemVer，用于版本单调性判断；已作废版本仍占用其版本号。除当前 identity 的完整匹配对象外，任何已有 tag 或 release 大于等于目标版本时发布失败关闭。 |
 | 发布预留 | release reservation | 构建前创建的 durable claim，绑定 canonical version、source SHA、policy 和 reservation ID；本项目使用 draft GitHub Release；重跑以预留的 `source_sha` 为准。 |
 | 发布标识 | release identity | canonical version、source SHA、policy、reservation、artifact digest 和 publication target 的组合。 |
 | VLESS | VLESS | 基于用户 ID 的轻量代理协议，常与 TLS、REALITY、WebSocket 或 gRPC 组合。 |

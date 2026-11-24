@@ -35,7 +35,7 @@ mien-cli     ─┘
 - `RuntimeState`：`Stopped`、`Starting`、`Running`、`Stopping`、`Crashed`、`Failed`。
 - 合法转移：`Stopped → Starting`、`Starting → Running|Stopping|Failed`、`Running → Stopping`、`Stopping → Stopped|Failed|Crashed`、`Crashed → Starting|Stopped`、`Failed → Starting|Stopped`。`Starting → Stopping` 用于 cancel 或 post-resource 失败清理，`Running → Stopping` 用于 stop、内核退出或共享引擎故障；`Starting → Failed` 只用于 pre-resource 失败，`Stopping → Failed` 只在 post-resource 启动失败或引擎失败且 teardown 完成后进入，`Stopping → Crashed` 只在内核退出且 teardown 完成后进入；teardown 失败保留 `Stopping` 与 `last_error` 并重试；`Failed → Starting` 仅用于用户显式重试。任何终态都不得存在活内核、入站、规则或计入引用计数的出站。
 - `ProfileStatus`：`Active`、`Archived`、`Deleted`，对外序列化为 `active`/`archived`/`deleted`；`Deleted` 必须携带 `deleted_at`，永久删除失败时携带 `deletion_error` 并保持 `Deleted`；软删除目录移动失败时原状态可携带 `deletion_error` 供重试；`Deleted` 不能启动。
-- `Isolation`：`Enforced`、`Unsandboxed`、`Unknown`，对外序列化为 `enforced`、`unsandboxed`、`unknown`；每次启动由沙箱探测写入 `runtimes.isolation`，是 proof strip 的唯一数据源。成功启动只能是 `Enforced` 或服务端显式授权的 `Unsandboxed`；`Unknown` 只用于没有成功运行时记录或历史迁移行。
+- `Isolation`：`Enforced`、`Unsandboxed`、`Unknown`，对外序列化为 `enforced`、`unsandboxed`、`unknown`；每次启动由沙箱探测写入 `runtimes.isolation`，成功结论同时写入 `runtimes.last_known_isolation`，后者才是 proof strip 与 `Profile.isolation` 的唯一数据源。成功启动只能是 `Enforced` 或服务端显式授权的 `Unsandboxed`；`Unknown` 只用于没有成功运行时记录或历史迁移行。
 - `SandboxKind`：`Namespace`、`Seatbelt`、`Win32RestrictedToken`、`None`，来自内核能力清单 `sandbox_kind`；`None` 表示构件没有内核级沙箱，桌面端必须返回 `SANDBOX_UNAVAILABLE`，服务端只有显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才按 `isolation=unsandboxed` 启动并审计；Windows 普通渲染进程不使用 AppContainer。
 - `RunMode`：`Headful`、`Headless`、`PseudoHeadful`；对外序列化为 `headful`、`headless`、`pseudo_headful`。
 - `ProxyConfig`：`Http`、`Https`、`Socks5`、`Vless`、`Vmess`、`Shadowsocks`、`Trojan`、`Hysteria2`、`Wireguard` 的 tagged enum；秘密字段使用 `SecretString`，`Debug` 输出必须脱敏。TUIC 不进入 v1。
@@ -96,9 +96,9 @@ pub trait EventSink {
 3. 获取档案级 actor 锁；已有启动/停止操作时按幂等语义返回。
 4. 获取全局运行时配额；检查可用内存、磁盘和并发上限。
 5. 校验指纹规格（含窗口尺寸，唯一来源）、代理配置、内核与协议引擎能力清单；`pseudo_headful` 还要求 `headless_chrome_ua_patch=true`。
-6. 校验内核与引擎可执行文件的 `binary_sha256`（不是清单资产摘要）；失败则不创建任何临时资源。
-7. 在事务内写入 `runtimes(state=starting, isolation=unknown)` 并发布 `runtime.starting`；此后任何失败都能被对账发现。
-- 8. 沙箱验证：按内核清单 `sandbox_kind` 探测实际生效状态，得出 `isolation=enforced`；任何宿主无法确认且未启用服务端 `ALLOW_UNSANDBOXED=1` 时返回 `SANDBOX_UNAVAILABLE`，不创建代理资源、不启动进程。服务端显式无沙箱还必须通过包含性探针与独立 UID/网络边界，之后写 `isolation=unsandboxed` 并审计；桌面无法确认 seatbelt/restricted-token 时直接返回 `SANDBOX_UNAVAILABLE`，不存在桌面无沙箱例外。通过后立即持久化 `isolation`。
+6. 在事务内写入 `runtimes(state=starting)` 并发布 `runtime.starting`，保留 `last_known_isolation` 中上一次成功结论；此后任何失败都能被对账发现。
+7. 校验内核与引擎可执行文件的 `binary_sha256`（不是清单资产摘要）；失败则不创建任何临时资源，按 `starting -> failed` 写回。
+8. 沙箱验证：按内核清单 `sandbox_kind` 探测实际生效状态，得出 `isolation=enforced`；任何宿主无法确认且未启用服务端 `ALLOW_UNSANDBOXED=1` 时返回 `SANDBOX_UNAVAILABLE`，不创建代理资源、不启动进程。服务端显式无沙箱还必须通过包含性探针与独立 UID/网络边界，之后写 `isolation=unsandboxed` 并审计；桌面无法确认 seatbelt/restricted-token 时直接返回 `SANDBOX_UNAVAILABLE`，不存在桌面无沙箱例外。通过后立即持久化 `isolation` 并同步写入 `last_known_isolation`。任何失败路径只保留 `starting` 行的本次结论，不得覆盖 `last_known_isolation`。
 9. 代理模式：分配回环代理端口；确保共享 Xray 引擎运行并连接 gRPC 管理 API；断言 blackhole 是第一个出站；计算 `outbound_key`，添加或复用出站并增加引用计数；添加带稳定 `ruleTag` 的入站和路由（`shouldAppend=true`）。直接模式跳过本步骤。
 10. 生成内核 argv；代理模式注入 `--proxy-server=http://127.0.0.1:<proxy_port>` 并应用 DoH/IPv6/非代理 UDP 防护参数；直接模式不注入代理参数，也不声称代理级远程 DNS/失败关闭保证，但仍应用内核支持的 `webrtc`/`network` 标志并记录降低保证；子进程 `env_clear` 后只注入白名单环境。
 - 11. 启动内核；自动化开启时等待 `DevToolsActivePort`，关闭时等待进程存活、代理模式下入站就绪（直连模式跳过入站条件）和有界启动宽限。
@@ -169,7 +169,7 @@ pub trait EventSink {
 | 变量 | 默认 | 作用 |
 | --- | --- | --- |
 | `MIEN_DATA_DIR` | 平台数据目录或 `/data` | 数据库、档案、内核、引擎和日志根 |
-| `MIEN_BIND` | 服务端 `127.0.0.1:8080`；桌面未设置 | 服务端控制面监听地址；桌面不监听；Docker 需要对外发布时显式设为 `0.0.0.0:8080` 并同时设置 `MIEN_PUBLIC_URL` |
+| `MIEN_BIND` | 裸机服务端 `127.0.0.1:8080`；Docker 镜像 `0.0.0.0:8080`；桌面未设置 | 服务端控制面监听地址；桌面不监听；容器内监听回环无法被 `docker run -p` 到达，因此 Docker 默认非回环并强制 `MIEN_PUBLIC_URL`；裸机对外发布时显式设为非回环并同时设置 `MIEN_PUBLIC_URL` |
 | `MIEN_DESKTOP_AUTOMATION_BIND` | 未设置 | 桌面可选自动化地址；显式设置后才监听，且必须是 `127.0.0.1`/`::1`，非回环值启动失败 |
 | `MIEN_MASTER_KEY` | 无 | 服务端主密钥；未提供时使用 `/data/secrets/master.key` |
 | `MIEN_ADMIN_PASSWORD` | 无 | 首次启动管理员密码引导值；与 `MIEN_ADMIN_PASSWORD_FILE` 二选一；两者都未提供时生成密码写入 `<data-root>/secrets/admin-bootstrap` |
@@ -190,7 +190,7 @@ macOS 使用 `~/Library/Application Support/Mien` 与 `~/Library/Logs/Mien`；Do
 
 - SQLite 开启 WAL、外键、`busy_timeout=5000`；写入使用短事务。
 - 迁移正向执行、版本化、不可变；不提供自动降级。迁移前创建数据库备份，失败时保持原库可打开。
-- 迁移文件只增不改；开发期变更通过新迁移完成。本版本需要：回填后删除 `profiles.window_json`（回填步骤见 DATABASE-SCHEMA §5），新增 `profiles.deletion_error`、`runtimes.isolation`、`admin_credentials`、安装表的 `asset_sha256`/`binary_sha256` 与 `idx_profile_tags_tag`。
+- 迁移文件只增不改；开发期变更通过新迁移完成。本版本需要：回填后删除 `profiles.window_json`（回填步骤见 DATABASE-SCHEMA §5），新增 `profiles.deletion_error`、`runtimes.isolation`、`runtimes.last_known_isolation`、`admin_credentials`、安装表的 `asset_sha256`/`binary_sha256` 与 `idx_profile_tags_tag`。
 - 敏感字段以 AES-256-GCM 加密；密文包含版本、nonce 和 AAD（记录标识 + 字段名）。
 - `event_log` 按 7 天或 100 MB 清理；`idempotency_keys` 保留 24 小时；`sessions` 按过期时间清理。
 - 关闭时执行 WAL checkpoint；异常退出后启动时检查数据库完整性并清理临时文件。

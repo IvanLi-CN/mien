@@ -37,11 +37,22 @@
       },
       "allOf": [
         {
-          "properties": {
-            "fingerprint-hardware-concurrency": {
-              "required": ["per_platform_values"]
+          "anyOf": [
+            {
+              "properties": {
+                "fingerprint-hardware-concurrency": {
+                  "required": ["per_platform_values"]
+                }
+              }
+            },
+            {
+              "properties": {
+                "fingerprint-hardware-concurrency": {
+                  "required": ["values"]
+                }
+              }
             }
-          }
+          ]
         }
       ]
     },

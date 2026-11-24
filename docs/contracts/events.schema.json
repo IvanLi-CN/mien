@@ -369,7 +369,6 @@
           "type": {
             "enum": [
               "profile.created",
-              "profile.updated",
               "profile.archived",
               "profile.restored",
               "profile.duplicated",
@@ -580,7 +579,8 @@
             "state",
             "mode",
             "isolation",
-            "direct"
+            "direct",
+            "reduced_assurance"
           ],
           "properties": {
             "runtime_id": {
@@ -672,12 +672,62 @@
                 }
               },
               "then": {
-                "required": [
-                  "reduced_assurance"
-                ],
                 "properties": {
                   "reduced_assurance": {
                     "const": true
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "isolation": {
+                    "not": {
+                      "const": "enforced"
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "reduced_assurance": {
+                    "const": true
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "headless",
+                      "pseudo_headful"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "reduced_assurance": {
+                    "const": true
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "pseudo_headful"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "ua_scope": {
+                    "const": "chrome"
                   }
                 }
               }
@@ -1005,7 +1055,32 @@
             ]
           }
         }
-      ]
+      ],
+      "not": {
+        "description": "Reject share links, capability URLs, bearer tokens and raw UUIDs even when the key name looks harmless.",
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "(?:vless|vmess|ss|ssr|trojan|hysteria2|hy2|wireguard|wg)://"
+          },
+          {
+            "type": "string",
+            "pattern": "[Bb]earer\\s+[A-Za-z0-9._~+/=-]+"
+          },
+          {
+            "type": "string",
+            "pattern": "(?:ticket|token|key|signature|sig)=[A-Za-z0-9._~-]+"
+          },
+          {
+            "type": "string",
+            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+          },
+          {
+            "type": "string",
+            "pattern": "https?://(?:127\\.0\\.0\\.1|localhost|\\[::1\\])(?::[0-9]+)?/(?:json|devtools|api/v1/events)"
+          }
+        ]
+      }
     },
     "authEvent": {
       "properties": {

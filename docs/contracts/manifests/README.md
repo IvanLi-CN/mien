@@ -40,7 +40,7 @@
 | 发行包摘要不符 | `KERNEL_CHECKSUM_MISMATCH` | `PROXY_ENGINE_CHECKSUM_MISMATCH` |
 | 可执行文件摘要不符 | `KERNEL_CHECKSUM_MISMATCH` | `PROXY_ENGINE_CHECKSUM_MISMATCH` |
 
-`asset_sha256` 与 `binary_sha256` 同时出现在 OpenAPI 的 `Kernel`/`Engine` 视图和 `kernel_installs`/`proxy_engine_installs` 安装记录中；运行时会话与协议引擎能力清单只消费清单，不反向写入清单。清单本身仍然只携带发行包摘要。
+安装记录 `kernel_installs`/`proxy_engine_installs` 同时保存 `asset_sha256` 与 `binary_sha256`；OpenAPI 的 `Kernel`/`Engine` 视图也暴露两者，但 `binary_sha256` 在可执行文件缺失的迁移记录中为 `null`，此时启动返回 `KERNEL_NOT_FOUND`/`PROXY_ENGINE_NOT_FOUND`，视图不得用 `asset_sha256` 冒充。运行时会话与协议引擎能力清单只消费清单，不反向写入清单；清单本身仍然只携带发行包摘要。
 
 ## 2. 能力字段
 
@@ -51,9 +51,9 @@
 - `type`：`uint32`、`integer`、`string`、`boolean` 之一。
 - `values`：该开关允许的取值集合；缺省表示形式合法即可。
 - `per_platform_values`：按**画像平台**（`windows`、`macos`、`linux`）声明的允许取值集合，用于 CPU 核心数这类按平台受限、且与宿主平台不同的字段。三个平台键都必须存在，且每个数组非空；缺失平台或空数组是无效清单。
-- 当 `per_platform_values` 存在时，它是该开关的权威取值来源；`values` 只用于没有平台差异的开关。消费方不得把两个来源合并成更宽松的集合，以免静默扩大能力。
+- `per_platform_values` 存在时是权威取值来源；不存在时回退到 `values`，但两者不得合并成更宽松的集合。CPU 核心数开关必须至少提供其中一个来源；schema 要求 `fingerprint-hardware-concurrency` 同时满足“有 `per_platform_values`”或“有 `values`”之一。
 
-`window-size`（`type: string`，`WIDTH,HEIGHT`）在所有平台清单中声明，schema 把 `flags.window-size` 设为必填、类型固定为 `string`，并要求非空 `values` 候选集合；缺失或空集合都使清单无效。消费方只能接受集合内值，不能从 UI 预设另造集合。窗口尺寸属于指纹规格的规范字段，**不是屏幕分辨率**：屏幕尺寸、`devicePixelRatio`、颜色深度和字体枚举仍是宿主绑定特征，不由清单或规格伪造（REQ-FP-010）。
+`window-size`（`type: string`，`WIDTH,HEIGHT`）在所有平台清单中声明，schema 把 `flags.window-size` 设为必填、类型固定为 `string`，并要求非空 `values` 候选集合；缺失或空集合都使清单无效。该候选集合就是 UI 与服务端校验唯一接受的窗口尺寸来源。消费方只能接受集合内值，不能从 UI 预设另造集合。窗口尺寸属于指纹规格的规范字段，**不是屏幕分辨率**：屏幕尺寸、`devicePixelRatio`、颜色深度和字体枚举仍是宿主绑定特征，不由清单或规格伪造（REQ-FP-010）。
 
 语言与时区同样走清单校验：清单声明限制集合时按其校验，未声明时按 BCP-47 与 IANA 规则校验。任何清单外的字段、取值或不生效开关都必须被拒绝，不得静默丢弃（REQ-FP-009）。
 
@@ -100,7 +100,7 @@
 | `basic` | HTTP、HTTPS、SOCKS5 | 基础正向代理能力，支持用户名密码与远程 DNS，不参与 Tier A/B 门禁 |
 
 - WireGuard 为 Tier B：`transports` 仅 `udp`、`tls_modes` 仅 `none`，需要 UDP 出站与独立端到端验证；失败时必须报错，不得降级到其他协议或直连。
-- Hysteria2 为 Tier B：需要 UDP 出站；Docker 部署还需要容器 UDP 许可，macOS 部署只需要宿主 UDP 出口。`obfuscation` 必须显式声明；Xray v26.11.9 声明为空，含混淆参数的配置必须拒绝，不得默认存在。
+- Hysteria2 为 Tier B：需要 UDP 出站；Docker 部署还需要容器 UDP 许可，macOS 部署只需要宿主 UDP 出口。`obfuscation` 必须显式声明；省略等价于空数组，但发布清单不得省略。Xray v26.11.9 声明为空，含混淆参数的配置必须拒绝，不得默认存在。
 - TUIC 不进入 v1，不得出现在任何清单中。
 - `connection_reuse: true` 表示 Xray 支持 mux/原生 QUIC 连接复用；具体协议组合与共享出站行为仍需 M0 runtime spike 确认。
 
