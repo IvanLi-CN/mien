@@ -1,0 +1,94 @@
+# Tauri host supply-chain policy. Kept separate because its dependency graph is not the workspace graph.
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "warn"
+unused-ignored-advisory = "deny"
+ignore = [
+  # id: RUSTSEC-2026-0009 | package: time 0.3.45 | class: vulnerability
+  # reach: Mien uses UTC time and serialization; it does not parse untrusted RFC2822 input；owner: T6
+  # 解除条件: time 0.3.47 (requires Rust 1.88; update MSRV under T6)
+  "RUSTSEC-2026-0009",
+  # id: RUSTSEC-2026-0194 | package: quick-xml 0.38.4 (via plist 1.8.0) | class: vulnerability
+  # reach: Tauri reads the app's own Info.plist during packaging; it does not parse untrusted XML；owner: T6
+  # 解除条件: plist 1.10.4 + quick-xml 0.42.0 (requires Rust 1.88; update MSRV under T6)
+  "RUSTSEC-2026-0194",
+  # id: RUSTSEC-2026-0195 | package: quick-xml 0.38.4 (via plist 1.8.0) | class: vulnerability
+  # reach: Tauri reads the app's own Info.plist during packaging; it does not parse untrusted XML；owner: T6
+  # 解除条件: plist 1.10.4 + quick-xml 0.42.0 (requires Rust 1.88; update MSRV under T6)
+  "RUSTSEC-2026-0195",
+  # id: RUSTSEC-2024-0370 | package: proc-macro-error 1.0.4 | class: unmaintained
+  # reach: Tauri's GTK proc-macro dependency tree; compile-time dependency only；owner: T6
+  # 解除条件: no patched version; no MSRV impact; T6 to remove or replace the Tauri GTK dependency path
+  "RUSTSEC-2024-0370",
+  # id: RUSTSEC-2025-0075 | package: unic-char-range 0.9.0 | class: unmaintained
+  # reach: Tauri urlpattern dependency tree; compile-time URL pattern support only；owner: T6
+  # 解除条件: no patched version; no MSRV impact; T6 to remove the upstream unic path when Tauri updates
+  "RUSTSEC-2025-0075",
+  # id: RUSTSEC-2025-0080 | package: unic-common 0.9.0 | class: unmaintained
+  # reach: Tauri urlpattern dependency tree; compile-time URL pattern support only；owner: T6
+  # 解除条件: no patched version; no MSRV impact; T6 to remove the upstream unic path when Tauri updates
+  "RUSTSEC-2025-0080",
+  # id: RUSTSEC-2025-0081 | package: unic-char-property 0.9.0 | class: unmaintained
+  # reach: Tauri urlpattern dependency tree; compile-time URL pattern support only；owner: T6
+  # 解除条件: no patched version; no MSRV impact; T6 to remove the upstream unic path when Tauri updates
+  "RUSTSEC-2025-0081",
+  # id: RUSTSEC-2025-0098 | package: unic-ucd-version 0.9.0 | class: unmaintained
+  # reach: Tauri urlpattern dependency tree; compile-time URL pattern support only；owner: T6
+  # 解除条件: no patched version; no MSRV impact; T6 to remove the upstream unic path when Tauri updates
+  "RUSTSEC-2025-0098",
+  # id: RUSTSEC-2025-0100 | package: unic-ucd-ident 0.9.0 | class: unmaintained
+  # reach: Tauri urlpattern dependency tree; compile-time URL pattern support only；owner: T6
+  # 解除条件: no patched version; no MSRV impact; T6 to remove the upstream unic path when Tauri updates
+  "RUSTSEC-2025-0100",
+]
+
+[licenses]
+allow = [
+  "Apache-2.0",
+
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "MPL-2.0",
+]
+confidence-threshold = 0.93
+exceptions = [
+  # TECH-STACK.md §5 permits Unicode-3.0; Apache-2.0 WITH LLVM-exception is Apache-derived.
+  { crate = "target-lexicon", allow = ["Apache-2.0 WITH LLVM-exception"] },
+  { crate = "unicode-ident", allow = ["MIT", "Apache-2.0", "Unicode-3.0"] },
+  # TECH-STACK.md §5 explicitly permits Unicode-3.0; Tauri's URL parser requires it transitively.
+  { crate = "icu_collections", allow = ["Unicode-3.0"] },
+  { crate = "icu_locale_core", allow = ["Unicode-3.0"] },
+  { crate = "icu_normalizer", allow = ["Unicode-3.0"] },
+  { crate = "icu_normalizer_data", allow = ["Unicode-3.0"] },
+  { crate = "icu_properties", allow = ["Unicode-3.0"] },
+  { crate = "icu_properties_data", allow = ["Unicode-3.0"] },
+  { crate = "icu_provider", allow = ["Unicode-3.0"] },
+  { crate = "litemap", allow = ["Unicode-3.0"] },
+  { crate = "potential_utf", allow = ["Unicode-3.0"] },
+  { crate = "tinystr", allow = ["Unicode-3.0"] },
+
+  { crate = "writeable", allow = ["Unicode-3.0"] },
+  { crate = "yoke", allow = ["Unicode-3.0"] },
+  { crate = "yoke-derive", allow = ["Unicode-3.0"] },
+  { crate = "zerofrom", allow = ["Unicode-3.0"] },
+  { crate = "zerofrom-derive", allow = ["Unicode-3.0"] },
+  { crate = "zerotrie", allow = ["Unicode-3.0"] },
+  { crate = "zerovec", allow = ["Unicode-3.0"] },
+  { crate = "zerovec-derive", allow = ["Unicode-3.0"] },
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow"
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

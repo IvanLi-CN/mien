@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+
+members = ["crates/mien-core", "xtask"]
+exclude = ["src-tauri", "dist"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+mien-core = { path = "crates/mien-core" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate"] }
+tauri = "2"
+tauri-build = "2"
+
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

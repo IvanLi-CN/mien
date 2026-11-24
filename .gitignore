@@ -1,0 +1,28 @@
+/target/
+**/node_modules/
+/dist/
+/src-tauri/gen/
+
+# 数据目录与运行时产物
+/data/
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# fixture 缓存：按 SHA-256 下载，不提交
+/fixtures/.cache/
+/fixtures/.tmp/
+
+# 本机环境
+.env
+.env.*
+!.env.example
+
+# 工具与系统
+.DS_Store
+*.swp
+coverage/
+test-results/
+playwright-report/
+/.impeccable/

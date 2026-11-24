@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* 设计令牌以 DESIGN.md 为源；骨架只放最小可渲染值，视觉细化归 T9-E。 */
+@theme {
+  --color-bg: oklch(0.16 0.006 265);
+  --color-surface: oklch(0.21 0.008 265);
+  --color-fg: oklch(0.96 0.002 265);
+  --color-muted: oklch(0.68 0.008 265);
+  --color-border: oklch(0.32 0.008 265);
+  --color-accent: oklch(0.72 0.13 250);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    transition-duration: 0.01ms;
+  }
+}
