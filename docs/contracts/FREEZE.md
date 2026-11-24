@@ -1,8 +1,8 @@
 # Mien contract freeze
 
 - Freeze version: `M0-contract-freeze`
-- Contract freeze change commit: `db764e236b45adf9ee6bb20a076c5198cd89c115`.
-- Generated at: `2026-11-24T23:06:10Z` (UTC).
+- Freeze identity: `M0-contract-freeze` (authoritative validation is the digest table below and `contracts:check`).
+- Generated at: `2026-11-24T23:37:37Z` (UTC).
 
 ## Frozen files and digests
 
@@ -24,8 +24,16 @@ The `contracts:check` job computes SHA-256 digests for the frozen source files a
 | `docs/UI-SURFACES.md` | `fadcd599db8d6429d2942d584af144c100d5417d4101d439ac4dd83c9d88917e` |
 | `docs/TEST-FIXTURES.md` | `29d2335339ffa860e3afad0039b4db8576328d1d0507293d93082776d9aaa67e` |
 | `deploy/docker/seccomp/chromium.json` | `43cf666b8a0eb6490dc623e8ea49758146fc5cd6233ac38b16b181146fdfcfd` |
+| `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-linux-x86_64.json` | `38881280438f8115dd91617d34828d3acfe1dfc4ad6208f692ae19e2cc979a64` |
+| `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-macos-arm64.json` | `b1382beafc17a8c5b7d35e6e90d3f4445a335fd46f5b02466358f5c03f10602b` |
+| `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-windows-x64.json` | `2fe183dd6de230052b06e013f1294d7c2fc4e553c464f83f3eac9cc8e82f2c1f` |
+| `docs/contracts/manifests/xray-core-v26.11.9-linux-x86_64.json` | `70ca1cdc538445583ecc2bd4503e299de8c1b82dd672e229edde57cde8693bbd` |
+| `docs/contracts/manifests/xray-core-v26.11.9-macos-arm64.json` | `81fd9c5a2792bb2dd0f5622020ceee89c6d4d5eb6fde0a1d8306f7c5eadf8568` |
+| `deploy/docker/seccomp/PROVENANCE.json` | `8976516beef891faa01eb41c9823c9fa30e8c8ae2a3ca76b3143f6e1520cfd2b` |
+| `deploy/docker/seccomp/artifacts/moby-profiles-a0fa7080-default.json` | `3320527d4568265ac97a077609b1bfd4cfd0d789eeb9239b7e094b1526675406` |
+| `docs/contracts/generated/openapi.d.ts` | `d2217065066617625ca20665d99d4e664d6cac2c6cd11704560281e2dab6de65` |
 
-Digest table above covers individual files; `docs/contracts/manifests/` and `deploy/docker/seccomp/` directories are additionally checked by `contracts:check` for schema validity, structure and provenance.
+`contracts:check` additionally validates the manifest and seccomp directory structure and provenance.
 
 ## Evidence applied
 
