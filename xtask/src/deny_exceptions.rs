@@ -156,7 +156,7 @@ fn validate_exception(
     let id_line = lines[index - 3].trim();
     let reach_line = lines[index - 2].trim();
     let resolution_line = lines[index - 1].trim();
-    let metadata = parse_id_line(id_line, id, lockfile_path)?;
+    let metadata = parse_id_line(id_line, id)?;
     if !reach_line.starts_with("# reach: ") || !reach_line.ends_with(OWNER) {
         bail!("deny.toml ignore `{id}` needs a `# reach: ...{OWNER}` comment immediately above it");
     }
@@ -214,7 +214,7 @@ struct Metadata {
     class: String,
 }
 
-fn parse_id_line(line: &str, expected_id: &str, _lockfile_path: &Path) -> anyhow::Result<Metadata> {
+fn parse_id_line(line: &str, expected_id: &str) -> anyhow::Result<Metadata> {
     let body = line
         .strip_prefix("# id: ")
         .with_context(|| format!("deny.toml ignore `{expected_id}` lacks its `# id` metadata"))?;
