@@ -1,0 +1,13 @@
+{
+  "schema_ref": "../../docs/DATABASE-SCHEMA.md#2-ddl",
+  "scenario": "empty-database",
+  "database": "sqlite",
+  "expected": {
+    "migration_version": 1,
+    "tables": ["schema_migrations"],
+    "migration": {
+      "version": 1,
+      "name": "initial schema"
+    }
+  }
+}

@@ -95,7 +95,11 @@ pub fn run(root: &Path) -> anyhow::Result<()> {
         "cargo",
         &["run", "-q", "-p", "xtask", "--", "contracts"],
     )?;
-
+    run_step(
+        root,
+        "cargo",
+        &["run", "-q", "-p", "xtask", "--", "fixtures", "verify"],
+    )?;
     web(root)
 }
 
