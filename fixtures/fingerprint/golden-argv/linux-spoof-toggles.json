@@ -1,0 +1,34 @@
+{
+  "schema_ref": "../../docs/contracts/fingerprint-spec.schema.json",
+  "case": "linux-spoof-toggles",
+  "spec": {
+    "schema_version": 1,
+    "seed": 420042,
+    "platform": "linux",
+    "platform_version": "6.8",
+    "brand": "Vivaldi",
+    "brand_version": "6.9.3447.54",
+    "hardware_concurrency": 4,
+    "languages": ["zh-CN", "en"],
+    "timezone": "Asia/Shanghai",
+    "window": {"width": 1024, "height": 768},
+    "spoof": {"font": false, "canvas": false, "gpu": false},
+    "webrtc": {"disable_non_proxied_udp": true},
+    "network": {"doh_mode": "disabled", "ipv6_mode": "block"}
+  },
+  "expected_argv": [
+    "--fingerprint-seed=420042",
+    "--platform=linux",
+    "--platform-version=6.8",
+    "--brand=Vivaldi",
+    "--brand-version=6.9.3447.54",
+    "--hardware-concurrency=4",
+    "--lang=zh-CN,en",
+    "--timezone=Asia/Shanghai",
+    "--window-size=1024,768",
+    "--disable-spoofing=font,canvas,gpu",
+    "--disable-non-proxied-udp",
+    "--disable-doh",
+    "--block-ipv6"
+  ]
+}

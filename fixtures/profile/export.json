@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-01-15T12:00:00Z",
+  "profiles": [
+    {
+      "source_profile_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      "name": "fixture-profile",
+      "kernel_version": "148.0.7778.215",
+      "fingerprint": {
+        "schema_version": 1,
+        "seed": 148001,
+        "platform": "macos",
+        "platform_version": "14.5",
+        "brand": "Chrome",
+        "brand_version": "148.0.7778.215",
+        "hardware_concurrency": 8,
+        "languages": ["en-US", "en"],
+        "timezone": "America/Los_Angeles",
+        "window": {"width": 1280, "height": 720},
+        "webrtc": {"disable_non_proxied_udp": true},
+        "network": {"doh_mode": "disabled", "ipv6_mode": "block"}
+      },
+      "runtime": {"mode": "headful", "automation_api": false}
+    }
+  ]
+}

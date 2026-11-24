@@ -1,0 +1,32 @@
+{
+  "schema_ref": "../../docs/contracts/fingerprint-spec.schema.json",
+  "case": "macos-headful-default",
+  "spec": {
+    "schema_version": 1,
+    "seed": 148001,
+    "platform": "macos",
+    "platform_version": "14.5",
+    "brand": "Chrome",
+    "brand_version": "148.0.7778.215",
+    "hardware_concurrency": 8,
+    "languages": ["en-US", "en"],
+    "timezone": "America/Los_Angeles",
+    "window": {"width": 1280, "height": 720},
+    "webrtc": {"disable_non_proxied_udp": true},
+    "network": {"doh_mode": "disabled", "ipv6_mode": "block"}
+  },
+  "expected_argv": [
+    "--fingerprint-seed=148001",
+    "--platform=macos",
+    "--platform-version=14.5",
+    "--brand=Chrome",
+    "--brand-version=148.0.7778.215",
+    "--hardware-concurrency=8",
+    "--lang=en-US,en",
+    "--timezone=America/Los_Angeles",
+    "--window-size=1280,720",
+    "--disable-non-proxied-udp",
+    "--disable-doh",
+    "--block-ipv6"
+  ]
+}
