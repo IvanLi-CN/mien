@@ -18,7 +18,10 @@
       "!src/ui/styles.css",
       "!**/*.rs",
       "!*.config.ts",
-      "!src/vite-env.d.ts"
+      "!src/vite-env.d.ts",
+      "!third-party-report.json",
+      "!NOTICE",
+      "!LICENSES"
     ]
   },
   "formatter": {
