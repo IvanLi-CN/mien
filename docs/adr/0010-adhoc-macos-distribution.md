@@ -12,7 +12,7 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 
 ## 决策
 
-- macOS 应用、嵌套的 fingerprint-chromium 及其全部 helper 可执行文件、Xray-core 和 frameworks 使用 AdHoc 签名，并启用 hardened runtime。JIT entitlements 传给应用、Chromium 内核以及每个 renderer/GPU/utility helper：`codesign --force --sign - --timestamp=none --options runtime --entitlements mien-desktop/entitlements.plist`；Xray-core 与 frameworks 使用同一 AdHoc 签名但不带 JIT 权限。
+- macOS 应用、嵌套的 fingerprint-chromium 及全部 helper、Xray-core 和 frameworks 使用 AdHoc 签名及 hardened runtime。JIT entitlements 只传给应用、内核和 renderer/GPU/utility helper；其他 helper 逐个签名但不授 JIT。签名清单必须枚举 bundle 内外每个可执行文件角色，未分类文件阻断打包；Xray/frameworks 不带 JIT。
 - 先逐个签嵌套二进制，再签应用；用 `codesign --verify --deep --strict --verbose=2` 验证结构完整性，用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`。
 - 不执行 `notarytool`、`stapler` 或 Gatekeeper 成功验证。`spctl --assess` 对 AdHoc 应用预期失败，CI 只记录这个预期结果。
 - 发布物提供 `SHA256SUMS`、SBOM、许可证、已知限制和 Tauri 更新清单，并必须为 DMG 和容器 digest 生成 GitHub artifact attestation。
@@ -38,7 +38,7 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 - 自动更新仍可工作，但信任来自 Tauri 更新签名，而不是 Apple 签名；更新密钥成为关键发布资产。
 - GitHub Actions 的 `release` environment、tag 保护、artifact attestation 和发布后校验成为主要发布控制。
 - 发布说明必须包含 Gatekeeper 处理步骤，禁止建议全局关闭 Gatekeeper。
-- 应用、Chromium 内核与全部 helper 的签名命令必须传入 JIT entitlements；遗漏时 `codesign --verify` 仍可能通过，但 hardened runtime 下页面加载或 renderer 启动失败，因此 entitlements 断言必须逐个可执行文件执行并配合真实页面加载。Xray-core 与 frameworks 不得复制 JIT 权限。
+- 应用、Chromium 内核与每个 renderer/GPU/utility helper 必须传入 JIT entitlements，并逐个验证两项权限与真实页面加载；其他 helper 仍须逐个 AdHoc 签名与验证，但与 Xray/frameworks 一样不带 JIT。签名清单必须枚举实际可执行文件及角色，拒绝未分类文件，不能把“全部 helper 均签名”误写成“全部 helper 均授予 JIT”。
 - ADR-0002 允许多个内核版本并存时，bundle 外的内核版本也必须由同一签名步骤签名并携带 JIT entitlements，安装到受控路径；不得写入已签名的 `.app` 内部，否则会破坏 bundle seal。启动前按安装记录校验签名与 entitlements，未签名或权限不符的版本拒绝启动。
 
 ## 验证

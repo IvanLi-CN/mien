@@ -156,15 +156,15 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `groups` | `id`, `name`, `sort_order` | 分组；名称在组内唯一 |
 | `tags` | `id`, `name`, `color` | 标签；名称唯一 |
 | `profile_tags` | `profile_id`, `tag_id` | 多对多；`idx_profile_tags_tag(tag_id)` 支撑按标签筛选 |
-| `proxies` | `id`, `name`, `kind`, `server`, `port`, `config_ciphertext`, `last_check_json`, `created_at`, `updated_at` | 正向代理；`kind` 为 HTTP/SOCKS/VLESS/VMess/Shadowsocks/Trojan/Hysteria2/WireGuard；完整协议选项与凭据加密存储 |
-| `runtimes` | `id`, `profile_id`, `state`, `mode`, `isolation`, `last_known_isolation`, `pid`, `pgid`, `proxy_port`, `proxy_inbound_tag`, `proxy_outbound_key`, `proxy_rule_tag`, `started_at`, `cdp_port`, `exit_code`, `last_error` | 运行态；`state` 为 stopped/starting/running/stopping/crashed/failed；`mode` 为 headful/headless/pseudo_headful；`isolation` 为 `enforced`/`unsandboxed`/`unknown`，驱动 proof strip；共享引擎按这些标签重建入站、出站和路由 |
+| `proxies` | `id`, `name`, `kind`, `server`, `port`, `config_ciphertext`, `last_check_json`, `created_at`, `updated_at` | 独立的全局代理资源；`kind` 为 HTTP/HTTPS/SOCKS5/VLESS/VMess/Shadowsocks/Trojan/Hysteria2/WireGuard；协议选项与凭据加密存储，档案 purge 不删除代理行 |
+| `runtimes` | `id`, `profile_id`, `state`, `mode`, `isolation`, `last_known_isolation`, `pid`, `pgid`, `proxy_port`, `proxy_inbound_tag`, `proxy_outbound_key`, `proxy_rule_tag`, `started_at`, `cdp_port`, `exit_code`, `last_error` | 六态记录；本次 `isolation` 供 Runtime/事件，`last_known_isolation` 只在同一事务进入 running 时更新并驱动 Profile/proof；共享引擎按绑定恢复代理资源 |
 | `kernel_installs` | `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `active`, `installed_at` | 已安装内核；`asset_sha256` 是发布资产摘要，`binary_sha256` 是解包后可执行文件摘要，运行时只比对后者；支持并存与回滚 |
 | `proxy_engine_installs` | `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `license`, `source_url`, `active`, `installed_at` | 已安装 Xray-core；双哈希语义同内核；协议矩阵、许可与回滚 |
 | `proxy_engine_state` | `pid`, `api_port`, `state`, `started_at`, `last_error` | 单实例引擎运行态；控制面启动时对账 |
 | `proxy_outbounds` | `outbound_key`, `route_key_json`, `ref_count`, `created_at`, `updated_at` | 共享出站引用计数；`ref_count` 只统计非终态运行时；运行时停止时在同一事务中递减引用并清空 `runtimes.proxy_*` |
 | `api_tokens` | `id`, `name`, `token_prefix`, `token_hash`, `scopes_json`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；`token_prefix` 仅用于列表展示且可为 NULL（旧 Token），认证只使用 HMAC 哈希与 scope 集合 |
 | `sessions` | `id`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` | 服务端登录会话；Cookie 只存随机标识，库中只存哈希 |
-| `admin_credentials` | `id`, `password_hash`, `algo`, `params_json`, `must_change`, `bootstrap_pending`, `updated_at` | 单管理员凭据（`id=1`）；Argon2id 参数版本化；首次登录强制改密，改密后清空引导标记并删除引导密码来源 |
+| `admin_credentials` | `id`, `password_hash`, `algo`, `params_json`, `must_change`, `bootstrap_pending`, `updated_at` | 单管理员凭据（`id=1`）；Argon2id 参数版本化；改密后清空引导标记并仅删除应用生成的引导文件，外部环境变量/Secret 由部署者撤销 |
 | `event_log` | `sequence`, `event_id`, `type`, `payload_json`, `created_at` | WebSocket 事件回放；`sequence` 为自增整数游标，`event_id` 为外部去重标识；按保留策略清理 |
 | `event_tickets` | `ticket_hash`, `session_id`, `token_id`, `expires_at`, `used_at`, `created_at` | 单次 WebSocket 票据哈希；绑定会话或 Token，短 TTL、单次使用 |
 | `idempotency_keys` | `key`, `scope`, `request_hash`, `response_json`, `created_at`, `expires_at` | 写操作幂等；过期清理 |
@@ -204,7 +204,7 @@ stateDiagram-v2
   starting --> running: CDP ready / process + inbound-if-proxied + grace
   starting --> stopping: cancel or post-resource failure cleanup
   starting --> failed: pre-resource failure
-  running --> stopping: stop, kernel exit or engine failure
+  running --> stopping: stop, kernel exit, orphan or engine rebuild failure
   stopping --> stopped: stop / cancel / orphan cleanup
   stopping --> failed: post-resource or engine failure after teardown
   stopping --> crashed: kernel exit after teardown
@@ -215,7 +215,7 @@ stateDiagram-v2
   stopped --> [*]
 ```
 
-`starting` 的 pre-resource 失败（schema/清单/沙箱校验、未创建代理资源或子进程）直接写 `failed`。post-resource 失败、`stop` 取消、内核退出或共享引擎失败都先转入 `stopping`：终止内核进程组、删除路由与入站、在同一事务中递减出站引用并清空 `proxy_*`、释放档案锁与配额；用户停止/取消和孤儿清理完成后写 `stopped`，post-resource 启动失败或引擎失败写 `failed`，内核退出写 `crashed`。teardown 失败时保留 `stopping` 与 `last_error` 并重试，不得在资源仍存在时写终态。任何终态（`crashed`、`failed`、`stopped`）都不得留下仍在运行的内核或仍计数的代理资源。`crashed` 不自动无限重启；退避次数和窗口可配置。
+pre-resource 失败直接写 `failed`；post-resource 失败、取消、内核退出和引擎重建失败先经 `stopping` 执行同一 teardown。共享引擎退出本身不等于运行时终止：活且可归属的 `running` 内核保留状态、绑定、端口与引用，网络失败关闭，按 REQ-PROXY-022 有界重建成功后继续运行；直连不受影响。重建耗尽或 API 失联且不能证明失败关闭时才 teardown 并写 `failed`；用户停止/孤儿清理写 `stopped`，意外内核退出写 `crashed`。清理未完成或不能确认进程退出时保留 `stopping`、诊断和端口租约，不提前发终态；任何终态不得有活内核或计数引用。
 
 ## 7. 关键流程
 
@@ -239,7 +239,7 @@ sequenceDiagram
   Core->>KS: 校验内核存在与 binary_sha256
   KS-->>Core: 可执行路径
   Core->>GW: 校验代理配置与引擎清单
-  Core->>Core: 校验沙箱状态（Docker）并得出 isolation
+  Core->>Core: 按 sandbox_kind 校验桌面原生或 Docker 命名空间沙箱
   GW->>PE: 确保共享引擎运行并连接管理 API
   GW->>PE: AddOutbound 或复用相同 key 的出站
   GW->>PE: AddInbound(proxy_port, runtime tag)
@@ -250,7 +250,7 @@ sequenceDiagram
   OS-->>Core: pid / pgid
   Core->>K: 轮询 CDP / 启动探针
   K-->>Core: CDP ready
-  Core->>Core: 写入 runtimes=running 与 isolation
+  Core->>Core: 同一事务写 running 并将 isolation 复制到 last_known_isolation
   Core-->>UI: 状态事件 + proxy_port（CDP URL 仅由受保护的 Runtime 查询返回）
 ```
 
@@ -286,11 +286,11 @@ sequenceDiagram
 
 1. 读取 `runtimes` 中非终态记录和 `proxy_engine_state`。
 2. 检查共享 Xray 引擎 PID、进程启动时间和 API 端口是否匹配；检查各内核 PID 与数据目录。
-3. 能归属到仍存活引擎且入站、规则、出站均存在的 `running` 行保持 `running`；无主的 `starting`/`running`/`stopping` 行终止可归属的内核进程组，快照并删除对应入站与规则，按非空快照 key 递减非终态引用并清空 `proxy_*` 字段，然后写 `stopped`；teardown 失败时保留非终态与 `last_error` 并重试，不得提前写 `failed`。
-4. 共享引擎不存在或不可接管时，安全终止残留引擎并启动新实例，然后只按 `proxy_port` 重建 `ref_count>0` 的运行档案出站、入站和路由规则；`ref_count=0` 孤儿行在重建前删除；重建使用原 `ruleTag` 与 `shouldAppend=true`。
-5. 共享引擎可接管时，通过 Xray gRPC 管理 API 列出出站/入站，补齐缺失配置，删除孤儿入站、规则与 `ref_count=0` 出站；引擎报告的 `ruleTag` 是规则归属的唯一依据。
-6. 不可确认归属的内核进程不得盲目杀死，记录隔离事件；按配置清理超时孤儿。
-7. 清理过期锁文件、临时规则、残留调试端口；未完成操作在 teardown 完成后以 `stopped` 或 `failed` 告知 UI，不留中间态。
+3. 先按内核归属分类，与引擎健康/资源完整性分离。活且可接管的 `running` 内核保留状态、绑定、引用和端口供修复；`starting`/`stopping` 中断行，以及内核已退出或不能安全接管的 `running` 行，经 `stopping` 执行先快照再递减的 teardown，完成才写 `stopped`。
+4. 引擎不存在或不可接管时，确认并安全终止旧引擎后按 REQ-PROXY-022 有界重建，只恢复步骤 3 保留的存活代理运行时；使用原端口/tag 和 `shouldAppend=true`。零引用孤儿与已清理运行时不重建；无法安全处置旧引擎则不启动第二实例，按失败路径处理。
+5. 引擎可接管时补齐这些运行时的缺失资源；删除无有效归属的 `rt:` 资源与无进行中检查的 `chk:` 入站/规则/出站。零引用删除持有共享引擎写锁，复核仍为零后删除 Xray 出站和数据库行，不能与新启动接管交错。
+6. 不能确认旧内核/进程组已退出时不盲目杀进程；撤除可归属路由/入站以失败关闭，保留 `stopping`、四个绑定、引用和端口租约并记录隔离事件。TTL 不授权端口复用，后续对账或人工确认退出后才完成清理；不确定性使就绪失败。
+7. 只释放已确认无活进程且完成 teardown 的锁、端口与调试资源；清理失败保留 `stopping` 与 `last_error`，完成后发 `stopped`/`failed`，不把未清理行伪装为终态。
 
 ### 7.4 代理检查
 
@@ -475,7 +475,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 | 区域 | 控制 |
 | --- | --- |
 | 认证 | 服务端会话 Cookie `HttpOnly`、`SameSite=Strict`；非回环服务端必须设置 `MIEN_PUBLIC_URL` 且 Cookie 恒为 `Secure`；API Token 只存展示前缀与 HMAC 哈希；登录限流；管理员凭据存 `admin_credentials`（Argon2id），由 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE` 引导，两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600）；首次登录强制改密，改密后删除应用生成的引导文件并清除引导标记；外部环境变量/Secret 由部署者撤销，应用不得声称已删除。 |
-| 授权 | v1 使用管理员与 Token 范围；所有写操作检查档案归属和 Token scope。 |
+| 授权 | 服务端会话写操作检查管理员权限，Bearer 写操作检查 Token scope，均校验档案归属；桌面 IPC 依赖本机进程信任与领域校验，不要求会话/Token；桌面自动化 HTTP 仍要求 Bearer scope。 |
 | 密钥 | 桌面使用系统钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 `MIEN_MASTER_KEY`；字段级 AES-256-GCM；API Token 从不使用 AES-GCM，只用 HKDF-peppered 哈希，主密钥轮换使全部 Token 失效并要求重发。 |
 | 进程 | 参数数组启动，不经过 shell；进程组管理；档案锁；并发配额；子进程 `env_clear` 后只注入白名单变量。 |
 | 文件 | 档案目录 0700；路径规范化并校验前缀；导入文件大小限制；符号链接拒绝。 |
@@ -497,10 +497,10 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 | 内核 `binary_sha256` 不符 | 拒绝启动，返回 `KERNEL_CHECKSUM_MISMATCH`，状态 `failed`，不创建该档案的入站/路由。 |
 | 指纹规格与能力清单不符 | 拒绝启动，返回具体字段和原因。 |
 | 代理配置无效或引擎校验失败 | 拒绝启动，释放配额，保留档案数据。 |
-| 共享引擎启动或 API 就绪失败 | 拒绝启动新档案，返回稳定错误；已运行档案按引擎故障策略处理。 |
+| 共享引擎启动或 API 就绪失败 | 拒绝启动新代理档案；运行中代理档案按有界恢复策略处理，直连档案不受影响。 |
 | 内核启动后立即退出 | 先转入 `stopping`，由唯一 teardown 例程删除该档案的路由与入站并释放共享出站引用（恰好一次），记录退出码与日志尾部；teardown 完成后写 `crashed`，按退避策略决定是否允许重试；共享引擎继续服务其他档案。 |
 | 沙箱状态无法确认 | 代理资源创建与进程启动前拒绝，返回 `SANDBOX_UNAVAILABLE`；服务端仅在 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时继续，写 `isolation=unsandboxed` 与审计事件；桌面端直接拒绝。 |
-| 共享引擎运行中退出 | 所有运行档案网络失败，不发直连回退；记录 `proxy.engine.failed`，按有界退避重启并按原端口重建；重建失败时对每个受影响运行时先转入 `stopping` 并执行 teardown（终止内核进程组、按 `ruleTag` 删规则与入站、在同一事务中递减出站引用并清空 `proxy_*`、释放配额与锁），完成后才写 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不得在终态背后留下活内核或计入引用计数的资源。 |
+| 共享引擎运行中退出 | 代理档案网络失败且无直连回退；活且可归属的内核保留状态、原端口与引用，有界重建成功后继续运行，直连不受影响。恢复耗尽时经 `stopping` teardown 后写 `failed`；不能确认内核退出则保留端口隔离与 `stopping`。 |
 | CDP 在超时内未就绪 | 先转入 `stopping`，终止内核进程组、删除该档案的路由与入站并释放引用，teardown 完成后写 `failed`。 |
 | 内核在 `starting` 期间提前退出 | 先转入 `stopping`；执行同一 teardown 例程后写 `crashed`，再允许按退避重试。 |
 | 控制面崩溃 | 内核与共享引擎可能成为孤儿；下次启动对账，确认引擎归属后接管并重建或清理入站/规则；非终态 `starting`/`stopping` 行先终止可归属内核并清理资源，再写 `stopped`。teardown 失败时保留非终态与 `last_error` 并重试，不得在资源仍存在时写 `failed`。 |

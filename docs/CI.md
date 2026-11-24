@@ -12,7 +12,7 @@
 - release workflow 使用受保护的 `release` environment，发布前需要人工批准；`promote-docker` 与 `release` 都绑定该 environment。
 - Docker 固定构建 `linux/amd64`；macOS 构建 Apple Silicon `aarch64-apple-darwin`。Docker 镜像必须在同一 source 上独立构建两次并比对 digest，digest 不一致即判定失败；该比对是 ACC-010 可复现构建的证据，不能用文档声明替代。
 - 项目自身许可证为 Apache-2.0；仓库根目录提供 `LICENSE`，`README` 链接该文件，发布资产包含同一文本。
-- macOS 应用、嵌套 Chromium 内核及其全部 helper 的 hardened runtime 只授予 Chromium JIT 必需的 entitlements；Xray/frameworks 不带 JIT 权限。entitlements 文件是发布资产并写入 release identity。
+- macOS 应用、嵌套 Chromium 内核及 renderer/GPU/utility helper 的 hardened runtime 只授予 Chromium JIT 必需的 entitlements；其他 helper 逐个签名但不带 JIT，Xray/frameworks 不带 JIT。entitlements 文件是发布资产并写入 release identity。
 - 第三方 Actions 固定到完整 commit SHA；依赖升级由 Dependabot 或人工 PR 完成。
 
 ## 2. Workflow 拓扑
@@ -72,7 +72,8 @@ flowchart TD
   M --> S[stage-release]
   Docker --> S
   S --> A[attest]
-  A --> PD[promote-docker: 阶段 7]
+  A --> G[gate-release: GATE-001]
+  G --> PD[promote-docker: 阶段 7]
   PD --> P[release: 阶段 8, tag + 公开 GitHub Release]
   P --> X[verify-release]
 ```
@@ -83,13 +84,14 @@ flowchart TD
 | --- | --- | --- |
 | `resolve-target` | 读取 `release_target` 和 trusted baseline（所有 `vX.Y.Z` tag 与 GitHub Release 的 SemVer 最大值，包含 prerelease 与已失效版本），解析 canonical version；先读取已有 reservation/identity，再执行 collision 检查；校验 `main` source、`CI Main / verify` | 不构建，不创建公开 release；完全匹配的同一 identity 允许 recovery；其他任何已有 tag/release 大于或等于 target 时 fail closed |
 | `reserve` | 创建或复用 draft GitHub Release，使用非 `v*` 的 reservation 标识作为 `tag_name`，写入 policy、target、version、source SHA 和 run ID；后续 job 从 reservation 读取 `source_sha` 并 checkout 该 SHA，不使用 main HEAD | 不构建，不创建 `vX.Y.Z`；同 version 不同 source 直接冲突 |
-| `test` | 在 reservation 的 `source_sha` 上调用 `ci-reusable.yml`，`profile=release`，运行全量测试与 e2e | 不构建发布物 |
-| `macos-arm64` | 在 `release` environment 中于 `source_sha` 上构建 Tauri 应用，下载并校验内核/Xray；应用、Chromium 内核与全部 helper 使用 JIT entitlements，Xray/frameworks 不带；生成 DMG、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、entitlements 与更新清单，记录 DMG SHA-256 | identity 已记录 DMG digest 时跳过构建并复用已上传资产；重新构建使先前手动测试证据作废 |
-| `docker-amd64` | 在 `source_sha` 上用 `buildx` 从同一 source 独立构建两次 `linux/amd64` 并比对 digest；不相等即失败。相等后以 `staging-<run_id>` 临时 tag 推送并记录 digest；Trivy、SBOM、容器许可扫描与 cosign keyless 签名 | 不进入 stage-release；许可扫描失败或 identity 已记录 digest 不一致时拒绝 |
+| `test` | 使用 resolve-target 固定并由 reserve 确认的 source_sha 调用共享 CI，运行完整测试/e2e，输出逐 ID 的机器可读分报告 | 不读 draft、不接触发布 secrets、不构建发布物；失败不继续 |
+| `macos-arm64` | 在 `release` environment 中于 `source_sha` 上构建 Tauri 应用，下载并校验内核/Xray；应用、Chromium 内核与 renderer/GPU/utility helper 使用 JIT entitlements，其他 helper 逐个签名但不带 JIT，Xray/frameworks 不带；生成 DMG、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、entitlements 与更新清单，记录 DMG SHA-256 | identity 已记录 DMG digest 时跳过构建并复用已上传资产；重新构建使先前手动测试证据作废 |
+| `docker-amd64` | 先读取 draft identity；已绑定 digest 则复用，否则按 RELEASE §4 固定 SOURCE_DATE_EPOCH、BuildKit exporter 的 rewrite-timestamp=true 与 --provenance=false，隔离缓存独立构建两次 linux/amd64 并比对 digest；相等后只发布第一次产物为 staging tag，生成扫描/SBOM/许可/签名与可复现报告 | digest 不等、扫描失败或 identity 不符均不进入 stage-release |
 | `stage-release` | 在 `release` environment 中汇总产物到 draft，包含宿主侧 seccomp 与 AppArmor 发布物与 `LICENSE`/`NOTICE`/`LICENSES/`，校验 SHA-256/digest，写入 `release-identity.json` | 本次构建 digest 与 identity 已记录 digest 不一致时拒绝；draft 保持未公开，不创建 `v*` tag |
 | `attest` | 对 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包、seccomp 文件和 AppArmor profile 生成 GitHub artifact attestation；无跳过分支 | attestation 失败或缺失则不进入 promote-docker，不公开 release |
-| `promote-docker`（阶段 7） | 把已验证 digest 提升为 `ghcr.io/<owner>/mien-server:vX.Y.Z` 并记录最终 digest；绑定 `release` environment | 不公开 release |
-| `release`（阶段 8） | 校验 draft identity 和当前 DMG 的手动测试通过记录（绑定 DMG SHA-256）后创建或验证 tag，公开 GitHub Release；绑定 `release` environment | 手动测试记录缺失、未通过或绑定旧 DMG 时拒绝公开；保留 draft 供同 identity recovery |
+| `gate-release` | 在 attest 后汇总 test、打包/双构建、人工 DMG 测试及全部强制 ID 结果，执行 GATE-001，生成 release-gate.json，绑定 source_sha、reservation_id、全部发布 digest、报告哈希及有效 waiver | 缺失/未通过/旧 digest 证据不产生通过结论；阻断 promote-docker 与公开 Release，metadata-only reservation 可保留 |
+| `promote-docker`（阶段 7） | 重验 gate-release 的完整通过报告和 identity；读取 GHCR vX.Y.Z tag，缺失才创建，存在仅在 source identity 与 digest 均相同时幂等成功，禁止覆盖不同内容；绑定 release environment | 门禁缺失/漂移、registry 无法读取或 tag 冲突时停止，不公开 release |
+| `release`（阶段 8） | 重验 GATE-001 报告、draft identity、DMG 手动测试与 promotion digest 后创建或验证 tag 并公开；绑定 release environment | 缺证据、过期 waiver、source/digest 漂移或门禁失败均拒绝；单独重跑也重验 |
 | `verify-release` | 下载公开资产，校验 checksums、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、seccomp/AppArmor 发布物、AdHoc 签名、entitlements、更新清单和 identity | 标记 release 无效；不得静默忽略 |
 
 tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑：先读取已有 reservation 和 identity，checkout reservation 的 `source_sha`；identity 已记录某产物 digest 时对应构建 job 跳过，`stage-release` 遇到 digest 不一致即拒绝，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
@@ -102,9 +104,9 @@ macOS job 的顺序固定为：
 
 1. 下载 fingerprint-chromium 148 DMG 和 Xray-core v26.11.9 ARM64；校验 SHA-256，记录最终二进制的 SHA-256。
 2. 构建 `aarch64-apple-darwin` 应用，把内核和 Xray 放入应用资源目录。
-3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。应用、Chromium 内核与全部 renderer/GPU/utility helper 使用 JIT entitlements；Xray 与 frameworks 使用 AdHoc 签名但不带 JIT 权限。
+3. 先签嵌套二进制，再签应用；使用 `codesign --force --sign - --timestamp=none --options runtime`，不使用 `--deep` 代替逐个签名。应用、Chromium 内核与 renderer/GPU/utility helper 使用 JIT entitlements；其他 helper 逐个签名但不带 JIT；Xray 与 frameworks 使用 AdHoc 签名但不带 JIT 权限。
 4. 签名应用、Chromium 内核与每个 helper 时传入仓库内 `mien-desktop/entitlements.plist`，只包含 Chromium V8 JIT 必需的两项：`com.apple.security.cs.allow-jit` 和 `com.apple.security.cs.allow-unsigned-executable-memory`。不授予调试、网络、文件访问或其他放宽权限；hardened runtime 下缺这两项会导致页面加载或 renderer 失败。
-5. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`；用 `codesign -d --entitlements :-` 逐个断言应用、Chromium 内核与全部 helper 只包含上述两项，Xray 与 frameworks 不含 JIT 权限；在干净机器上加载真实页面。
+5. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`；按签名清单逐个断言应用、Chromium 内核与 renderer/GPU/utility helper 只包含上述两项，其他 helper、Xray 与 frameworks 不含 JIT 权限；未分类可执行文件阻断；在干净机器上加载真实页面。
 6. 生成 DMG、`SHA256SUMS`、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、`entitlements.plist` 和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
 7. 在 `release` job 之前，由维护者在干净的 macOS 13+ 机器下载同一 run 的 DMG 和 `SHA256SUMS`（Actions artifact），先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级；结果写入 draft 正文，未通过不得公开。
 8. 手动测试证据绑定具体的 DMG SHA-256。任何一次重新构建 macOS 产物（包括同 identity 重跑中 `macos-arm64` 重新执行）都使已有手动测试证据作废，必须对新 DMG 重做并重写 draft 正文；`release` job 必须拒绝缺失、未通过或绑定旧 DMG 的记录，不得沿用旧结果。
@@ -130,7 +132,7 @@ Tauri 自动更新使用独立的更新签名密钥，和 Apple 签名无关；�
 | Playwright 浏览器 | 按锁文件和 Playwright 版本建立 key |
 | PR 诊断 | nextest JUnit、失败 e2e 的 trace/screenshot/video，保留 7 至 14 天 |
 | Release 资产 | DMG、Docker digest、SBOM、`LICENSE`、`NOTICE`、`LICENSES/`、`mien-seccomp-chromium-<version>.json`、`SHA256SUMS`、`release-identity.json`、`entitlements.plist`、更新清单、attestation；随 GitHub Release 长期保留，Actions artifact 保留 90 天 |
-| 可复现构建证据 | Docker 双构建的两份 digest 与比对日志、两次构建的输入（`source_sha`、`Cargo.lock`/`bun.lock`、基础镜像 digest）；随 release identity 关联保留 |
+| 可复现构建证据 | 两份 digest、比对日志、source_sha、锁文件、基础镜像/BuildKit/Dockerfile frontend digest、SOURCE_DATE_EPOCH 与完整 exporter/provenance 参数；随 identity 保留 |
 
 成功 run 不长期上传整个 workspace、`node_modules`、浏览器安装目录或没有消费者的文件。release job 只上传可验证、可追溯的发布资产。
 
@@ -140,13 +142,14 @@ PR workflow 默认 `permissions: contents: read`；release workflow 按 job 最�
 
 | Job | 权限 |
 | --- | --- |
-| `resolve-target` | `contents: write`、`checks: read`、`pull-requests: read`、`actions: read`；draft reservation 只有 `contents: write` 才能被读取，另需读取 baseline tag/release、`CI Main / verify` check run 与 merged PR |
+| `resolve-target` | `contents: write`、`checks: read`、`pull-requests: read`、`actions: read`、`packages: read`；读取 draft、baseline/source CI 与 GHCR tag 的 source/digest；registry 查询失败不得视为 tag 不存在 |
 | `test` | `contents: read` |
 | `reserve` | `contents: write` |
 | `macos-arm64` | `contents: write`（同 identity 重跑时需读取 session 之外由 `resolve-target` 记录的 draft identity 与已上传资产，并复用 digest）；使用 `release` environment 读取更新签名密钥 |
-| `docker-amd64` | `contents: read`、`packages: write`、`id-token: write` |
+| `docker-amd64` | `contents: write`（读取 draft identity 与 recovery digest）、`packages: write`、`id-token: write` |
 | `stage-release` | `contents: write`、`packages: read`（读取 GHCR digest）；绑定 `release` environment |
 | `attest` | `contents: read`、`packages: write`、`attestations: write`、`id-token: write` |
+| `gate-release` | `contents: write`（读取 draft/手动测试并保存门禁报告）、`actions: read`、`packages: read`；不读取签名 secrets |
 | `release` | `contents: write`；绑定 `release` environment |
 | `promote-docker` | `contents: write`、`packages: write`、`id-token: write`；需要读取 draft release 中记录的已验证 digest 并写回 promotion 结果；绑定 `release` environment |
 | `verify-release` | `contents: write`、`issues: write`、`packages: read`（读取 GHCR digest） |
@@ -180,9 +183,9 @@ fork PR 不获得任何 release secret；不使用 `pull_request_target` 执行�
 
 `CI Main / verify` 用于 mainline 健康检查，不替代 PR required check。release workflow 不是 PR 门禁，但它的 `resolve-target` 与 `test` 必须在发布物构建前成功。
 
-tag 保护使用仓库 ruleset，目标模式 `v*`，启用 `Restrict updates`、`Restrict deletions` 与 `Restrict creations`。bypass 仅允许 release GitHub App（由受保护的 `release` environment 签发），不允许任何人类角色或日常 `GITHUB_TOKEN` 绕过；`release` job 通过该 App 创建 `vX.Y.Z`。已有 tag 只能读取和验证 peeled commit，任意有 tag 写权限的身份不能抬高 trusted baseline。
+tag 保护使用两套目标为 v* 的 ruleset：创建规则只启用 Restrict creations，bypass 仅含受保护 release environment 签发的 release App；不可变规则只启用 Restrict updates 与 Restrict deletions，bypass 列表为空（包括 App、管理员与 GITHUB_TOKEN）。bypass 是 ruleset 级别，不能在同一套规则里声称只绕过 creations；release job 只能新建 tag 或验证已有 peeled commit，不能改写/删除。
 
-发布门禁还包括：仓库根 `LICENSE`、`NOTICE`、`LICENSES/` 存在且 `README` 已链接，第三方再分发义务检查完成；Docker 两次构建 digest 相等；artifact attestation 已生成并通过验证；GATE-001 的 `accepted` 结果必须携带完整 waiver 记录，P0 与阻断类 P1 不得使用 `accepted`。任一项缺失即阻断公开 release。
+GATE-001 由 gate-release 在产物/attestation/人工测试完成后评估；test 提供测试分报告，打包与人工测试补齐产物证据。metadata-only reserve 不等于准入通过，不受“不得创建资产草稿”的误用约束。promote-docker 与 release 每次（含单独 recovery）读取并重验 release-gate.json；PRD-ACC-001..010 必须 pass，其他允许接受的 P1 才可按 TEST-PLAN 携有效 waiver，P0/阻断 P1 不能 accepted。缺报告、ID、许可、双构建、attestation、有效 waiver 或 source/digest 不匹配均阻断发布。
 
 ## 9. 失败、重跑与回滚
 

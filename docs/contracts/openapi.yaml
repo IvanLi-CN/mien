@@ -376,6 +376,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 copy_fingerprint:
                   type: boolean
@@ -484,6 +485,18 @@ paths:
           "$ref": "#/components/responses/Conflict"
         '422':
           "$ref": "#/components/responses/ValidationError"
+        '500':
+          description: 本请求目录清理失败；没有数据库行残留，后台按 request_id 重试清理。
+          content:
+            application/json:
+              schema:
+                allOf:
+                - "$ref": "#/components/schemas/Error"
+                - type: object
+                  required: [code]
+                  properties:
+                    code:
+                      const: PROFILE_IMPORT_CLEANUP_FAILED
       x-required-scope: profiles.write
   "/api/v1/profiles/{profile_id}/export":
     post:
@@ -1340,8 +1353,8 @@ paths:
         in: query
         schema:
           type: integer
-          minimum: 1
-        description: 最后收到的 event.sequence；从其后回放。
+          minimum: 0
+        description: 0 可用于新流，或 last received sequence；大于 high_water 返回 422，早于当前 floor 返回 EVENT_REPLAY_WINDOW_EXPIRED；保留边界见 REQ-API-011。
       - name: Origin
         in: header
         required: true
@@ -1897,10 +1910,19 @@ components:
           properties:
             proxy_id:
               type: 'null'
+      - if:
+          required: [mode, direct, isolation]
+          properties:
+            mode:
+              const: headful
+            direct:
+              const: false
+            isolation:
+              const: enforced
         then:
           properties:
-            direct:
-              const: true
+            reduced_assurance:
+              const: false
       - if:
           required:
           - direct
@@ -2241,7 +2263,13 @@ components:
           maximum: 65535
         options:
           type: object
-          additionalProperties: true
+          propertyNames:
+            not:
+              pattern: "(?i)(password|passphrase|pwd|psk|private|secret|token|uuid|cookie|bearer|key)"
+          additionalProperties:
+            type: [string, number, boolean, 'null']
+            maxLength: 4096
+          description: 非秘密标量选项；秘密键与嵌套对象拒绝。
         credential_set:
           type: boolean
         last_check:
@@ -2281,7 +2309,13 @@ components:
           maximum: 65535
         options:
           type: object
-          additionalProperties: true
+          propertyNames:
+            not:
+              pattern: "(?i)(password|passphrase|pwd|psk|private|secret|token|uuid|cookie|bearer|key)"
+          additionalProperties:
+            type: [string, number, boolean, 'null']
+            maxLength: 4096
+          description: 非秘密标量选项；秘密键与嵌套对象拒绝。
         credentials:
           type: object
           writeOnly: true
@@ -2482,6 +2516,19 @@ components:
           properties:
             ua_scope:
               const: chrome
+      - if:
+          required: [mode, direct, isolation]
+          properties:
+            mode:
+              const: headful
+            direct:
+              const: false
+            isolation:
+              const: enforced
+        then:
+          properties:
+            reduced_assurance:
+              const: false
     Kernel:
       type: object
       required:
@@ -2688,6 +2735,8 @@ components:
           type: string
         target:
           type: string
+          pattern: "^[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z0-9_.-]{1,128})?$"
+          description: Application-generated resource kind or kind:id; never arbitrary user text, URL, share link, credential or capability URL.
         result:
           type: string
           enum:
@@ -2925,6 +2974,7 @@ components:
       - tier
       - transports
       - tls_modes
+      - obfuscation
       properties:
         tier:
           enum:
@@ -2994,6 +3044,7 @@ components:
       - GROUP_NAME_CONFLICT
       - TAG_NAME_CONFLICT
       - PROFILE_IMPORT_CONFLICT
+      - PROFILE_IMPORT_CLEANUP_FAILED
       - PROFILE_RESTORE_UNAVAILABLE
       - VIEWER_NOT_AVAILABLE
       - VALIDATION_FAILED

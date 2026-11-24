@@ -12,7 +12,7 @@
 }
 ```
 
-`code` 是稳定契约；`message` 是给人阅读的英文或本地化消息，不作为程序分支依据。`details` 只能包含字段级错误、资源标识和非敏感诊断；不得包含代理凭据、UUID、私钥、Cookie、Token、完整分享链接或目标 URL。
+`code` 是稳定契约；`message` 是给人阅读的英文或本地化消息，不作为程序分支依据。`details` 只能包含字段级错误、资源标识和非敏感诊断；不得包含代理凭据、UUID、私钥、Cookie、Token、完整分享链接、目标 URL 或任何 capability URL。
 
 本文的代码集合就是 `ErrorCode` 枚举的契约。OpenAPI 的 `Error.code` 必须引用由本目录生成的 `ErrorCode` 枚举；事件 `error_code` 与测试 fixture 的取值必须是该集合成员（事件字段允许 `null`）。CI 双向比对本文与契约枚举，出现新增、删除或 HTTP 映射漂移即失败（见第 7 节）。
 
@@ -42,12 +42,13 @@
 | `RUNTIME_NOT_FOUND` | 404 | 否 | 档案没有受监督运行时 |
 | `TOKEN_NOT_FOUND` | 404 | 否 | API Token 不存在 |
 | `PROFILE_ARCHIVED` | 409 | 否 | 档案已归档，不能执行该操作 |
-| `RUNTIME_CONFLICT` | 409 | 否 | 同一档案已有其他启动/停止事务 |
+| `RUNTIME_CONFLICT` | 409 | 否 | 同一档案存在非终态运行时（starting/running/stopping）或在途启动/停止事务；并发启动、迁移、删除等操作需先解决状态冲突 |
 | `IDEMPOTENCY_CONFLICT` | 409 | 否 | 相同幂等键携带了不同请求；或该响应含一次性秘密（`tokensCreate`）而无法重放 |
-| `RESOURCE_IN_USE` | 409 | 否 | 代理或引擎仍被运行档案引用 |
+| `RESOURCE_IN_USE` | 409 | 否 | 代理仍被任意档案引用，或引擎仍被运行时引用；拒绝删除，不静默清空关联 |
 | `GROUP_NAME_CONFLICT` | 409 | 否 | 分组名称重复 |
 | `TAG_NAME_CONFLICT` | 409 | 否 | 标签名称重复 |
 | `PROFILE_IMPORT_CONFLICT` | 409 | 否 | 导入档案与现有档案冲突且未选择新 ID |
+| `PROFILE_IMPORT_CLEANUP_FAILED` | 500 | 是 | 导入事务已回滚，但本请求新目录清理失败；无档案行残留，保留无秘密请求清单，由后台/启动对账重试，以 request_id 关联，不重建软删除行 |
 | `PROFILE_RESTORE_UNAVAILABLE` | 409 | 否 | 回收站目录缺失或已不可恢复；行保持 `deleted`，必须重试 purge 或人工处理 |
 | `VIEWER_NOT_AVAILABLE` | 404 | 否 | 查看器未启用或运行时没有可查看显示；运行时行缺失时优先返回 `RUNTIME_NOT_FOUND` |
 | `GROUP_NOT_FOUND` | 404 | 否 | 分组不存在 |
@@ -132,7 +133,7 @@ restore 前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；目录�
 
 - 新增错误码必须同时更新本文、OpenAPI、事件 schema 的相关枚举和测试。
 - 错误码一旦发布，只能弃用，不能改变语义后复用。
-- 代理凭据、Cookie、Token、UUID、私钥和完整分享链接永远不能进入 `message` 或 `details`。
+- 代理凭据、Cookie、Token、UUID、私钥、完整分享链接、目标 URL 与任何 capability URL（一次性查看器/票据 URL、CDP 端点）永远不能进入 message 或 details；自由文本与结构化数组都必须脱敏。
 - 可重试错误必须返回 `retryable=true`；客户端按指数退避重试，并设置上限。
 - UI 必须能根据 `code` 区分配置、引擎、节点和目标站点问题。
 - CI 必须同时校验：本文代码集合与 OpenAPI `Error.code` 枚举双向一致；每个代码的 HTTP 与 `retryable` 映射一致；事件 `error_code` 与 fixture 取值经契约测试验证属于该集合（允许 `null`）；生成物 `git diff --exit-code` 无漂移。代理检查的 HTTP 200 `ProxyCheck` 与 `proxy.check.completed` 事件只能使用第 5 节的 `ProxyCheckErrorCode`；运行时资源的 200/202 响应中的 `error_code` 是资源状态，使用完整 `ErrorCode`，不属于“成功响应包装错误”的例外。

@@ -12,7 +12,7 @@
 
 - Requirement coverage: 计划由 `mien-server` 的路由、认证、WebSocket 与静态资源模块覆盖 `REQ-API-001` 至 `REQ-API-021`；登录与 Token、一次性票据、幂等、审计筛选、有界日志尾部、导入导出与档案/运行时 payload 字段分别对应 `REQ-API-003`/`005`/`010`/`011`/`009`/`019`/`020`/`021`；代理 CRUD、分享链接导入与检查复用共享 Xray 引擎能力清单（`REQ-API-017`）；桌面宿主通过 Tauri IPC 镜像命令语义。
 - Verification commands: 实现后使用 OpenAPI 生成与运行同一契约的 generation-diff 作业（`REQ-API-002`）；`ErrorCode` 目录与 OpenAPI/事件 schema 枚举的双向比对（`REQ-API-008`）；API 集成测试覆盖公开白名单、401/403/404 优先级、CSRF/限流、一次性票据与 `after=<sequence>` 重放、`tokensCreate` 幂等冲突、审计筛选、日志尾部脱敏、导入导出与 payload 状态字段。
-- Rollout facts: 首个实现仅服务端提供 HTTP 控制面；桌面自动化 API 默认关闭。WebSocket 重放窗口上限在实现时记录，窗口外行为必须写入本文件而不是新增未声明错误码。
+- Rollout facts: 首个实现仅服务端提供 HTTP 控制面；桌面自动化 API 默认关闭。重放窗口在 SPEC 固定为 7 天与 100 MiB payload 上限，回放实现必须使用一致的 floor/high_water 快照并拒绝窗口外游标。
 
 ## Coverage / rollout summary
 
@@ -27,7 +27,7 @@
 
 ## Verification Status
 
-实现开始前逐项记录状态；`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须只对 `pending` 放行。
+Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 pending，每行列出计划命令与 fixture。结构检查允许有证据的已实施状态；发布门禁只接受 pass 或有效 waiver。
 
 | VER | 状态 | 计划命令与 fixture |
 | --- | --- | --- |

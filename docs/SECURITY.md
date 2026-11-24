@@ -82,8 +82,8 @@ flowchart LR
 | T-19 | 产品被滥用 | 欺诈、垃圾信息、规避平台规则 | 可接受使用政策；不提供代理/账号/验证码；限制分发；保留终止支持权利 | 无法完全阻止双用途使用 |
 | T-20 | 备份或导出泄露 | 明文导出、未加密卷、共享备份 | 默认导出不含秘密；加密导出；卷加密建议；备份权限 | 用户自行复制导出文件 |
 | T-21 | 恶意代理配置或分享链接 | 注入未知字段、路径、超大输入、伪造协议参数 | 类型化 schema；字段白名单；大小限制；不联网解析；不直接透传用户 JSON | 解析器漏洞或合法但恶意节点行为 |
-| T-22 | 协议引擎 API 或凭据泄露 | 读取管理 API、崩溃转储、进程参数 | API 只绑定控制面回环并由控制面 UID 独占的 LSM/防火墙策略限制；浏览器内核使用独立 UID；不写凭据配置；不写入 argv；日志脱敏；最小化凭据生命周期 | 控制面 UID 或 root 仍可调用本机 API；这是已记录的残余风险 |
-| T-24 | 共享引擎故障或拒绝服务 | 一个 Xray 进程承载所有运行档案 | 失败关闭；有界重启；原端口重建；全局事件；API 串行化与配额 | 引擎崩溃会同时中断所有档案 |
+| T-22 | 协议引擎 API 或凭据泄露 | 读取管理 API、崩溃转储、进程参数 | API 只绑定控制面回环；服务端以控制面 UID 独占 LSM/防火墙或独立网络边界限制，无沙箱时另要求内核独立 UID/网络边界；桌面以页面回环探测为补偿控制并记录同 UID 残余风险；秘密不入配置/argv，日志脱敏 | 控制面 UID 或 root 仍可调用；桌面内核与控制面同 UID |
+| T-24 | 共享引擎故障或拒绝服务 | 一个 Xray 进程承载所有代理运行档案 | 代理失败关闭；有界重启；原端口重建；直连不受影响；全局事件；API 串行化与配额 | 引擎崩溃会同时中断代理档案 |
 | T-23 | 恶意 WebView 内容调用 IPC | 远程页面、XSS 或注入脚本调用 Tauri 命令 | 生产 CSP；禁止远程导航；capabilities 仅授权主窗口与必要命令；输入校验；不返回秘密 | WebView 被攻破后仍可调用已授权命令 |
 | T-25 | 直连模式出口泄漏 | 直连档案绕过代理，DNS、IPv6 与 WebRTC 直接暴露真实出口 | 直连是显式降级配置：桌面端标记降低保证；服务端必须 `MIEN_ALLOW_DIRECT_EGRESS=1` 并写入审计；T-18 的代理级远程 DNS/失败关闭控制不适用，但仍应用内核支持的 `webrtc`/`network` 标志；UI 与 API 不把直连伪装成代理 | 直连流量与真实地址对目标站点和本地网络完全可见 |
 | T-26 | 伪造客户端地址或协议 | 直连客户端伪造 `X-Forwarded-For`/`X-Forwarded-Proto` 绕过限流或影响 Cookie 与重定向 | 只信任 `MIEN_TRUSTED_PROXIES` 内的代理；非回环服务端必须设置 `MIEN_PUBLIC_URL`，仅回环开发模式可省略；服务端模式强制 `Secure` Cookie；按校验后的客户端 IP 限流 | 部署者配置了错误代理列表仍可能信任不可信来源 |
@@ -144,7 +144,7 @@ flowchart LR
 
 - 运行用户非 root；根文件系统只读；`/data` 是唯一持久可写卷。
 - seccomp 配置为必选项（不是“按需”）：仓库源文件 `deploy/docker/seccomp/chromium.json`；发布物 `mien-seccomp-chromium-<version>.json` 必须由部署者安装到宿主文件系统供 Docker daemon 在创建容器前读取。启动命令的 `--security-opt seccomp=<host-path>` 只接受宿主路径；镜像内 `/opt/mien/seccomp/chromium.json` 是只读审计副本，Docker 在容器创建阶段无法访问它，禁止把它用于 `--security-opt`。发布物摘要进入 SHA-256SUMS 与 attestation 主体。不得使用 `--privileged`、`--userns=host` 或任何关闭 seccomp 的等价配置。
-- seccomp 配置以固定的 Moby 默认 allowlist（commit `a0fa7080`，Apache-2.0）为基线，原文件与许可留档在 `deploy/docker/seccomp/artifacts/`，`PROVENANCE.json` 记录上游摘要与本次改动。对基线的改动为：`clone` 在参数含 `CLONE_NEWUSER`、`CLONE_FS` 或 `CLONE_NEWPID` 时允许（分别对应命名空间启动、zygote 的 `ChrootToSafeEmptyDir` helper、renderer 的 `ForkInNewPidNamespace`）；`unshare` 在参数含 `CLONE_NEWUSER` 时允许；因为强制 `--cap-drop ALL` 会在加载时丢弃 capability 门控规则，新增无条件 `mount`/`umount2`/`chroot`；从 `archMap` 移除无法满足这些新增规则的 `SCMP_ARCH_S390X`。`clone3` 保持基线的无条件 `ENOSYS` 以走过滤后的 `clone`。`execve`、`futex`、`socket`、`mmap` 等运行必需项来自基线，不在此重列。不新增 `ptrace`、`bpf`、`io_uring_*`、`keyctl`，不授予 `CAP_SYS_ADMIN` 或 `CAP_SYS_CHROOT`；`mount`/`chroot` 只能在新用户命名空间内成功，且不能挂载宿主路径。
+对基线的改动为：`clone` 在参数含 `CLONE_NEWUSER` 或 `CLONE_NEWPID` 时允许（命名空间启动与 renderer 的 `ForkInNewPidNamespace`）；zygote 的 `ChrootToSafeEmptyDir` 调用不含命名空间位，已由基线 `0x7E020000` 掩码放行，因此不新增 `CLONE_FS` 允许规则；`unshare` 在参数含 `CLONE_NEWUSER` 时允许；
 - 宿主要求：启用非特权用户命名空间；Ubuntu 24.04+ 等受 AppArmor `userns` 限制的宿主必须解除限制（`kernel.apparmor_restrict_unprivileged_userns=0`）。Docker 默认的 `docker-default` AppArmor profile 会在无 capability 时拒绝 `mount`/`pivot_root`，因此容器启动必须二选一并在 M0-SEC-1 证据中明确记录：加载只放行 Chromium 命名空间沙箱内 `mount`/`umount2`/`chroot`/`pivot_root` 的 `mien-chromium` profile，或以 `--security-opt apparmor=unconfined` 运行并记录为已接受风险。`mien-chromium` profile 是 M0 交付物，与 seccomp 文件一起作为宿主侧发布物分发；不得把 `unconfined` 当作默认值。宿主不满足时不得静默降级。
 - 可写层布局：`--read-only`；`--tmpfs /tmp:rw,noexec,nosuid,size=1g`；`--shm-size=1g` 的 `/dev/shm`（按最大并发档案数调整，不足时返回资源不足错误而不是静默降级）；`HOME=/data/home`、`XDG_CONFIG_HOME=/data/home/.config`、`XDG_CACHE_HOME=/data/home/.cache`、`TMPDIR=/tmp`，上述 HOME/XDG 目录权限 0700。
 - `cap-drop ALL`、`no-new-privileges`；不挂载 Docker socket 或宿主敏感目录。
@@ -159,7 +159,7 @@ flowchart LR
 - macOS 应用、嵌套内核、Xray-core 二进制和 frameworks 使用 AdHoc 签名；不公证。发布物提供 SHA-256SUMS、SBOM 和 Tauri 更新签名；GitHub artifact attestation 为必选门禁。Gatekeeper 首次启动会阻止 AdHoc 应用，用户必须先校验资产再手动放行。
 - Docker 镜像签名或摘要固定；构建使用锁定的依赖版本。
 - 升级经过内核准入与协议矩阵；运行中档案不被替换；保留回滚版本。
-- seccomp 配置与内核、引擎同属受校验发布物：构建时生成 SHA-256，写入 SHA-256SUMS、SBOM 与 attestation；镜像内副本必须与仓库源文件摘要一致。
+- seccomp 配置与 `mien-chromium` AppArmor profile 均是宿主侧受校验发布物：分别生成 SHA-256 并写入 SHA-256SUMS、SBOM 与 attestation；镜像内审计副本与仓库源文件摘要一致，宿主加载的 AppArmor 文件也必须与发布 identity 一致。
 - 项目以 Apache-2.0 发布（仓库根 `LICENSE`），发布物同时携带第三方许可文本、来源信息与 copyleft 组件的 Corresponding Source 获取方式，详见 [`THIRD-PARTY.md`](THIRD-PARTY.md)；再分发合规未完成前不得发布。
 
 ### 5.7 协议引擎
@@ -170,7 +170,7 @@ flowchart LR
 - 凭据只经回环管理 API 或受保护引导通道进入引擎，不写入持久化配置、argv、日志或事件；崩溃重启时从加密数据库重新生成。
 - 管理 API 只绑定控制面回环，并按宿主要求用控制面 UID 独占的 LSM/防火墙策略或独立网络边界限制；操作串行化且幂等；引擎日志按白名单采集并脱敏。
 - 引擎能力清单驱动 UI 与校验；未声明协议、传输或连接复用能力不得展示或提交。
-- 共享引擎崩溃影响所有运行档案；必须失败关闭、有界重启、按原端口重建，并在重建失败时标记受影响运行时。
+- 共享引擎崩溃影响所有代理运行档案；必须失败关闭、有界重启、按原端口重建活内核，并在重建失败时标记受影响运行时；直连档案不受影响。
 
 ### 5.8 日志与审计
 
@@ -244,7 +244,7 @@ docker run --detach \
   --env XDG_CACHE_HOME=/data/home/.cache \
   --env TMPDIR=/tmp \
   --env MIEN_PUBLIC_URL=https://mien.example.com \
-  --env MIEN_TRUSTED_PROXIES=172.30.0.10/32 \
+  --env MIEN_TRUSTED_PROXIES=<反向代理实际对端地址或最小 CIDR> \
   --env MIEN_BIND=0.0.0.0:8080 \
   --mount type=volume,src=mien-data,dst=/data \
   --publish 127.0.0.1:8080:8080 \
@@ -269,7 +269,7 @@ docker run --detach \
 
 | 门禁 | 证据 | 通过条件 |
 | --- | --- | --- |
-| M0-SEC-1 seccomp 与 AppArmor | `deploy/docker/seccomp/chromium.json`、`mien-chromium` AppArmor profile、宿主侧发布物、Docker 启动日志、沙箱探针输出 | 两份配置通过校验；宿主侧发布物可被 Docker/containerd 从 daemon 可见路径加载；容器以宿主路径 `--security-opt seccomp=...`、`--security-opt apparmor=mien-chromium` 和 `--cap-drop ALL` 启动；`clone(CLONE_NEWUSER)`、`clone(CLONE_FS)`、`clone(CLONE_NEWPID)`、`unshare(CLONE_NEWUSER)`、`mount`/`umount2`/`chroot` 在无 `CAP_SYS_ADMIN`/`CAP_SYS_CHROOT` 时仍生效；zygote 与 renderer 均能启动；探针返回 `isolation=enforced`；未设置 `ALLOW_UNSANDBOXED`；配置 SHA-256 写入发布物清单 |
+`clone(CLONE_NEWUSER)`、`clone(CLONE_NEWPID)`、`clone(CLONE_FS)`（基线掩码放行）、`unshare(CLONE_NEWUSER)`、`mount`/`umount2`/`chroot` 在无 `CAP_SYS_ADMIN`/`CAP_SYS_CHROOT` 时仍生效；
 | M0-SEC-2 非特权用户命名空间 | 目标基础镜像上的 spike 记录 | 非 root 用户可创建用户命名空间且 Chromium 命名空间沙箱生效；宿主禁用 userns 时的失败信息映射为 `SANDBOX_UNAVAILABLE` |
 | M0-SEC-3 只读与 tmpfs/shm | 基线 `docker run` 命令与写探针输出 | 除 `/data`、`/tmp`、`/dev/shm` 外无可写路径；`/dev/shm` 容量满足最大并发档案；HOME/XDG 位于 `/data` |
 | M0-SEC-4 管理员引导 | 启动 → 登录 → 改密流程记录与数据库导出 | `admin_credentials` 只存 Argon2id 哈希；首次登录返回 `must_change_password`；改密后应用生成的引导文件被删除、引导标记被清除并写入审计；外部 env/Secret 的撤销由部署者完成；使用内联 `MIEN_ADMIN_PASSWORD` 时必须记录该变量已从容器环境移除 |

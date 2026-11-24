@@ -63,7 +63,7 @@
 | 协议引擎 | Xray-core v26.11.9+ | 固定补丁版本与 SHA-256 | 单实例动态入站/出站/路由；VLESS/VMess/SS/Trojan/Hysteria2/WireGuard；MPL-2.0 |
 | 容器基础 | Debian bookworm-slim | 固定摘要 | 需要 X11、Chromium 运行库与字体 |
 | 容器 init | tini | 固定 | 信号转发与僵尸进程回收 |
-| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）与 `mien-chromium` AppArmor profile；宿主需允许非特权用户命名空间 | 固定文件与 SHA-256（两者） | 允许非特权用户命名空间的 Chromium 命名空间沙箱；两份配置作为宿主侧发布物在容器创建前加载，镜像副本仅审计；不得改用默认 seccomp 或把 `apparmor=unconfined` 当默认值 |
+| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）与 `mien-chromium` AppArmor profile；宿主需允许非特权用户命名空间 | 两份宿主配置分别固定 SHA-256 并进入 checksum、SBOM 与 attestation | Chromium 命名空间沙箱；两份配置由宿主侧在容器创建前加载，镜像副本仅审计；不得改用默认 seccomp 或默认 unconfined |
 | 虚拟显示 | Xvfb + openbox | 固定主版本 | 无桌面环境的有头运行 |
 | 远程查看 | x11vnc + noVNC/websockify | 固定主版本 | 可选、一次性令牌、默认关闭；GPL-2.0、MPL-2.0、LGPL-3.0 义务见 `THIRD-PARTY.md` |
 | 任务编排 | cargo xtask | 固定 | 仓库内构建、校验、打包任务 |
@@ -205,7 +205,7 @@
 | Rust 异步生命周期与服务栈复杂度 | 实现周期拉长、竞态与资源泄漏 | 显式状态机、单写者队列、进程组监督、可替换端口注入测试 |
 | SQLite 单写者 | 并发写操作排队或超时 | 短事务、WAL、单写者队列、错误重试 |
 | Xray MPL-2.0 与共享引擎合规 | 再分发与共享故障域 | 独立进程、许可证与来源信息、再分发评审、失败关闭与重建 |
-| 共享引擎崩溃或 API 不可用 | 所有运行档案网络中断 | 失败关闭、全局事件、有界重启、原端口重建、不直连回退 |
+| 共享引擎崩溃或 API 不可用 | 代理运行档案网络中断 | 失败关闭、全局事件、有界重建活内核和原端口；直连不受影响，恢复失败才 teardown |
 | Docker 沙箱不可用 | 安全边界削弱 | 强制 seccomp 配置、非特权 userns 检查、启动前检测、默认拒绝、包含性探针、显式无沙箱开关与审计 |
 | seccomp 配置与镜像副本漂移 | 沙箱边界被静默削弱 | 配置作为版本化发布物，SHA-256 进入清单与 attestation；发布冒烟测试校验镜像副本摘要 |
 | 直连模式绕过代理保护 | 真实 IP 与流量暴露 | 桌面标记降低保证；服务端必须 `MIEN_ALLOW_DIRECT_EGRESS=1` 并审计；UI 不把直连伪装成代理 |

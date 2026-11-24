@@ -65,7 +65,7 @@
     "protocolSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tier", "transports", "tls_modes"],
+      "required": ["tier", "transports", "tls_modes", "obfuscation"],
       "properties": {
         "tier": {
           "enum": ["A", "B", "basic"],
@@ -101,7 +101,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": {"type": "string"},
-          "description": "Obfuscation methods declared by this engine. Empty means the engine does not support obfuscated configurations; configs carrying obfuscation must be rejected. Omitting the key is equivalent to an empty array, but shipped manifests must state it explicitly so capability changes are reviewable."
+          "description": "Required explicit list of declared obfuscation methods. Empty means none are supported and configurations requesting obfuscation must be rejected."
         },
         "notes": {
           "type": "string"

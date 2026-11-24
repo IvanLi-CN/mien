@@ -11,7 +11,7 @@
 | Tauri | 2.x | MIT 或 Apache-2.0 | Rust 依赖/桌面框架 | 保留依赖许可与 NOTICE |
 | Rust crates | 锁文件版本 | MIT/Apache-2.0/BSD/ISC 等 | 链接依赖 | `cargo-deny` 检查；拒绝 GPL/AGPL/SSPL 进入链接依赖 |
 | React / Vite / Radix 等前端依赖 | 锁文件版本 | MIT/Apache-2.0/ISC 等 | 打包静态资源 | 生成 SBOM；保留许可声明 |
-| Debian bookworm-slim | 固定 digest | Debian 及各包许可 | Docker 基础镜像 | 镜像内保留许可信息；生成 SBOM；按包记录来源 |
+| Debian bookworm-slim（含 bash/coreutils 等 GPL-3.0 与 glibc 等 LGPL-2.1 包） | 固定 digest | Debian 与各包自身许可 | Docker 基础镜像 | 按实际安装包生成 SBOM，随镜像提供许可文本、来源与版本；对 GPL/LGPL 包提供精确版本的 Corresponding Source 获取 URL 与至少三年书面要约/随附源码，纳入 LICENSES、镜像与发布附件清单 |
 | tini | 固定版本（镜像内） | MIT | Docker 运行时 init | 保留 MIT 文本与版权声明；源码链接见 §5 |
 | Xvfb（xorg-server） | 固定版本（镜像内） | X11/MIT | Docker 运行时 | 保留版权与许可文本；源码链接见 §5 |
 | openbox | 固定版本（镜像内） | GPL-2.0-or-later | Docker 运行时，独立进程 | 提供许可证文本、源码链接与 Corresponding Source；不链接到 Mien |
@@ -25,8 +25,8 @@
 
 openbox、x11vnc、websockify、noVNC 与 Xray-core 是独立程序，不作为库链接进 Mien 二进制：
 
-- 每个组件以独立可执行文件或独立静态资源目录分发，Mien 进程不加载其符号，也不与其共享地址空间。
-- 发布说明和本文必须给出锁定版本的许可文本、上游源码 URL 与 Corresponding Source 获取方式；GPL-2.0 组件同时提供不少于三年的书面源码要约或等价随附源码的方式。
+- 每个组件以独立可执行文件或独立静态资源目录分发，Mien 进程不加载其符号，也不与其共享地址空间。Debian base image 中逐包分发的 GPL-3.0/LGPL-2.1 组件同样受源码获取义务覆盖，不能因来自基础镜像而排除。
+- 发布说明、镜像与本文必须给出每个受 copyleft 组件的精确版本、许可文本、上游源码 URL 与 Corresponding Source 获取方式；GPL-2.0/GPL-3.0 组件提供不少于三年的书面源码要约或等价随附源码，LGPL-2.1/LGPL-3.0 提供相应源码和可替换方式。
 - websockify 为 LGPL-3.0：不改名、不剥离许可信息；不修改时保持上游二进制/脚本原样分发并说明可替换方式；修改时公开修改文件与构建方式。
 - noVNC 为 MPL-2.0：保留文件头与许可声明；修改的 MPL 文件必须按 MPL-2.0 公开。其发行包同时包含 BSD-3-Clause、BSD-2-Clause、OFL-1.1、CC-BY-SA-3.0 与 MIT 的字体/资源，且 `core/des.js` 带有 BSD-style 声明；`LICENSES/` 必须逐项收录，不能只列 MPL-2.0。
 - Xray-core 为 MPL-2.0：不修改二进制；如启用补丁分支，必须建立可审计的补丁流程并发布修改后的源码。

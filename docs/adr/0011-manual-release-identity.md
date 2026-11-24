@@ -44,7 +44,7 @@ Mien 同时发布 macOS DMG 和 Docker 镜像，未来还需要让多个消费�
 - 失败重跑必须复用同 identity；修复 source 需要新的 release boundary，不能伪装成 recovery。
 - `release-identity.json` 和 draft 正文成为排障、审计和下游 digest 消费的入口。
 - 需要一个可执行的 policy validator 和 reservation 检查；在当前文档阶段，这些是 M4 前的实现前置条件。
-- tag ruleset 启用 `Restrict creations`、`Restrict updates` 与 `Restrict deletions`，只允许 release GitHub App 绕过；人类与日常 `GITHUB_TOKEN` 不能创建、改写或删除 `v*` tag。
+- v* 用两套 ruleset：Restrict creations 的 bypass 仅 release App；Restrict updates + Restrict deletions 的 bypass 为空，任何身份（包括 App 与管理员）不能改写/删除。bypass 按整个 ruleset 生效，不能把三种限制放在同一套并声称 App 仅能创建。
 
 ## 验证
 

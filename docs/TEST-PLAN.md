@@ -155,7 +155,7 @@
 | RT-018 | 跨档案数据隔离 | 两个档案并发运行时 Cookie、localStorage、缓存、会话与下载文件互不可见；默认下载目录为 `<data-root>/profiles/<id>/downloads`，权限 0700，路径包含校验拒绝越界 |
 | RT-019 | 归档/删除/恢复与清理 | `active <-> archived` 通过 archive/restore 切换且不移动目录；`DELETE permanent=false` 将目录移到 `<data-root>/trash/<id>` 并写入 `deleted_at`，`deleted` 不可启动，重复请求幂等；运行中档案删除返回 `RUNTIME_CONFLICT` 且不移动目录；恢复前检查 trash 目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录；恢复成功时目录回位且 `archived_at`、`deleted_at` 均清空；`permanent=true` 仅接受 `deleted`，对 active/archived 返回 `PROFILE_NOT_DELETED`，先删目录再删行；目录移动/移除失败保留原状态或 `deleted` 并写 `deletion_error` 供重试 |
 | RT-020 | 崩溃循环 | 默认不自动重启；启用自动重启时最多 3 次递增退避，稳定运行后计数重置；超过上限进入 `crashed` 并停止重试；事件、退出码与日志尾部足以诊断，无无限重启 |
-| RT-021 | 共享引擎故障与重建失败 | 运行中强杀引擎时全部运行档案网络失败且无直连/其他节点回退，产生 `proxy.engine.failed`；重建成功产生 `proxy.engine.rebuilt` 并恢复原端口；重建失败先转入 `stopping`，拆除内核与进程组、入站/规则，并在同一事务递减出站引用、清空 `proxy_*`、释放配额与锁，再写 `failed`；teardown 失败保持 `stopping` 与 `last_error`，终态后无残留内核或端口 |
+| RT-021 | 共享引擎故障与重建失败 | 代理档案失败关闭、直连不受影响；活内核保留原端口，有界重建后恢复；耗尽才 teardown；未知退出归属保留 stopping/端口，不能复用 |
 | RT-022 | 沙箱校验先于资源创建 | 启动事务先校验沙箱，失败返回 `SANDBOX_UNAVAILABLE`，且不创建入站/出站/规则、不拉起进程、不占用配额；服务端显式无沙箱且通过包含性探针时写入审计与降级标记，`isolation=unsandboxed`；桌面无法确认时拒绝启动 |
 | RT-023 | 控制面重启对非终态运行时对账 | 重启后对 `starting`/`stopping` 行终止可归属内核、删除入站/规则/出站引用，再置 `stopped`；teardown 失败保留 `stopping` 与 `last_error`；不产生重复运行时，不可归属进程按契约记录而不盲杀 |
 | RT-024 | 隔离 proof 状态 | 启动时沙箱探测写入 `runtimes.isolation`，成功启动同步写入 `runtimes.last_known_isolation`（成功启动只允许 `enforced` 或服务端显式授权的 `unsandboxed`；无成功记录为 `unknown`）；`starting` 行与 pre-resource 失败不得覆盖 `last_known_isolation`；proof strip 与 Profile payload 均以 `last_known_isolation` 为唯一数据源派生；停止的档案仍显示最近一次运行的 `unsandboxed`/`unknown` 与降低保证，警告不被 `stopped` 中性样式覆盖；`unknown` 与 `stopped` 不共用同一视觉或语义 |
@@ -186,7 +186,7 @@
 | PROXY-011 | 动态资源生命周期 | 启动创建出站/入站/规则；停止删除入站/规则、清空 `proxy_outbound_key`/`proxy_inbound_tag`/`proxy_rule_tag`/`proxy_port` 并按非终态引用释放出站；`ref_count` 不含终态运行时；无持久化凭据配置 |
 | PROXY-012 | 引擎校验与清单 | 篡改二进制/清单拒绝启动；协议矩阵、MPL 许可、来源信息完整；未声明能力不可选 |
 | PROXY-013 | 共享引擎与入站隔离 | 全宿主一个 Xray 引擎；每个运行档案独立入站/端口/规则；引擎先于内核就绪；共享引擎不随单档案停止 |
-| PROXY-014 | 共享引擎故障与重建 | 运行中强杀引擎；所有运行档案网络失败；无直连/其他节点回退；产生 `proxy.engine.failed`；重启后按原端口重建并产生 `proxy.engine.rebuilt`；重建失败时先拆除内核/进程组/入站/规则/出站引用/配额锁再写 `failed`，无终态后活内核 |
+| PROXY-014 | 共享引擎故障与重建 | 代理运行档案网络失败，直连不受影响；活且可归属内核保留原端口且有界重建后恢复；重建失败 teardown 后才 failed；未知归属保留 stopping/端口，不能复用 |
 
 ### 7.3 网络与泄漏
 
@@ -285,7 +285,7 @@
 
 | 编号 | 用例 | 通过条件 |
 | --- | --- | --- |
-| PKG-001 | macOS AdHoc 签名 | 应用、嵌套 Chromium 内核及其 renderer/GPU/utility helper、Xray-core 和 frameworks 通过 `codesign --verify --deep --strict`；应用、Chromium 内核与全部 helper 带且只带 JIT 两项 entitlements，Xray/frameworks 不带；`--options runtime` 与 `Signature=adhoc` 已断言；不要求 Developer ID |
+| PKG-001 | macOS AdHoc 签名 | 签名清单枚举并逐个校验所有可执行文件；应用、内核及 renderer/GPU/utility helper 仅带两项 JIT entitlement，其他 helper/Xray/frameworks 不带；未分类文件阻断；真实页面加载通过 |
 | PKG-002 | Gatekeeper 行为 | 从浏览器下载的 DMG 保留 quarantine 后首次启动被阻止；发布说明提供 SHA-256 校验和手动放行步骤；不要求无提示打开 |
 | PKG-003 | 自动更新 | Tauri 更新清单签名有效，拒绝未签名或降级包；不依赖 Apple 签名或公证 |
 | PKG-004 | Docker 构建 | 多阶段构建可复现，镜像非 root，健康检查有效 |
@@ -309,7 +309,7 @@
 - P0 数量必须为 0；任何书面风险接受、环境决策或人工备注都不能豁免 P0。
 - P1 中的凭据/网络泄漏（DNS、WebRTC、IPv6、DoH）、失败关闭回退（直连或其他节点）、导入与档案路径穿越、崩溃循环、运行时重复或孤儿、沙箱状态未披露必须为 0；不得整类豁免或按环境放宽。
 - 其余 P1 只能逐项接受，必须记录缺陷编号、`severity`（`P0|P1|P2|P3`）、`blocking_class`（布尔）、具名接受人、影响范围、到期日和修复计划；未满足则阻断发布。机器可读结果用 `accepted` 表示具名接受，且必须同时携带上述 waiver 记录；没有 waiver 的 `accepted` 等同失败。GATE-001 必须拒绝 `severity=P0` 或 `blocking_class=true` 的 `accepted`。P2/P3 可记录后排期，但不得掩盖 P0/P1。
-- PRD-ACC-001 至 PRD-ACC-010 全部有证据，缺失任何一项即阻断，不得以“后续补充”推进。
+- PRD-ACC-001 至 PRD-ACC-010 全部有当前证据且全部 pass；ACC 不接受 accepted，缺失或失败即阻断，不以 waiver 或“后续补充”替代验收。
 - 内核准入 KERNEL-001 至 KERNEL-010 通过。
 - 协议引擎准入 ENGINE-001 至 ENGINE-009 通过，Tier A 协议矩阵、共享出站与分享链接导入通过；Tier B 结果只记录，不作为门禁。
 - EXPORT-001 至 EXPORT-006 通过；UI-001 至 UI-022 通过；RT-017 至 RT-025、RT-026（内核迁移）、API-019 至 API-020 通过。
@@ -317,7 +317,8 @@
 - 隔离 proof（`enforced`/`unsandboxed`/`unknown`）与日志尾部端点的脱敏证据存在；停止档案的降低保证可见。
 - 桌面管理 UI 默认无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
 - 已知限制在发布说明和 UI 中可见。
-- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..025`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009`、`PERF-001..007` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；`PRD-ACC-009` 的 `pass` 必须由 `PERF-001..007` 全部 `pass` 支撑，`PERF-008` 明确非门禁。只有携带缺陷编号、`severity`、`blocking_class`、具名接受人、影响范围、到期日和修复计划的 `accepted` 结果可按第 11 节逐项接受，P0 与阻断类 P1 不得使用 `accepted`；`PROXY-007` 与 `PROXY-030` 为 Tier B，只记录、不作为门禁。
+- 门禁自检（GATE-001）：固定 required ID 为 `FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..026`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009`、`PERF-001..007`；缺失、空结果、fail/error/skipped 均拒绝。ACC 必须 pass，ACC-009 还要求 PERF-001..007 全 pass，PERF-008 与 Tier B PROXY-007/030 非门禁。其他强制项仅允许本节具名接受的 P1 使用 accepted，必须有完整且未到期 waiver（缺陷编号、severity=P1、blocking_class=false、接受人、范围、到期日、修复计划），P0/阻断 P1 不可接受。
+- 执行点：test 产出测试分报告，打包/人工测试补齐当前 digest 的证据；attest 后 gate-release 汇总并产出 source_sha/reservation_id/全部 digest 绑定的 release-gate.json。promote-docker 与公开 release（含单独重跑）必须重验完整报告；metadata-only reserve 可以先于测试，不表示门禁通过。PKG-009 的发布前结果来自 workflow/policy 的受控演练与恢复用例，真实发布后验证由 verify-release 承担，不让门禁依赖尚未执行的公开发布。
 
 ## 12. 证据与报告
 

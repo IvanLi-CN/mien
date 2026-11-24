@@ -28,7 +28,7 @@
 
 ## Verification Status
 
-实现开始前逐项记录状态；`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须只对 `pending` 放行。
+Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 pending 并列出计划命令与 fixture，结构检查也接受有证据的已实施状态，发布门禁只接受 pass 或有效 waiver。
 
 | VER | 状态 | 计划命令与 fixture |
 | --- | --- | --- |

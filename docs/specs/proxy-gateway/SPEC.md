@@ -15,7 +15,7 @@
 - `proxy gateway`: 核心库中的监督组件，负责配置校验、Xray 管理 API 调用、共享出站引用计数、入站/路由生命周期、就绪探测、健康事件和端口生命周期；不转发字节流。
 - `runtime inbound`: Xray 在 `127.0.0.1` 上为单个运行档案创建的 HTTP 入站；Chromium 只连接该入口。
 - `shared outbound`: 由 `outbound_key` 标识的 Xray 出站；相同节点、凭据、传输、TLS/REALITY 与 mux 配置的档案共享它及其连接池。
-- `route rule`: 将 runtime inbound 的 `inboundTag` 指向 shared outbound 的 Xray 路由规则；每条规则携带稳定 `ruleTag`（`rt:<runtime_id>:rule`），删除只按该 tag。
+- `route rule`: 将入站的 `inboundTag` 指向出站的 Xray 路由规则；运行时使用 `rt:<runtime_id>:rule`，临时检查使用 `chk:<check_id>:rule`，删除只按稳定 `ruleTag`。
 - `bootstrap resolution`: 仅对代理节点主机名进行的本地解析；目标域名不得本地解析。
 - `Tier A protocol`: 首个发布必须通过发布门禁的协议：VLESS、VMess、Shadowsocks、Trojan。
 - `Tier B protocol`: 受支持但按能力清单和独立测试标注的协议：Hysteria2、WireGuard；TUIC 不进入 v1。
@@ -102,7 +102,7 @@
 
 - The system MUST provide a proxy check through temporary inbound, route and outbound resources in the shared engine, then remove those resources; it MUST NOT start a second engine for the check.
 - Inputs: 代理配置、共享引擎管理 API、可选回显端点、超时。
-- Outputs: 成功/失败、延迟、可选出口 IP 与地区、稳定错误类；节点与网络失败必须用 HTTP 200 的 `ProxyCheck` 表达（`ok=false`，具体错误在 `error_code`），事件 `proxy.check.completed` 携带同一 `error_code`，不得使用未声明的 502；只有认证、授权、校验、存储、引擎未就绪等控制面失败使用 HTTP 错误响应。检查使用独立 `chk:<check_id>:out` 临时出站和独立 `chk:<check_id>:rule`，不写入 `proxy_outbounds`、不改变 `ref_count`；检查不记录凭据、UUID、完整节点 URL 或目标 URL；临时资源在成功或失败后都被删除。
+- Outputs: 节点与网络错误以 HTTP 200 `ProxyCheck` 返回，error_code 仅为 ProxyCheckErrorCode；控制面失败用 HTTP 错误。检查创建 `chk:<id>:in` 回环入站、`chk:<id>:out` 临时出站与 `chk:<id>:rule`，不写 proxy_outbounds/ref_count。进程内 finally 清理；控制面崩溃后启动接管清除所有没有当前检查 lease 的 chk:*；清理失败保留引擎孤儿并重试，不留存秘密。孤儿清理与新检查创建持同一引擎写锁串行化。
 
 ### REQ-PROXY-014
 
@@ -150,25 +150,25 @@
 
 - The system MUST share an outbound and its connection pool among running profiles with the same stable `outbound_key`; profiles with different credentials, transport, TLS/REALITY or mux settings MUST NOT share.
 - Inputs: 代理配置、凭据引用、传输设置、mux 设置、运行档案。
-- Outputs: 每个 key 一个出站；`ref_count` 只统计非终态运行时（`starting`/`running`/`stopping`）；停止或失败 teardown 必须先清空该运行时的 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port`，再递减 `ref_count`，且 teardown 幂等、只释放一次；最后一个引用释放时删除出站；复用能力由引擎清单声明。
+- Outputs: 每个 key 一个出站；`ref_count` 只统计带该 key 的非终态运行时（`starting`/`running`/`stopping`）。先确认内核进程组退出，再快照四个 `proxy_*` 绑定、删除规则和入站；随后在同一事务中按快照 key 递减并清空绑定，重复 teardown 不重复释放。共享引擎写锁覆盖同 key 的获取引用、归零复核、Xray 删除与数据库行删除整个序列；不得只串行化单次 API 调用。删除失败保留零引用孤儿，复用前在同一锁内核对引擎状态。无法确认旧内核退出时保留端口租约、绑定与引用，不写终态。
 
 ### REQ-PROXY-022
 
 - The system MUST fail closed when the shared engine crashes, the management API is unavailable, or rebuilding the running configuration fails; it MUST restart with bounded backoff and recreate inbounds on their original `proxy_port`.
 - Inputs: 引擎 PID、API 健康、运行档案状态、原端口。
-- Outputs: 所有运行档案网络失败；全局 `proxy.engine.failed` 事件；重建成功产生 `proxy.engine.rebuilt`；重建失败先删除受影响运行时的入站、路由规则并释放出站引用和配额/锁，再把运行时标记为 `failed`，不得存在终态但仍有活内核或残留代理资源。
+- Outputs: 只有依赖该引擎的运行档案网络失败关闭，直连档案不受影响；发布 `proxy.engine.failed`。活且可归属的 `running` 内核保留状态、引用和原端口，在 1、2、4 秒退避后最多尝试重建 3 次，每次启动/API 就绪超时 10 秒。重建只恢复这些存活运行时所需资源，成功发布 `proxy.engine.rebuilt` 后原内核继续运行；取消、停止或已终态的运行时不得被重建。次数耗尽，或 API 失联且不能证明数据面失败关闭时，按 REQ-RUNTIME-019 转 `stopping` 并完成 teardown 后才写 `failed`；清理未完成保持非终态与端口租约。
 
 ### REQ-PROXY-023
 
 - The system MUST bind the Xray management API to loopback only, serialize mutations, make add/remove idempotent, and reconcile outbound refcounts after restart.
 - Inputs: 管理 API 地址、并发启动/停止请求、引擎重启、`runtimes` 与 `proxy_outbounds` 持久化状态。
-- Outputs: 无重复出站、无孤儿入站或规则、引用计数按非终态运行时可重建；控制面重启时能归属且资源完整的 `running` 行保持 `running`，无主的 `starting`/`running`/`stopping` 行先终止可归属内核与代理资源，teardown 成功后转 `stopped`；共享引擎重建失败时先转 `stopping`，teardown 完成后才转 `failed`；teardown 失败保留 `stopping` 与 `last_error`；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 不暴露到非回环地址。
+- Outputs: 内核归属与引擎健康分开判定：活且可接管的 `running` 行保留绑定并修复/重建缺失代理资源；内核已退出的 `running` 行和 `starting`/`stopping` 中断行经 `stopping` 清理后写 `stopped`。无法确认旧进程已退出时保留端口、绑定、引用与 `stopping`，不可盲目杀进程或复用端口。重建失败按 REQ-RUNTIME-019 处理。引擎写锁串行化完整引用获取/释放及删除序列；重启接管时清理所有没有本控制面进行中检查的 `chk:<check_id>:*` 资源，`rt:<id>:*` 按运行时归属对账；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
 
 ### REQ-PROXY-024
 
 - The system MUST identify every route rule by a stable `ruleTag`, add rules incrementally with `shouldAppend=true`, and remove rules only by `ruleTag`; it MUST NOT emit `routing.final`, `routing.script` or any other whole-routing override.
 - Inputs: 运行档案标识、Xray `AddRule`/`RemoveRule`、当前路由状态。
-- Outputs: 每条规则带 `rt:<runtime_id>:rule`；添加规则不清空或重排已有规则；删除只移除目标 tag；未匹配流量保持断网。
+- Outputs: runtime 规则带 `rt:<runtime_id>:rule`，检查规则带 `chk:<check_id>:rule`；添加不清空或重排已有规则，删除只移除目标 tag；未匹配流量保持断网。
 
 ### REQ-PROXY-025
 
@@ -302,19 +302,19 @@
 
 - Method: 使用相同节点/凭据启动多个档案，再使用不同凭据启动一个档案；检查 Xray 出站、连接和引用计数。
 - covers: `REQ-PROXY-021`
-- Pass condition: 相同 key 只创建一个出站并复用；不同凭据创建不同出站；`ref_count` 只计非终态运行时；teardown 先快照四个代理绑定字段，再递减并清空，重复 teardown 不重复释放；最后一个引用释放时删除；日志不泄露凭据。
+- Pass condition: 相同 key 共享、不同凭据不共享；teardown 先快照，再在同一事务递减并清空，重试不重复释放。暂停归零删除并发启动同 key 档案时，写锁阻止接管与删除交错；新运行时要么复用完整出站，要么在旧出站删完后重新创建，不出现绑定被清空或路由指向不存在出站。
 
 ### VER-PROXY-022
 
 - Method: 运行多个档案时强杀 Xray，观察失败关闭、事件、重启和原端口重建；再模拟重建失败。
 - covers: `REQ-PROXY-022`
-- Pass condition: 所有运行档案网络失败；产生全局事件；重启后按原端口重建；重建失败时先删除入站/规则、释放出站引用与配额/锁，再标记受影响运行时 `failed`，不得有残留代理资源；无直连回退。
+- Pass condition: 代理档案网络失败关闭，直连不受影响；活且可归属内核保留 `running` 与原端口，在有界重建成功后继续运行；失败耗尽才经 `stopping` 清理后写 `failed`；清理失败保留非终态；已终态不被复活；无直连回退。
 
 ### VER-PROXY-023
 
 - Method: 并发启动/停止档案，重启引擎，检查 Xray API 访问控制、幂等和引用计数对账。
 - covers: `REQ-PROXY-023`
-- Pass condition: 无重复出站、无孤儿入站/规则；引用计数按非终态运行时重建；控制面重启时能归属且资源完整的 `running` 行保持 `running`，无主的 `starting`/`running`/`stopping` 行先清理资源再转 `stopped`，且该清理必须经过 `stopping` 并发布对应事件；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 仅回环可达，但回环不提供调用者鉴权，服务端必须由控制面 UID 独占的 LSM/防火墙策略或独立网络边界限制，页面发起的回环探测不可达；无沙箱模式还要求内核与管理 API 之间不可路由；桌面端记录同 UID 残余风险。并发操作不产生竞争状态。
+- Pass condition: 覆盖活内核/死引擎、死内核/活引擎、资源缺项、PID 复用与归属未知；分类与 REQ-RUNTIME-012 一致，无幻影 `running`、重复内核或端口串用。注入检查中控制面崩溃后，接管清除遗留 `chk:` 入站、规则和出站，保留有效 `rt:` 资源；引用只计带 key 的非终态行。管理 API 按宿主边界限制且页面探测不可达，桌面记录同 UID 残余风险。
 
 ### VER-PROXY-024
 

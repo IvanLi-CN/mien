@@ -48,7 +48,7 @@
 - 选择 `pseudo_headful` 时，UI 与 API 返回 `mode=pseudo_headful`、`reduced_assurance=true`、`ua_scope=chrome`。
 - 运行中的档案不允许无确认切换模式；必须先停止。
 - 表单失败显示字段级错误；不得把代理凭据回显到表单。
-- 导入使用 `/profiles` 命令栏的 Import 入口：选择明文或加密文件，显示凭据移除提示和冲突处理；冲突按 `source_profile_id` 或同名分组/标签识别，不得仅按名称猜测档案身份；导出从 `/profiles/:id/edit` 或详情动作触发，明确明文/加密与口令。
+- 导入在 validate 之后确认与完成界面都提示“导入保留 seed；相同内核/规格下指纹相同”，冲突按 source_profile_id 或同名组/标签识别；不按 seed 查询或拒绝合法导入。导出明确 plain/encrypted 与 write-only 口令。
 
 ### 交互状态
 
@@ -64,7 +64,7 @@
 必须显示：
 
 - 运行状态（六态）、模式、`direct`、`reduced_assurance`、`ua_scope`。
-- 四段 proof：fingerprint、proxy、runtime、isolation。`isolation` 取值为 `enforced`/`unsandboxed`/`unknown`，以 `runtimes.isolation`（最近一次运行）为唯一数据源派生，Profile payload 暴露同一派生值。
+- 四段 proof：fingerprint、proxy、runtime、isolation。IS 取值为 `enforced`/`unsandboxed`/`unknown`，Profile payload/proof 只读 `runtimes.last_known_isolation`；Runtime/event 显示本次尝试的 `runtimes.isolation`，失败尝试不覆盖历史结论。
 - `isolation` 呈现：`enforced` 显示“沙箱已生效”；`unsandboxed` 持续显示“无沙箱”与降低保证；`unknown` 用虚线描边加 `?` 与文本“未确认”；`stopped` 只表示“未运行”，不得覆盖 `unsandboxed` 或 `unknown` 警告，也不得与 `unknown` 共用同一呈现。
 - 停止的档案仍显示最近一次运行的 `unsandboxed` 或 `unknown` 与降低保证；从未启动且无运行记录时显示 `unknown`，不得因此省略 proof。成功启动的运行时不会显示 `unknown`。
 - 代理线路、节点地区、延迟、最近检查时间、`ProxyCheck.error_code`。
@@ -72,17 +72,17 @@
 - 启动/停止、编辑、复制、归档/恢复、删除到回收站/恢复/彻底删除。
 - 日志尾部、稳定错误码和复制诊断。
 - 限制说明：宿主绑定显示/字体/插件面、无头或伪有头、跨系统画像、共享引擎故障域。proof 不引用第三方指纹站点结果作为判定。
-- 直连档案显示“直连/降低保证”，明确不创建代理入站、不具备远程 DNS、DoH、IPv6 与非代理 UDP 防护；不得把直连显示成代理。
+- 直连显示“直连/降低保证”，不创建代理资源、不提供代理级远程 DNS/失败关闭；内核支持时仍应用 DoH/IPv6/非代理 UDP 标志，无法应用就拒绝启动。
 
 状态行为：
 
-- `starting`：显示启动阶段与当前步骤；取消会中止启动、进入 `stopping` 并清理资源，完成后显示 `stopped`；不显示虚假“已运行”；重复 start 只显示进行中。
+- `starting`：显示状态及有界脱敏日志尾部，不伪造未由契约提供的阶段/步骤字段；取消进入 `stopping`，仅清理完成后显示 `stopped`。
 - `running`：显示停止；模式相关限制与 `isolation` 持续可见。
 - `stopping`：显示停止进度；完成后清空入站/规则/端口并显示 `stopped`。
 - `crashed`：内核提前退出（`starting` 或 `running` 遇异常退出）；先清理内核、入站/规则与出站引用，清理完成后显示 `crashed`、退出码、错误码、最近日志与重试入口；启用自动重启时最多 3 次递增退避，稳定后重置，超过上限停止重试并提示崩溃循环。
 - `failed`：pre-resource 失败直接显示 `failed`；post-resource 启动失败、引擎失败等非崩溃类失败只有在拆除内核、入站/规则与出站引用后才进入该终态。若 teardown 尚未完成，界面保持 `stopping` 并显示重试/诊断入口，不得同时显示“运行中”或伪造终态。
-- `stopped` 与 `deleted`：`deleted` 不能启动，启动入口禁用且原因可见；运行中档案删除返回 `RUNTIME_CONFLICT`，界面不得显示“自动停止后删除”；回收站目录缺失时 restore 返回 `PROFILE_RESTORE_UNAVAILABLE`；彻底删除失败显示 `deletion_error` 与重试入口。
-- 共享引擎故障：显示全局网络中断与 `proxy.engine.failed`，所有运行档案 proof 变为失败或降级；重建成功显示 `proxy.engine.rebuilt` 并恢复，重建失败按 `failed` 终态展示。
+- `stopped` 与 `deleted`：`archived` 与 `deleted` 均不能启动且显示原因，默认列表排除两者；回收站只包含 deleted。运行中删除返回 RUNTIME_CONFLICT；restore 缺目录显示 PROFILE_RESTORE_UNAVAILABLE；purge 失败显示 deletion_error 与重试。
+- 共享引擎故障：显示代理档案全局网络中断；保留活且可归属的内核状态，重建成功恢复原端口并显示 rebuilt；直连不受影响。失败耗尽 teardown 完成才显示 failed；未知退出归属时显示 stopping 与端口隔离。
 - 日志尾部：读取 `GET /api/v1/profiles/{id}/logs?limit=` 或桌面等价 IPC，显示有界脱敏内容、`limit` 与截断标记；不可用时显示稳定错误码与重试，不留空白。
 
 ## 4. 代理库与编辑器
@@ -148,7 +148,7 @@
 - 空结果区分“尚无数据”和“筛选无结果”，并提供清除筛选动作。
 - 加载失败显示稳定错误码、`request_id` 与重试入口。
 - 分页或滚动加载保留已加载项，不闪空；重复项按标识去重。
-- `deleted` 档案默认不出现在活跃列表，需显式筛选才可见，并标注不可启动与恢复入口。
+- `archived` 与 `deleted` 默认不在 active 列表；显式筛选显示。两者均不可启动并显示原因，deleted 另提供回收站恢复入口。
 
 ## 9. 与契约的关系
 

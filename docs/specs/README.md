@@ -15,7 +15,7 @@
 3. 创建 `SPEC.md`、`IMPLEMENTATION.md` 与 `HISTORY.md`。
    - `SPEC.md` 的 `## Related ADRs` 按路径升序列出当前关联 ADR 的 Markdown 链接；无关联时写 `None`。
 4. 在下方 Index 表尾追加一行，默认 `Lifecycle=active`、`Successor=-`。
-5. `SPEC.md` 的 `## Verification` 是契约：每个 `VER-*` 必须通过 `covers` 指向至少一个 `REQ-*`。同目录 `IMPLEMENTATION.md` 必须为每个 `VER-*` 记录验证命令或证据；实现尚未开始时统一标为 `pending` 并写明计划的命令与 fixture，`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须接受它且只对它放行。
+5. SPEC Verification 中每个 VER-* 的 covers 必须指向至少一个有效 REQ-*；IMPLEMENTATION 为每个 VER 记录状态、命令与 fixture/证据。状态闭集为 pending、pass、fail、blocked：pending 只表示未实现且必须有计划命令/fixture；其余必须有实际命令、结果和证据（blocked 另有阻断原因）。结构检查接受上述完整记录，不能把“未实现状态只允许 pending”误解为“只有 pending 可过”；运行/发布门禁仍要求适用 VER pass，fail/blocked 不可冒充通过，文档阶段 pending 不表示已验证实现。
 
 新 spec 不使用 ID。历史 `docs/specs/<legacy-id>-<topic>/` 与 `docs/plan/**/PLAN.md` 仅保留读取兼容，规范化由 `$docs-migrate MODE=specs-hygiene` 在确认后完成。
 

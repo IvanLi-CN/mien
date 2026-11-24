@@ -53,7 +53,7 @@
 - `per_platform_values`：按**画像平台**（`windows`、`macos`、`linux`）声明的允许取值集合，用于 CPU 核心数这类按平台受限、且与宿主平台不同的字段。三个平台键都必须存在，且每个数组非空；缺失平台或空数组是无效清单。
 - `per_platform_values` 存在时是权威取值来源；不存在时回退到 `values`，但两者不得合并成更宽松的集合。CPU 核心数开关必须至少提供其中一个来源；schema 要求 `fingerprint-hardware-concurrency` 同时满足“有 `per_platform_values`”或“有 `values`”之一。
 
-`window-size`（`type: string`，`WIDTH,HEIGHT`）在所有平台清单中声明，schema 把 `flags.window-size` 设为必填、类型固定为 `string`，并要求非空 `values` 候选集合；缺失或空集合都使清单无效。该候选集合就是 UI 与服务端校验唯一接受的窗口尺寸来源。消费方只能接受集合内值，不能从 UI 预设另造集合。窗口尺寸属于指纹规格的规范字段，**不是屏幕分辨率**：屏幕尺寸、`devicePixelRatio`、颜色深度和字体枚举仍是宿主绑定特征，不由清单或规格伪造（REQ-FP-010）。
+`flags.window-size` 必填，且必须显式声明 type=string；候选来自非空 values 或含完整三画像平台的 per_platform_values，后者存在时优先，不合并放宽。每项必须是无前导零的正整数 WIDTH,HEIGHT 字符串，整数、其他字符串、缺 type 或空数组都无效；消费方还需校验 fingerprint-spec 的宽高边界。该集合是 UI/服务端唯一候选来源，窗口几何不是屏幕分辨率，screen/DPR/颜色深度/字体仍 host-bound。
 
 语言与时区同样走清单校验：清单声明限制集合时按其校验，未声明时按 BCP-47 与 IANA 规则校验。任何清单外的字段、取值或不生效开关都必须被拒绝，不得静默丢弃（REQ-FP-009）。
 
@@ -91,7 +91,7 @@
 
 ### 2.5 协议分级（引擎清单）
 
-`protocols` 是协议名到能力对象的映射，每项包含 `tier`、`transports`、`tls_modes`，可选 `methods`、`plugins`、`obfuscation`、`notes`。`tier` 取值 `A`、`B`、`basic`，且必须与协议名绑定：`vless`/`vmess`/`shadowsocks`/`trojan` 只能为 `A`，`hysteria2`/`wireguard` 只能为 `B`，`http`/`https`/`socks5` 只能为 `basic`。
+protocols 每项必含 tier、transports、tls_modes 与显式 obfuscation 数组，可选 methods、plugins、notes；空 obfuscation 表示不支持混淆，省略是 schema 错误。tier 按协议名绑定：vless/vmess/shadowsocks/trojan 为 A，hysteria2/wireguard 为 B，http/https/socks5 为 basic。
 
 | 级别 | 协议 | 含义 |
 | --- | --- | --- |
@@ -115,7 +115,7 @@
 ## 4. 更新规则
 
 - 清单按“构件版本 + 目标平台”粒度存在；不同平台的能力差异必须写进各自清单，不得用一份清单代表所有平台。
-- 清单变更必须同时更新发行包 `asset_sha256`、`limitations`、`known_issues` 和相关测试。
+- 清单变更必须同时核对发行包 sha256（写入安装记录时名为 asset_sha256）、limitations、known_issues 与相关测试；未替换资产时不改摘要，不新增不存在的 asset_sha256 清单键。
 - `known_issues` 在已发布版本上只增不改语义；修复后在新版本清单中标记，并保留旧版本用于回滚。
 - 不得删除已发布清单中的已知缺陷或能力缺失声明。
 - 不得把 TUIC 加入 v1 Xray 清单。

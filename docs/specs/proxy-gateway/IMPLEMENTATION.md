@@ -10,7 +10,7 @@
 
 ## Implementation Coverage
 
-- Requirement coverage: 计划由 `mien-core` 的 proxy 模块和固定 Xray-core 共享引擎覆盖 `REQ-PROXY-001` 至 `REQ-PROXY-025`；协议能力、连接复用和管理 API 由引擎清单驱动。
+- Requirement coverage: 计划由 proxy gateway 与固定 Xray shared engine 覆盖 `REQ-PROXY-001` 至 `REQ-PROXY-025`；写锁覆盖引用获取/释放及零引用出站删除，检查临时 `chk:` 资源重启后清理；故障恢复保留活且可归属内核，直连不依赖引擎。
 - Verification commands: 尚未建立；实现后使用受控 VLESS/VMess/Shadowsocks/Trojan/Hysteria2/WireGuard 与 basic HTTP/HTTPS/SOCKS5 节点、`asset_sha256`/`binary_sha256` 篡改 fixture、路由 `ruleTag`/`shouldAppend` 断言、blackhole 首出站断言、非终态引用计数与 teardown 序列、`ProxyCheck` HTTP 200 `error_code`、直连服务端开关与审计、DNS canary、引擎故障注入、分享链接 fixture 和凭据扫描。
 - Rollout facts: Tier A 为 VLESS、VMess、Shadowsocks、Trojan；Tier B 为 Hysteria2、WireGuard；HTTP/HTTPS/SOCKS5 为 basic tier，不参与 A/B 门禁；TUIC 不进入 v1；订阅属于后续范围。
 
@@ -25,7 +25,7 @@
 
 ## Verification Status
 
-实现开始前逐项记录状态；`pending` 是唯一允许的未实现状态，`spec_contract_check` 必须只对 `pending` 放行。
+Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 pending，每行列出计划命令与 fixture。结构检查允许有证据的已实施状态；发布门禁只接受 pass 或有效 waiver。
 
 | VER | 状态 | 计划命令与 fixture |
 | --- | --- | --- |

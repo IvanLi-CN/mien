@@ -46,7 +46,7 @@ Trusted baseline 是仓库中**所有已存在的 `vX.Y.Z` Git tag 与 GitHub Re
 - 新 identity 的 target 必须严格大于所有已存在 tag/release 的核心版本；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形：先读取 reservation 并验证 policy/target/version/source SHA 完全一致，再从 collision 集合中排除该 identity 的完整匹配对象——reservation 自身，以及 policy/target/version/source SHA 完全匹配的 tag/release——然后放行；其他 identity 使用同一版本仍然冲突。不得仅因 version 相同就复用。
 - 相同 target 只允许作为同一 source identity 的 idempotent retry/recovery，不得重新分配 successor。
 - tag `vX.Y.Z` 已存在时，只能读取并验证其 peeled commit；如果指向不同 source，停止，不改写 tag。
-- Release record、container tag 或 GitHub Release 已属于另一个 source identity 时，停止并报告冲突。
+- resolve-target 以 packages:read 查询目标 GHCR tag 的 digest/source identity；promote-docker 在同一 release concurrency 下写入前再次读取，已有 tag 只允许 identity 与 digest 都相同的幂等复用。查询失败、缺少 identity 或不同 source/digest 一律停止，不将权限错误视作不存在、不覆盖 tag；删除 reservation 也不能授权覆盖已发布镜像。
 
 ## 5. Release identity
 
@@ -103,11 +103,11 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 
 1. `resolve-target`：读取 target 和 baseline，解析 canonical version，读取 source 和 `CI Main / verify`。
 2. `reserve`：创建或复用 draft release；写入 identity。
-3. `test`：运行完整 CI 和 e2e；失败不构建发布物。
+3. test：运行完整 CI/e2e，生成逐 ID 分报告；失败不构建发布物，固定 source 由 reserve 输出传入而非由只读 token 读取 draft。
 4. `macos-arm64`、`docker-amd64`：在 reservation 的 `source_sha` 上构建并记录 digest，不公开发布。
 5. `stage-release`：把产物、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、校验和与 identity 写入 draft；校验 digest。
 6. `attest`：为 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包与 seccomp 发布物生成并验证 artifact attestation；缺失或失败即停止，不存在跳过分支。
-7. `promote-docker`：将已验证 digest 提升到 `vX.Y.Z`；绑定 `release` environment。
+7. gate-release 汇总产物/人工测试/attestation 并执行 GATE-001；promote-docker 重验绑定 source/digests 的通过报告及 GHCR tag identity 后才提升，绑定 release environment。metadata-only reserve 可先于测试，不能冒充门禁通过。
 8. `release`：在 Docker 提升成功后校验当前 DMG 的手动测试通过记录，再创建或验证 tag，公开 GitHub Release；绑定 `release` environment。
 9. `verify-release`：下载公开资产，校验 checksum、AdHoc 签名、更新清单和 identity；失败标记 release 无效。
 
@@ -141,7 +141,7 @@ Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-
 
 - 确认 release target、trusted baseline 来源和首个 `0.1.0` release。
 - 配置 main branch protection、`CI PR / required`、`CI Main / verify` 和 `release` environment 审批；`stage-release`、`promote-docker`、`release` 的独立 re-run 都必须重新进入审批。
-- 配置 repository ruleset：目标 `v*`，启用 `Restrict updates`、`Restrict deletions` 与 `Restrict creations`；bypass 仅允许 release GitHub App（由受保护的 `release` environment 签发），不允许任何人类角色或日常 `GITHUB_TOKEN` 绕过。release job 通过该 App 创建新 tag；规则不得允许改写或删除既有 tag，也不得让任意有 tag 写权限的身份抬高 trusted baseline。
+- 配置两套 v* ruleset：创建规则 Restrict creations 只允许受保护 release App bypass；不可变规则 Restrict updates + Restrict deletions 的 bypass 为空，App/管理员/GITHUB_TOKEN 均不能改写或删除。规则集级 bypass 不能误当逐条 rule 例外；release job 只新建或验证已有 tag。
 - 配置 Tauri 更新签名密钥；不配置 Apple Developer ID 或公证凭据。
 - 配置 GitHub Release、GHCR 的权限和 artifact retention。
 - 决定 Release 后的部署目标；部署授权、凭据和 smoke test 不属于本仓库的 release workflow。

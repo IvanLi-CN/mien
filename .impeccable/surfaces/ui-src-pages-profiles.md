@@ -12,7 +12,7 @@ related_targets: []
 - Surface: the Profiles management screen, first screen of the Mien Operate surface.
 - Mode: Operate. The user is here to scan spaces and environments, verify state, open a live session, and start or stop a profile.
 - Host: shared web UI in the Tauri macOS app and in the Docker web host. Desktop transport is Tauri IPC; server transport is HTTP/WS.
-- States covered: six runtime states (`starting`, `running`, `stopping`, `stopped`, `crashed`, `failed`) and three isolation proof states (`enforced`, `unsandboxed`, `unknown`). Each profile card shows all four proof dimensions before any action.
+- States covered: six RT states and three independent IS proof values (`enforced`, `unsandboxed`, `unknown`); cards show both dimensions simultaneously. Profile/proof uses last_known_isolation; a failed current start does not overwrite it.
 
 ## Audience and job
 
@@ -32,7 +32,7 @@ STORY: The operator lands in a Space, immediately sees which environments are li
 
 FIRST VIEWPORT: 1440×900. A 222px Space rail with group identities and a single interactive global live status; a 54px command bar with search, Import, New profile, and avatar; a 46px `Growth` title with space counts; a 286px live area: one large Aurora Supply slab (route, latency, uptime, fingerprint, sparkline, Open/Stop) plus stacked Harbor Ads and Fieldnote cards; a 12-column profile field with six profiles in 5/4/3 and 4/5/3 spans, each with orb, state, platform, proxy, fingerprint signature, labeled proof strip (`FP`/`PX`/`RT`/`IS`), and action; the `IS` block always carries text: `enforced`, `unsandboxed`, or `unknown`; a compact footer with read-only global totals and fail-closed summary.
 
-FORM: Deep Current, approved by the owner. The Space rail, Live slab, and profile field use asymmetric widths; the profile field is a scan surface, not a uniform four-column grid. State is text plus dot/proof, never color alone; six runtime states use distinct text, and `unknown` isolation gets a dashed outline plus `?` while `stopped` is a low-transparency neutral, so the two are never the same rendering. The detail surface is a floating drawer or route, never a permanent right inspector.
+FORM: Deep Current, approved by the owner. The Space rail, Live slab, and profile field use asymmetric widths; the profile field is a scan surface, not a uniform four-column grid. Six RT states use distinct text; only RT=stopped is low-transparency neutral. IS reads Profile.isolation from persisted last_known_isolation, never the current attempt's probe: unknown uses a dashed outline plus ?, unsandboxed keeps its warning. A never-started card displays RT=stopped and IS=unknown together; stopping never replaces FP/PX/IS warnings. The detail surface is a floating drawer or route, never a permanent right inspector.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, the updated DESIGN.md, and the approved comp at `docs/design/profiles-dark.png`.
 

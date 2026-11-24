@@ -11,7 +11,7 @@
 ## Terms and Interfaces
 
 - `profile`: 一个可独立启动的浏览器环境，拥有唯一 ULID、独立数据目录（`chrome`、`downloads`、`logs`）、指纹规格、可选代理和运行偏好。
-- `archive`: 软删除状态；档案不再出现在默认列表，数据目录原地保留，可通过 restore 回到 `active`。
+- `archive`: 归档状态，不是回收站软删除；档案不再出现在默认列表，数据目录原地保留，可通过 restore 回到 `active`。
 - `deleted`: 回收站状态；数据目录移动到 `<data-root>/trash/<profile-id>` 并写入 `deleted_at`；档案不可启动，可 restore、purge 或只读读取。
 - `purge`: `DELETE` 携带 `permanent=true` 的永久删除；先删除数据目录再删除数据库记录，失败时保留 `deleted` 状态并写入 `deletion_error` 供重试。
 - `profile status`: `active`、`archived` 或 `deleted`；与运行时 `state` 分离。
@@ -74,15 +74,17 @@
 - Outputs: 冲突时返回稳定错误码；非冲突时返回规范化后的集合。
 - Error mapping: 分组返回 `GROUP_NAME_CONFLICT`，标签返回 `TAG_NAME_CONFLICT`。
 
+代理配置是独立的全局资源，不由 `profiles` 外键拥有；复制时新建的代理行也遵循同一规则。purge 在删除目录后以单个事务删除该 `profiles` 行，并由外键级联删除其 `profile_tags` 与终态 `runtimes` 行；保留共享的 `groups`、`tags`、所有 `proxies`、内核/引擎安装和历史审计。界面必须提示代理凭据不会随档案 purge 删除，并提供代理管理入口；操作者可显式删除无档案引用的代理配置，仍有引用时返回 `RESOURCE_IN_USE`。不得以 purge 顺带删除共享资源，也不得声称代理秘密已销毁。
+
 ### REQ-PROFILE-009
 
 - The system MUST validate import input against the declared export schema before writing anything, and MUST expose a dry-run that creates no rows or directories.
 - Inputs: `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy?}`；`format` 为 `plain|encrypted`；`payload` 为明文导出对象或不透明加密容器；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；`conflict_strategy` 为 `new_id|abort`，默认 `new_id`。
-- Outputs: `POST /api/v1/profiles/import/validate` 返回逐项草稿、逐项 `errors` 与冲突项，且不写数据库、不建目录；`POST /api/v1/profiles/import` 在单个事务内提交；任一档案、分组或标签写入失败时回滚数据库事务，并且只删除本请求创建的目录（先回滚行、再清理目录），返回 422 `VALIDATION_FAILED` 或 409 `PROFILE_IMPORT_CONFLICT`，不返回 `ProfileImportResult`；目录清理失败时把对应行保留为软删除并写 `deletion_error`，返回稳定错误供重试。整批成功时才返回 `ProfileImportResult`，其 `items[]` 每项包含 `profile`、`status` 和 `errors`，`status` 恒为 `imported`。
+- Outputs: `import/validate` 返回逐项草稿、`errors` 与冲突，不写行、不建目录；`import` 在单个事务内提交。目录创建前先将请求拥有的新 ULID 与相对目录清单持久化到 `<data-root>/runtimes/imports/<request-id>.json`（0600），不记录配置、口令或凭据。写入失败先回滚行，再只清理该清单中的新目录，不复建已回滚的软删除行；输入/冲突错误分别为 422 `VALIDATION_FAILED`/409 `PROFILE_IMPORT_CONFLICT`，存储失败按错误码目录返回。目录清理失败保留清单并返回可重试 500 `PROFILE_IMPORT_CLEANUP_FAILED`，由启动对账与后台清理重试；清理必须规范化路径、拒绝符号链接，并先确认目录 ID 不对应已提交档案，不能删除后来已提交或其他请求的目录。提交成功但清单未删除时，对账保留已提交目录并移除清单。整批成功才返回 `ProfileImportResult`，每项含 `profile`、`status: imported` 和 `errors: []`。
 - Conflict identity: 档案冲突以导出项的 `source_profile_id` 与目标库 `profiles.import_source_id`（或现有 `profiles.id`）匹配；分组与标签以名称匹配。导出必须携带稳定的 `source_profile_id`，导入不得复用该值作为新档案 ID。
 - Conflict semantics: `new_id` 为冲突项分配新 ULID、保留 `import_source_id` 并保留配置；`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`，不产生任何档案、目录、分组或标签。
 - Validation: 非法 schema、未知 `schema_version`、超大文件、字段超限、代理配置形状、分享链接字段、`../` 与绝对路径、符号链接必须被拒绝；加密导出未提供口令或口令错误时返回字段级错误且不回显口令。
-- Transport: Docker Web UI 先调用 validate，再调用 import 提交；桌面宿主使用同语义的 IPC 命令。
+- Transport: Docker Web UI 先调用 validate，再调用 import 提交；桌面宿主使用同语义的 IPC 命令。两者在确认与成功结果中均提示“导入保留原 seed；使用相同内核与规格时指纹相同”，不等待本机找到相同 seed 才显示该提示。
 
 ### REQ-PROFILE-010
 
@@ -177,7 +179,7 @@
 
 - Method: 分别调用 `POST /api/v1/profiles/import/validate` 与 `POST /api/v1/profiles/import`，使用合法、错误 schema、未知版本、超长字段、`../` 路径、绝对路径、符号链接、加密导出未提供口令和冲突档案。
 - covers: `REQ-PROFILE-009`
-- Pass condition: validate 返回逐项草稿、错误与冲突且数据库和目录零写入；合法提交成功并返回逐项 `status: imported`；`conflict_strategy=abort` 遇同一 `source_profile_id` 或同名分组/标签时返回 `PROFILE_IMPORT_CONFLICT` 且无任何写入；`new_id` 为冲突项分配新 ID 并保留 `import_source_id`；最后一项写入失败时数据库零残留、本请求创建的目录全部删除，返回 422/409 而非 `ProfileImportResult`；其余非法输入返回字段级错误且不产生越界文件。
+- Pass condition: validate 零写入；整批成功才返回 `imported`；`abort` 冲突零写入，`new_id` 分配新 ID 并保留来源。最后一项写入失败时数据库零残留，仅清理本请求目录；清理失败返回 `PROFILE_IMPORT_CLEANUP_FAILED` 并保留无秘密的清单，重启可重试且不复建档案行、不删已提交目录或其他请求目录。输入/冲突/存储错误按目录映射而非全部伪装为 422/409；确认与结果都显示保留 seed 的指纹相同提示。
 
 ### VER-PROFILE-010
 

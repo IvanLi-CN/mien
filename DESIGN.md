@@ -137,7 +137,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 **The Asymmetry Rule.** 首屏的 Space rail、Live slab 与 profile field 共同形成不对称空间；禁止把三者都做成等宽卡片。
 
-**The Proof Rule.** 四段 proof 固定对应 fingerprint、proxy、runtime、isolation；`isolation` 段直接由运行时的 `isolation` 字段派生（`enforced` 已验证、`unsandboxed` 降级、`unknown` 未知），不根据进程是否存在推断。未知与已停止是不同状态：未知用 `--faint` 虚线描边加 `?`，已停止用低透明中性实心块，二者不得共用同一种灰。
+**The Proof Rule.** 四段 proof 固定对应 fingerprint、proxy、runtime、isolation；IS 只读 Profile.isolation，即 `runtimes.last_known_isolation`（最近一次成功进入 running 的结论），不读取当前启动尝试的探测值。IS 的三值为 enforced、unsandboxed、unknown；RT 的六态与之正交。只有 RT=stopped 用中性低透明实心块；IS=unknown 始终用 `--faint` 虚线与 `?`，IS=unsandboxed 始终警告；停止不能覆盖 IS、FP 或 PX 警告。
 
 ### Responsive
 
@@ -181,7 +181,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 **Seed aura.** 每个 profile 根据种子与 Space 生成确定性的 orb 与角部 aura。Aura 让档案可辨认，不表示运行状态；同一档案的 aura 必须跨列表、详情与重开应用保持一致。
 
-**Proof strip.** 四段小条对应 fingerprint、proxy、runtime、isolation，并始终显示 `FP`/`PX`/`RT`/`IS` 标签或同等持久图例。已验证为 `--verified`，降级为 `--warning`，失败为 `--failed`。未运行（`stopped`）使用低透明中性实心块与 `--stopped` 文字；未知（无探测结果、尚未启动过或数据缺失）使用 `--faint` 虚线描边、`?` 与 “unknown” 文案。`IS` 段读取运行时 `isolation`：`unsandboxed` 恒为 `--warning`，即使档案已停止也保留降级标记与 reduced-assurance 文案，不得因停止而退化为中性。标签必须可读，不能只靠位置或颜色区分。
+**Proof strip.** 四段始终显示 `FP`/`PX`/`RT`/`IS` 标签或持久图例。已验证用 `--verified`，降级用 `--warning`，失败用 `--failed`。中性低透明实心块与 stopped 文字只属于 RT 段；IS 只读 `last_known_isolation`，unknown 用 `--faint` 虚线、`?` 与 unknown 文案，unsandboxed 始终保留警告与降低保证。尚未启动的档案同时显示 RT=stopped 和 IS=unknown；停止不能清除 FP/PX/IS 警告。不得只靠位置或颜色区分。
 
 **Live slab.** 大尺寸会话卡把“正在发生什么”放在第一层：名称、线路、延迟、运行时长、fingerprint、route、uptime、sparkline 与 fail-closed 文案。
 

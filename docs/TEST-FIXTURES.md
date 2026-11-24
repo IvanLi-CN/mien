@@ -31,7 +31,7 @@
 | `fingerprint/probe/` | 本地探针页；采集 UA、UA-CH、canvas、audio、WebGL、字体、WebRTC | 稳定性与差异测试 |
 | `fingerprint/headless-ua/` | 有头、无头、伪有头的探针快照 | 验证伪有头仅改 UA |
 | `profile/export/` | 明文、加密、错误口令、篡改容器、冲突导入样例 | 导入导出与凭据移除 |
-| `profile/import/` | dry-run 校验、`new_id`/`abort` 冲突（同一 `source_profile_id` 或同名分组/标签）、加密 passphrase、部分失败、同 seed 导入不报冲突 | 导入事务与错误报告 |
+| `profile/import/` | dry-run 零写入、new_id/abort 冲突、口令与同 seed 导入；最后一项写入失败回滚，目录清理失败与持久清单重试（PROFILE_IMPORT_CLEANUP_FAILED）；已提交目录不被误删；相同指纹提示 | 事务、请求目录所有权与失败恢复 |
 | `profile/copy/` | `copy_fingerprint=false/true`、归档档案复制、同 seed 源档案 | 复制语义与 seed 总是重新生成 |
 | `profile/lifecycle/` | archive/restore、软删除到 `trash/`、trash 缺失时 restore 返回 `PROFILE_RESTORE_UNAVAILABLE`、purge 失败写 `deletion_error`、`deleted` 拒绝启动、`profiles/<id>/downloads` 的 0700 与路径包含 | 生命周期、下载目录与清理 |
 
@@ -102,8 +102,8 @@
 | `api/auth/` | 会话、Bearer、scope、CSRF、Origin、限流、管理员引导与首次改密后删除引导秘密 | 认证授权 |
 | `api/audit/` | `event_type`/`profile_id`/`action` 筛选与分页 | 活动记录契约 |
 | `events/*.json` | 每个事件类型的合法/非法实例 | 事件 schema |
-| `events/replay/` | 整数 `after=sequence` 游标、空洞、重启后续播 | 事件回放与单调序列 |
-| `db/migrations/` | 空库；含 `admin_credentials`/`deleted_at`/`deletion_error`/`isolation` 的旧 schema；`profiles.window_json` 缺失/非法且 `fingerprint_json.window` 也缺失的 active/archived/deleted 行；字符串 `event_log` 游标表；`kernel_installs`/`proxy_engine_installs` 中 `binary_sha256` 为 NULL 的迁移记录；迁移中断；恢复 | 迁移、preflight 阻断与完整性 |
+| `events/replay/` | 注入时钟的 7 天/100 MiB 裁剪；floor-1/floor/high_water/high_water+1 游标；全部裁空与重启后高水位；回放接实时无缺口 | 窗口、过期拒绝与单调序列 |
+| `db/migrations/` | 空库及旧 schema；三种 profile status 的窗口双来源缺失/非法；deleted_at=NULL 的 deleted 行阻断；audit_events 的 action→event_type 与 metadata→profile_id 回填（含不可回填 NULL）；ref_count 漂移与终态 proxy_* 残留；旧 token_prefix=NULL；字符串 event_log 游标重建；安装表 asset_sha256 缺失/非法时阻断、合法回填并收紧 NOT NULL，binary_sha256=NULL 保留非 active；last_known_isolation 迁移；中断恢复与升级/空库 schema 相等 | 迁移、preflight 阻断与完整性 |
 | `db/restore/` | 备份、恢复、主密钥缺失 | 数据恢复 |
 | `ui/` | viewport、locale、视觉基线、axe 配置 | UI、可访问性与响应式 |
 

@@ -89,7 +89,7 @@
 ### REQ-API-011
 
 - The system MUST authenticate WebSocket connections with the `ticketAuth` scheme (one-time ticket from `POST /api/v1/events/ticket`) or a session cookie, MUST reject long-lived tokens in URLs, and MUST validate `Origin` on every upgrade, including ticket-authenticated ones. The OpenAPI operation MUST declare `security: [{ticketAuth: []}, {cookieAuth: []}]` and MUST NOT use an anonymous `security: []`.
-- Replay: the cursor is the integer `event.sequence`; `after=<sequence>` replays retained events with a greater sequence. A non-integer or non-positive cursor is rejected with 422; a cursor older than the retained window is rejected with 409 `EVENT_REPLAY_WINDOW_EXPIRED`, and the server MUST NOT silently skip retained events. The replay window bound is part of this contract.
+- Replay: cursor is integer `event.sequence`; `after=n` replays retained events greater than n. Window is 7 days and at most 100 MiB of UTF-8 `payload_json` bytes; prune the oldest sequence prefix after writes and before replay snapshots until both bounds hold; reject a single event larger than the budget. Use one SQLite read snapshot for floor/high_water and page reads. `high_water` is `max(sqlite_sequence.seq, max(event_log.sequence))`, or 0 for an empty new database; AUTOINCREMENT is never reset and IDs are never reused. `floor` is the earliest retained sequence minus one; if retention is empty, it equals high_water. Accept `after` in `[floor, high_water]` (including 0 for a new stream); reject negative, non-integer or future cursors with 422. `after < floor` returns 409 `EVENT_REPLAY_WINDOW_EXPIRED`. Replay all retained rows with sequence > after, then subscribe from the same high_water without a gap. No after means a live-only subscription. A gap requires snapshot reload; never silently skip retained events.
 - Inputs: 会话 Cookie 或一次性票据、`ticket` 查询参数、整数 `after`、`Origin`、心跳。
 - Outputs: 认证通过后建立连接；断线重连按 `sequence > after` 补齐；没有有效会话 Cookie 且票据缺失、过期或已使用时返回 401 `EVENT_TICKET_INVALID`，有效 Cookie 单独认证不需要票据；回放游标早于保留窗口时返回 409 `EVENT_REPLAY_WINDOW_EXPIRED`；跨源升级返回 403 `AUTH_ORIGIN_INVALID`；URL 长效 Token 被拒绝；心跳用于检测死连接。
 
@@ -147,14 +147,14 @@
 - The system MUST expose profile export and import as `POST /api/v1/profiles/{profile_id}/export`, `POST /api/v1/profiles/import/validate` and `POST /api/v1/profiles/import`, matching the request/response shapes and payload semantics defined by `profile-management`.
 - Inputs: `ProfileExportRequest`、`ProfileImportInput`、CSRF Token 或 Bearer Token、`profiles.read`/`profiles.write` scope。
 - Outputs: 导出返回 `ProfileExportEnvelope`；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止，且不得出现在 URL、查询串、日志、审计或错误消息；明文 `payload` 遵循 `profile-export.schema.json`；加密 `payload` 是不透明、带版本号的容器，使用 Argon2id 派生密钥与认证加密，envelope 版本参与 AAD。
-- Import: `import/validate` 是 dry-run，不写行、不建目录，返回逐项草稿/errors/冲突；`import` 仅在整批提交成功时返回 `ProfileImportResult`（`status` 恒为 `imported`），任一写入失败时回滚全部行与目录并返回 422 `VALIDATION_FAILED` 或 409 `PROFILE_IMPORT_CONFLICT`，不返回 `ProfileImportResult`；档案冲突以导出项 `source_profile_id` 匹配 `profiles.import_source_id` 或现有 `profiles.id`，分组/标签冲突按名称匹配；`conflict_strategy=new_id` 分配新档案 ID 并保留 `import_source_id`，`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`。
+- Import: validate 是零写入 dry-run；import 仅在整批提交成功时返回 `ProfileImportResult`（`status: imported`），失败先回滚全部行，再按 REQ-PROFILE-009 的持久清单清理本请求目录，不返回部分结果。输入无效为 422 `VALIDATION_FAILED`，冲突为 409 `PROFILE_IMPORT_CONFLICT`，其他存储错误按目录映射；目录清理失败为可重试 500 `PROFILE_IMPORT_CLEANUP_FAILED`，返回 request_id 用于关联后台清理，不重建软删除档案行。档案冲突用 source_profile_id 匹配 import_source_id 或现有 id，组/标签按名称；new_id 分配新 ULID 并保留来源，abort 在写入前拒绝。导入界面必须在确认与成功结果提示保留 seed 的指纹相同语义。
 - Redaction: 导出中的代理只含 `credential_fields` 名称与非秘密 `options`，`credentials_removed=true`；秘密键被拒绝；导出不包含顶层 `runtime.window`，窗口尺寸只在指纹规格内。
 
 ### REQ-API-021
 
 - The system MUST expose profile and runtime payloads that make lifecycle, run mode, direct mode and isolation state explicit: profile `status` is `active|archived|deleted` with `deleted_at` and `deletion_error`; runtime `state` is `starting|running|stopping|stopped|crashed|failed`, `mode` is `headful|headless|pseudo_headful`; both payloads carry `isolation` (`enforced|unsandboxed|unknown`), `direct` and `reduced_assurance`, and `pseudo_headful` also carries `ua_scope=chrome`.
 - Inputs: 档案与运行时记录、启动事务、沙箱探测结果。
-- Outputs: `direct=true` 当且仅当档案未配置代理并进入直连模式；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`；已停止档案仍返回最后一次 `isolation` 与相应降低保证；`deleted` 档案启动返回 409 `PROFILE_DELETED`；purge 失败返回 `deletion_error` 供重试；API、IPC 与数据库中不存在 `block_start_on_check_failure` 字段，代理检查结果只作警告，不阻断启动。
+- Outputs: `direct=true` 当且仅当档案未配置代理并进入直连模式；`reduced_assurance=true` 当且仅当 `mode` 为 `headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`。Profile/proof 的 isolation 取 last_known_isolation，Runtime/运行时事件取本次 isolation；失败启动不能覆盖 Profile 的上次成功结论，各自按输出字段推导降低保证。`deleted` 启动返回 409 `PROFILE_DELETED`，purge 失败带 deletion_error；API、IPC 与数据库没有 block_start_on_check_failure，代理检查不阻断启动。
 - Semantics: 运行时状态机、沙箱校验与隔离推导由 `browser-runtime` 负责，档案生命周期由 `profile-management` 负责，本要求固定对外字段与缺失值的表达。
 
 ## Verification
@@ -221,9 +221,9 @@
 
 ### VER-API-011
 
-- Method: 检查 OpenAPI 的 `/api/v1/events` security 声明；申请一次性票据建立 WebSocket，断开后带整数 `after=<sequence>` 重连，并测试非整数/非正游标、URL 长效 Token、缺票据与跨源 Origin。
+- Method: 检查 OpenAPI security；使用注入时钟推进 7 天并写入超过 100 MiB payload，分别覆盖时间/容量裁剪、全部裁空、floor 与 high_water 的相邻游标、重启后游标；同时测试一次性票据、非整数/非正/未来游标、URL 长效 Token 与跨源 Origin。
 - covers: `REQ-API-002`, `REQ-API-011`
-- Pass condition: OpenAPI 声明 `ticketAuth`（apiKey in query）与 `cookieAuth`，不存在匿名 `security: []`；票据只能使用一次，无有效 Cookie 且票据缺失/过期/已用时返回 401 `EVENT_TICKET_INVALID`，有效 Cookie 单独认证不需要票据；重连按 `sequence > after` 补齐且不跳过保留事件；非整数或非正 `after` 返回 422，早于保留窗口返回 409 `EVENT_REPLAY_WINDOW_EXPIRED`；URL 长效 Token 被拒绝；跨源升级返回 403 `AUTH_ORIGIN_INVALID`；心跳检测死连接。
+- Pass condition: ticketAuth/cookieAuth 而非匿名升级；一次性票据与 Origin 防护生效。窗口固定为 7 天/100 MiB 的最旧前缀裁剪；after=floor 可完整回放，floor-1 返回 409，high_water 可接续实时流，未来/非正/非整数游标为 422；全部裁空或重启后仍能区分过期游标，不丢失回放与实时衔接事件；URL 长效 Token 被拒绝。
 
 ### VER-API-012
 

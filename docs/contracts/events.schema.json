@@ -372,6 +372,7 @@
               "profile.archived",
               "profile.restored",
               "profile.duplicated",
+              "profile.deleted",
               "profile.purged"
             ]
           }
@@ -718,6 +719,17 @@
             },
             {
               "if": {
+                "required": ["mode", "direct", "isolation"],
+                "properties": {
+                  "mode": {"const": "headful"},
+                  "direct": {"const": false},
+                  "isolation": {"const": "enforced"}
+                }
+              },
+              "then": {"properties": {"reduced_assurance": {"const": false}}}
+            },
+            {
+              "if": {
                 "properties": {
                   "mode": {
                     "const": "pseudo_headful"
@@ -731,6 +743,17 @@
                   }
                 }
               }
+            },
+            {
+              "if": {
+                "required": ["mode", "direct", "isolation"],
+                "properties": {
+                  "mode": {"const": "headful"},
+                  "direct": {"const": false},
+                  "isolation": {"const": "enforced"}
+                }
+              },
+              "then": {"properties": {"reduced_assurance": {"const": false}}}
             }
           ]
         }
@@ -885,7 +908,7 @@
                 "unknown",
                 null
               ],
-              "description": "Set only on profile.deleted when a directory move or purge attempt failed and the row remains retryable; other profile event types must omit it."
+              "description": "Only profile.updated may carry this field: a failed soft-delete move preserves active/archived, and a failed purge preserves deleted. A successful retry may clear it with null. profile.deleted means a successful move, and profile.purged means a completed purge; neither reports a failed attempt."
             }
           },
           "additionalProperties": false
@@ -999,7 +1022,9 @@
               "description": "Kept for compatibility with existing audit consumers."
             },
             "target": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z0-9_.-]{1,128})?$",
+              "description": "Application-generated resource kind or kind:id, never user-supplied text, a URL, share link, credential, raw proxy UUID or capability URL. The emitter must redact before persistence and broadcast."
             },
             "profile_id": {
               "type": [
@@ -1037,25 +1062,18 @@
     "auditValue": {
       "oneOf": [
         {
-          "type": [
-            "string",
-            "number",
-            "boolean",
-            "null"
-          ]
+          "$ref": "#/$defs/auditScalar"
         },
         {
           "type": "array",
           "items": {
-            "type": [
-              "string",
-              "number",
-              "boolean",
-              "null"
-            ]
+            "$ref": "#/$defs/auditScalar"
           }
         }
-      ],
+      ]
+    },
+    "auditScalar": {
+      "type": ["string", "number", "boolean", "null"],
       "not": {
         "description": "Reject share links, capability URLs, bearer tokens and raw UUIDs even when the key name looks harmless.",
         "anyOf": [
@@ -1086,9 +1104,12 @@
       "properties": {
         "payload": {
           "type": "object",
+          "required": ["user"],
           "properties": {
             "user": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "description": "Authenticated account identifier; auth.login/logout are successful lifecycle events, not failed-login diagnostics."
             },
             "reason": {
               "type": [
@@ -1165,6 +1186,7 @@
         "GROUP_NAME_CONFLICT",
         "TAG_NAME_CONFLICT",
         "PROFILE_IMPORT_CONFLICT",
+        "PROFILE_IMPORT_CLEANUP_FAILED",
         "PROFILE_RESTORE_UNAVAILABLE",
         "VIEWER_NOT_AVAILABLE",
         "VALIDATION_FAILED",
