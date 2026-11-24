@@ -1,0 +1,180 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mien fingerprint kernel probe</title>
+<body>kernel probe</body>
+<script>
+(() => {
+  const enc = new TextEncoder();
+  const hex = bytes => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  async function sha256(value) {
+    const digest = await crypto.subtle.digest('SHA-256', typeof value === 'string' ? enc.encode(value) : value);
+    return hex(new Uint8Array(digest));
+  }
+  function canvasBytes(canvas) {
+    return new Uint8Array(canvas.getContext('2d', {willReadFrequently: true}).getImageData(0, 0, canvas.width, canvas.height).data.buffer);
+  }
+  function webglProbe() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 8;
+    canvas.height = 8;
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return {available: false};
+    const info = {
+      available: true,
+      renderer: gl.getParameter(gl.RENDERER),
+      vendor: gl.getParameter(gl.VENDOR),
+      version: gl.getParameter(gl.VERSION),
+      shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+      readPixels: {}
+    };
+    const shader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(shader, 'precision mediump float; void main(){ gl_FragColor = vec4(0.25, 0.5, 0.75, 1.0); }');
+    gl.compileShader(shader);
+    const program = gl.createProgram();
+    const vertex = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertex, 'attribute vec2 position; void main(){ gl_Position = vec4(position, 0.0, 1.0); }');
+    gl.compileShader(vertex);
+    gl.attachShader(program, vertex); gl.attachShader(program, shader); gl.linkProgram(program); gl.useProgram(program);
+    const buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const location = gl.getAttribLocation(program, 'position'); gl.enableVertexAttribArray(location); gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+    gl.viewport(0, 0, 8, 8); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    for (const size of [1, 8]) {
+      try {
+        const pixels = new Uint8Array(size * size * 4);
+        gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        info.readPixels[String(size)] = {ok: true, hashInput: Array.from(pixels), error: gl.getError()};
+      } catch (error) {
+        info.readPixels[String(size)] = {ok: false, error: String(error)};
+      }
+    }
+    try {
+      const pixels16 = new Uint16Array(4);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_SHORT, pixels16);
+      info.readPixels.rgba16 = {ok: true, hashInput: Array.from(pixels16)};
+    } catch (error) {
+      info.readPixels.rgba16 = {ok: false, error: String(error)};
+    }
+    return info;
+  }
+  async function audioProbe() {
+    try {
+      const context = new OfflineAudioContext(1, 4410, 44100);
+      const oscillator = context.createOscillator();
+      const compressor = context.createDynamicsCompressor();
+      oscillator.type = 'triangle'; oscillator.frequency.value = 10000;
+      compressor.threshold.value = -50; compressor.knee.value = 40; compressor.ratio.value = 12;
+      compressor.attack.value = 0; compressor.release.value = 0.25;
+      oscillator.connect(compressor); compressor.connect(context.destination); oscillator.start(0);
+      const rendered = await context.startRendering();
+      const samples = rendered.getChannelData(0);
+      return {available: true, hash: await sha256(new Uint8Array(samples.buffer)), sample: Array.from(samples.slice(0, 16))};
+    } catch (error) { return {available: false, error: String(error)}; }
+  }
+  async function clientRectsProbe() {
+    const element = document.createElement('span');
+    element.textContent = 'client rect probe';
+    element.style.cssText = 'font: 17px Arial; display:inline-block; transform:rotate(0.2deg); padding:3px 7px;';
+    document.body.append(element);
+    try {
+      const rect = element.getBoundingClientRect();
+      const ranges = Array.from(document.createRange().getClientRects(), item => ({x: item.x, y: item.y, width: item.width, height: item.height, top: item.top, right: item.right, bottom: item.bottom, left: item.left}));
+      return {rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height, top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left}, ranges};
+    } finally { element.remove(); }
+  }
+  async function rtcCandidates() {
+    const candidates = [];
+    let pc;
+    try {
+      pc = new RTCPeerConnection({iceServers: []});
+      pc.createDataChannel('probe');
+      pc.onicecandidate = event => { if (event.candidate) candidates.push(event.candidate.candidate); };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      return {available: true, candidates};
+    } catch (error) {
+      return {available: false, error: String(error), candidates};
+    } finally {
+      if (pc) pc.close();
+    }
+  }
+  window.__mienProbe = async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d', {willReadFrequently: true});
+    ctx.fillStyle = '#234567'; ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#fedcba'; ctx.font = '17px Arial'; ctx.fillText('Mien fingerprint probe', 3, 29);
+    ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = '#102030'; ctx.fillRect(11, 17, 37, 31);
+    const full = canvasBytes(canvas);
+    let subRegion;
+    try { subRegion = Array.from(ctx.getImageData(11, 17, 37, 31).data); } catch (error) { subRegion = {error: String(error)}; }
+    const fullRegion = [];
+    if (!subRegion.error) {
+      for (let row = 17; row < 17 + 31; row += 1) fullRegion.push(...full.slice((row * 64 + 11) * 4, (row * 64 + 11 + 37) * 4));
+    }
+    const canvasResult = {
+      fullHash: await sha256(full),
+      subRegionHash: await sha256(new Uint8Array(subRegion.error ? [] : subRegion)),
+      fullRegionHash: await sha256(new Uint8Array(fullRegion)),
+      subRegionMatchesFull: !subRegion.error && fullRegion.length === subRegion.length && fullRegion.every((value, index) => value === subRegion[index]),
+      fullBytes: Array.from(full.slice(0, 32)),
+      subRegionBytes: subRegion.error ? subRegion : subRegion.slice(0, 32),
+    };
+    const webgl = webglProbe();
+    for (const entry of Object.values(webgl.readPixels || {})) if (entry.hashInput) entry.hash = await sha256(new Uint8Array(new Uint8Array(entry.hashInput).buffer));
+    if (webgl.readPixels?.['1']?.hashInput && webgl.readPixels?.['8']?.hashInput) {
+      webgl.readbackComparison = {
+        firstPixelMatches: webgl.readPixels['1'].hashInput.every((value, index) => value === webgl.readPixels['8'].hashInput[index]),
+        oneByOne: webgl.readPixels['1'].hashInput.slice(0, 4),
+        firstEightByEightPixel: webgl.readPixels['8'].hashInput.slice(0, 4),
+      };
+    }
+    const knownFonts = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Menlo', 'SF Pro', 'Noto Sans CJK SC', 'PingFang SC', 'Segoe UI', 'Roboto'];
+    const fontCanvas = document.createElement('canvas');
+    const fontContext = fontCanvas.getContext('2d');
+    const fontMetrics = Object.fromEntries(knownFonts.map(font => {
+      fontContext.font = `16px "${font}", monospace`;
+      const text = fontContext.measureText('mmmmmmmmmmlli');
+      return [font, {available: document.fonts.check(`16px "${font}"`), width: text.width, ascent: text.actualBoundingBoxAscent, descent: text.actualBoundingBoxDescent}];
+    }));
+    const plugins = Array.from(navigator.plugins || [], plugin => ({name: plugin.name, description: plugin.description, filename: plugin.filename}));
+    const gpu = (() => {
+      try {
+        const gl = document.createElement('canvas').getContext('webgl');
+        if (!gl) return null;
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        return ext ? {vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)} : null;
+      } catch { return null; }
+    })();
+    const uaCh = navigator.userAgentData ? await navigator.userAgentData.getHighEntropyValues(['architecture', 'bitness', 'brands', 'fullVersionList', 'mobile', 'model', 'platform', 'platformVersion', 'wow64']) : null;
+    return {
+      collectedAt: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      uaCh,
+      webdriver: navigator.webdriver,
+      outerWidth: window.outerWidth, outerHeight: window.outerHeight,
+      innerWidth: window.innerWidth, innerHeight: window.innerHeight,
+      screen: {width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight, colorDepth: screen.colorDepth, pixelDepth: screen.pixelDepth},
+      devicePixelRatio: window.devicePixelRatio,
+      platform: navigator.platform,
+      language: navigator.language,
+      languages: navigator.languages,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+      hardwareConcurrency: navigator.hardwareConcurrency,
+      deviceMemory: navigator.deviceMemory ?? null,
+      maxTouchPoints: navigator.maxTouchPoints,
+      plugins,
+      fonts: fontMetrics,
+      gpu,
+      audio: await audioProbe(),
+      clientRects: await clientRectsProbe(),
+      canvas: canvasResult,
+      webgl,
+      rtc: await rtcCandidates(),
+      derived: {canvasHash: canvasResult.fullHash, webgl1x1Hash: webgl.readPixels?.['1']?.hash ?? null, webgl8x8Hash: webgl.readPixels?.['8']?.hash ?? null, deviceMemory: navigator.deviceMemory ?? null, gpu}
+    };
+  };
+})();
+</script>
