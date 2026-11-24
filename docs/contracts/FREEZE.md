@@ -1,7 +1,7 @@
 # Mien contract freeze
 
 - Freeze version: `M0-contract-freeze`
-- Freeze source base: `0bfc28052d1eb1af7b29c8fb8798f21155f3209d`.
+- Contract freeze change commit: `db764e236b45adf9ee6bb20a076c5198cd89c115`.
 - Generated at: `2026-11-24T23:06:10Z` (UTC).
 
 ## Frozen files and digests
