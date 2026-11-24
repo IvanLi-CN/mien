@@ -1,0 +1,5 @@
+SPDX-License-Identifier: MPL-2.0
+
+Canonical license text: https://www.mozilla.org/en-US/MPL/2.0/
+
+This file is generated offline from the SPDX identifier. The release staging job must replace this provenance stub with the exact upstream license text and attribution collected from the pinned package, image, or source archive; a missing exact text blocks publication.

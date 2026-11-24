@@ -1,0 +1,5 @@
+SPDX-License-Identifier: Zlib
+
+Canonical license text: https://spdx.org/licenses/Zlib.html
+
+This file is generated offline from the SPDX identifier. The release staging job must replace this provenance stub with the exact upstream license text and attribution collected from the pinned package, image, or source archive; a missing exact text blocks publication.
