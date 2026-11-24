@@ -1,0 +1,41 @@
+# 未完成：不得作为发布入口
+#
+# This is intentionally only a workflow shape. It does not build, sign, reserve,
+# upload, promote, tag, or publish anything.
+name: Release (skeleton - disabled boundary)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: "Required release target: patch, minor, major, or X.Y.Z"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-target:
+    name: resolve-target (placeholder)
+    runs-on: ubuntu-latest
+    steps:
+      - name: UNFINISHED - do not use as a release entry point
+        run: |
+          echo "Skeleton only: resolve-target is not implemented."
+          echo "No release, tag, reservation, or artifact operation is performed."
+          exit 1
+
+  reserve:
+    name: reserve (placeholder)
+    needs: [resolve-target]
+    runs-on: ubuntu-latest
+    steps:
+      - name: UNFINISHED - do not use as a release entry point
+        run: |
+          echo "Skeleton only: reserve is not implemented."
+          exit 1
