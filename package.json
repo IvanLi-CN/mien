@@ -15,7 +15,10 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "license:check": "bun scripts/license-check.mjs",
+    "contracts:check": "bun scripts/contracts/check.mjs",
+    "contracts:generate": "cargo xtask contracts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5",
@@ -43,10 +46,14 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^5",
+    "@redocly/cli": "^2.83.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "jsdom": "^26",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^7",
-    "vitest": "^3"
+    "vitest": "^3",
+    "yaml": "^2.9.1"
   }
 }
