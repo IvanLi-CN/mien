@@ -60,6 +60,7 @@ function schemaCheck() {
     validateFormats: true,
   });
   addFormats(ajv);
+  ajv.addKeyword({ keyword: "x-error-mappings", schemaType: "object", valid: true });
   const docs = new Map();
   for (const filename of paths) {
     const schema = JSON.parse(readFileSync(filename, "utf8"));
@@ -368,6 +369,27 @@ function errorCatalogCheck() {
     responseSchema.properties?.retryable?.type !== "boolean"
   )
     throw new Error("OpenAPI Error.retryable must be a required boolean");
+  const mappings = responseSchema["x-error-mappings"];
+  if (!mappings || typeof mappings !== "object")
+    throw new Error("OpenAPI Error.x-error-mappings is missing");
+  for (const [code, mapping] of catalog) {
+    if (
+      JSON.stringify(mappings[code]) !==
+      JSON.stringify({ http: mapping.http, retryable: mapping.retryable })
+    )
+      throw new Error(`${code}: OpenAPI HTTP/retryable mapping differs from catalog`);
+  }
+  compare("OpenAPI error mapping keys", catalog.keys(), Object.keys(mappings));
+  const eventMappings = events.$defs.errorCode["x-error-mappings"];
+  if (!eventMappings || typeof eventMappings !== "object")
+    throw new Error("events.schema.json $defs.errorCode x-error-mappings is missing");
+  for (const [code, mapping] of catalog)
+    if (
+      JSON.stringify(eventMappings[code]) !==
+      JSON.stringify({ http: mapping.http, retryable: mapping.retryable })
+    )
+      throw new Error(`${code}: events HTTP/retryable mapping differs from catalog`);
+  compare("events error mapping keys", catalog.keys(), Object.keys(eventMappings));
   const proxyErrors = new Set(events.$defs.proxyCheckErrorCode.enum);
   for (const code of proxyErrors)
     if (catalog.get(code)?.http !== 200)
@@ -424,6 +446,96 @@ function errorCatalogCheck() {
   }
 }
 
+function scopeCheck() {
+  const openapi = parse(read("docs/contracts/openapi.yaml"));
+  const expectedScopes = new Set([
+    "profiles.read",
+    "profiles.write",
+    "runtime.control",
+    "proxies.read",
+    "proxies.write",
+    "audit.read",
+    "events.read",
+    "tokens.manage",
+    "kernels.manage",
+    "engines.manage",
+    "viewer.access",
+  ]);
+  const declared = new Set(openapi.components.schemas.TokenScope.enum ?? []);
+  compare("TokenScope enum", expectedScopes, declared);
+  const operations = Object.entries(openapi.paths).flatMap(([route, methods]) =>
+    Object.entries(methods)
+      .filter(([method]) => ["get", "post", "put", "patch", "delete"].includes(method))
+      .map(([method, operation]) => ({ route, method, operation })),
+  );
+  for (const { route, method, operation } of operations) {
+    const security = operation.security ?? openapi.security ?? [];
+    const acceptsBearer = security.some((requirement) => Object.hasOwn(requirement, "bearerAuth"));
+    if (!acceptsBearer) continue;
+    const scope = operation["x-required-scope"];
+    if (typeof scope !== "string" || !declared.has(scope))
+      throw new Error(`${method.toUpperCase()} ${route}: x-required-scope is not a TokenScope`);
+  }
+}
+
+function uiRouteCheck() {
+  const surfaceText = read("docs/UI-SURFACES.md");
+  const routeText = read("src/ui/routes.tsx");
+  const sectionStart = surfaceText.indexOf("## 1. 路由与信息架构");
+  const sectionEnd = surfaceText.indexOf("\n## 2.", sectionStart);
+  const routeSection = surfaceText.slice(sectionStart, sectionEnd < 0 ? undefined : sectionEnd);
+  if (sectionStart < 0) throw new Error("docs/UI-SURFACES.md: route section is missing");
+  const documented = [...routeSection.matchAll(/^\| `([^`]+)` \|/gm)].map((match) => match[1]);
+  const enumBlock = routeText.match(/export const UI_SURFACE_ROUTES = \[((?:.|\n)*?)\] as const;/);
+  if (!enumBlock) throw new Error("src/ui/routes.tsx: UI_SURFACE_ROUTES static enum is missing");
+  const frontend = [...enumBlock[1].matchAll(/"(\/[^"]+)"/g)].map((match) => match[1]);
+  compare("UI documented routes and frontend enum", documented, frontend);
+  const apiBlock = routeText.match(
+    /export const UI_SURFACE_API_PREFIXES = \{((?:.|\n)*?)\} as const;/,
+  );
+  if (!apiBlock) throw new Error("src/ui/routes.tsx: UI_SURFACE_API_PREFIXES map is missing");
+  const mapping = new Map(
+    [...apiBlock[1].matchAll(/"(\/[^"]+)":\s*"(\/[^"]+)"/g)].map((match) => [match[1], match[2]]),
+  );
+  const openapi = parse(read("docs/contracts/openapi.yaml"));
+  for (const route of documented) {
+    const prefix = mapping.get(route);
+    if (!prefix) throw new Error(`${route}: missing OpenAPI prefix mapping`);
+    if (!Object.keys(openapi.paths).some((pathName) => pathName.startsWith(prefix)))
+      throw new Error(`${route}: mapped OpenAPI prefix ${prefix} has no endpoint`);
+  }
+  compare("UI route map and frontend enum", documented, mapping.keys());
+}
+
+function generatedClientCheck() {
+  const temporary = mkdtempSync(path.join(tmpdir(), "mien-openapi-typescript-"));
+  try {
+    const generated = path.join(temporary, "openapi.d.ts");
+    const result = Bun.spawnSync(
+      [
+        path.join(workspaceRoot, "node_modules/.bin/openapi-typescript"),
+        rel("docs/contracts/openapi.yaml"),
+        "-o",
+        generated,
+      ],
+      { cwd: workspaceRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    if (result.exitCode !== 0)
+      throw new Error(
+        `openapi-typescript failed (${result.exitCode}): ${result.stderr.toString()}`,
+      );
+    const snapshotPath = rel("docs/contracts/generated/openapi.d.ts");
+    if (!statSync(snapshotPath, { throwIfNoEntry: false })?.isFile())
+      throw new Error("generated OpenAPI client snapshot is missing");
+    const snapshot = read("docs/contracts/generated/openapi.d.ts");
+    const actual = readFileSync(generated, "utf8");
+    if (snapshot !== actual)
+      throw new Error("generated OpenAPI client snapshot differs; run bun run contracts:generate");
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
 function databaseCheck() {
   const text = read("docs/DATABASE-SCHEMA.md");
   const blocks = [...text.matchAll(/```sql\r?\n([\s\S]*?)```/g)];
@@ -432,6 +544,21 @@ function databaseCheck() {
     .map((match) => match[1])
     .find((block) => block.includes("CREATE TABLE schema_migrations"));
   if (!ddl) throw new Error("initial database DDL is missing");
+  const migration = read("migrations/0001_init.sql");
+  if (!migration.includes("CREATE TABLE schema_migrations"))
+    throw new Error("0001_init.sql must create schema_migrations");
+  if (migration.includes("CREATE TABLE profiles") || migration.includes("CREATE TABLE proxies"))
+    throw new Error("0001_init.sql must remain ledger-only until the business migration task");
+  const migrationLedger = migration.match(/CREATE TABLE schema_migrations[\s\S]*?;/i)?.[0];
+  const ddlLedger = ddl.match(/CREATE TABLE schema_migrations[\s\S]*?;/i)?.[0];
+  if (
+    !migrationLedger ||
+    !ddlLedger ||
+    migrationLedger.replace(/\s+/g, " ").trim() !== ddlLedger.replace(/\s+/g, " ").trim()
+  )
+    throw new Error(
+      "migrations/0001_init.sql schema_migrations DDL differs from docs/DATABASE-SCHEMA.md",
+    );
   const temporary = mkdtempSync(path.join(tmpdir(), "mien-contracts-sqlite-"));
   try {
     const ddlPath = path.join(temporary, "schema.sql");
@@ -492,6 +619,32 @@ function specCheck() {
         `${path.relative(root, filename)}: requirement coverage mismatch; uncovered=${uncovered.join(",") || "none"}; unknown=${unknown.join(",") || "none"}`,
       );
   }
+  const implementations = markdownFilesUnder("docs/specs").filter((file) =>
+    file.endsWith("IMPLEMENTATION.md"),
+  );
+  const implementationRecords = new Map();
+  for (const filename of implementations) {
+    const text = readFileSync(filename, "utf8");
+    for (const match of text.matchAll(
+      /^\| `(VER-[A-Z]+-\d+)` \| `(pending|pass|fail|blocked)` \|/gm,
+    )) {
+      const [, ver, status] = match;
+      if (implementationRecords.has(ver))
+        throw new Error(`${ver}: duplicate implementation record`);
+      implementationRecords.set(ver, status);
+    }
+  }
+  const verificationOwners = new Map();
+  for (const filename of specs) {
+    const text = readFileSync(filename, "utf8");
+    for (const match of text.matchAll(/^### (VER-[A-Z]+-\d+)$/gm))
+      verificationOwners.set(match[1], filename);
+  }
+  compare(
+    "SPEC VER and IMPLEMENTATION VER records",
+    verificationOwners.keys(),
+    implementationRecords.keys(),
+  );
 }
 
 function seccompCheck() {
@@ -517,6 +670,20 @@ function seccompCheck() {
     );
   if (!Array.isArray(original.syscalls) || original.defaultAction !== profile.defaultAction)
     throw new Error("seccomp baseline structure mismatch");
+  const directory = rel("deploy/docker/seccomp");
+  const files = walkFiles(directory)
+    .map((filename) => path.relative(directory, filename).split(path.sep).join("/"))
+    .sort();
+  compare(
+    "seccomp tracked structure",
+    [
+      "PROVENANCE.json",
+      "artifacts/moby-profiles-a0fa7080-LICENSE.txt",
+      "artifacts/moby-profiles-a0fa7080-default.json",
+      "chromium.json",
+    ],
+    files,
+  );
 }
 
 function runCheck(name, fn) {
@@ -526,6 +693,9 @@ runCheck("JSON Schema compilation and fixtures", schemaCheck);
 runCheck("OpenAPI parse, local refs, and lint", openapiCheck);
 runCheck("Markdown relative links and anchors", markdownCheck);
 runCheck("ErrorCode catalog ↔ OpenAPI ↔ events", errorCatalogCheck);
+runCheck("OpenAPI x-required-scope ↔ TokenScope", scopeCheck);
+runCheck("UI surfaces ↔ frontend routes ↔ OpenAPI", uiRouteCheck);
+runCheck("OpenAPI generated client snapshot", generatedClientCheck);
 runCheck("SQLite DDL / foreign_key_check / integrity_check", databaseCheck);
 runCheck("spec_contract_check", specCheck);
 runCheck("seccomp structure and provenance SHA-256", seccompCheck);

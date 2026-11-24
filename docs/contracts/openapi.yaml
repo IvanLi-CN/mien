@@ -1716,6 +1716,72 @@ components:
           type: object
           additionalProperties: true
           description: 非敏感字段级错误或诊断信息
+      x-error-mappings:
+        AUTH_REQUIRED: {http: 401, retryable: false}
+        AUTH_INVALID: {http: 401, retryable: false}
+        AUTH_RATE_LIMITED: {http: 429, retryable: true}
+        AUTH_CSRF_INVALID: {http: 403, retryable: false}
+        AUTH_ORIGIN_INVALID: {http: 403, retryable: false}
+        FORBIDDEN_SCOPE: {http: 403, retryable: false}
+        AUTH_PASSWORD_CHANGE_REQUIRED: {http: 403, retryable: false}
+        EVENT_TICKET_INVALID: {http: 401, retryable: false}
+        EVENT_REPLAY_WINDOW_EXPIRED: {http: 409, retryable: false}
+        PROFILE_NOT_FOUND: {http: 404, retryable: false}
+        PROFILE_DELETED: {http: 409, retryable: false}
+        PROFILE_NOT_DELETED: {http: 409, retryable: false}
+        PROFILE_PURGE_FAILED: {http: 500, retryable: true}
+        PROXY_NOT_FOUND: {http: 404, retryable: false}
+        RUNTIME_NOT_FOUND: {http: 404, retryable: false}
+        TOKEN_NOT_FOUND: {http: 404, retryable: false}
+        PROFILE_ARCHIVED: {http: 409, retryable: false}
+        RUNTIME_CONFLICT: {http: 409, retryable: false}
+        IDEMPOTENCY_CONFLICT: {http: 409, retryable: false}
+        RESOURCE_IN_USE: {http: 409, retryable: false}
+        GROUP_NAME_CONFLICT: {http: 409, retryable: false}
+        TAG_NAME_CONFLICT: {http: 409, retryable: false}
+        PROFILE_IMPORT_CONFLICT: {http: 409, retryable: false}
+        PROFILE_IMPORT_CLEANUP_FAILED: {http: 500, retryable: true}
+        PROFILE_RESTORE_UNAVAILABLE: {http: 409, retryable: false}
+        VIEWER_NOT_AVAILABLE: {http: 404, retryable: false}
+        GROUP_NOT_FOUND: {http: 404, retryable: false}
+        TAG_NOT_FOUND: {http: 404, retryable: false}
+        VALIDATION_FAILED: {http: 422, retryable: false}
+        FINGERPRINT_INVALID: {http: 422, retryable: false}
+        PROXY_CONFIG_INVALID: {http: 422, retryable: false}
+        SHARE_LINK_INVALID: {http: 422, retryable: false}
+        RUNTIME_MODE_UNSUPPORTED: {http: 422, retryable: false}
+        KERNEL_UNSUPPORTED: {http: 422, retryable: false}
+        UNSUPPORTED_PROTOCOL: {http: 422, retryable: false}
+        TUIC_NOT_SUPPORTED: {http: 422, retryable: false}
+        QUOTA_EXCEEDED: {http: 429, retryable: true}
+        INSUFFICIENT_RESOURCES: {http: 503, retryable: true}
+        KERNEL_NOT_FOUND: {http: 500, retryable: false}
+        KERNEL_CHECKSUM_MISMATCH: {http: 500, retryable: false}
+        KERNEL_VERSION_NOT_FOUND: {http: 404, retryable: false}
+        PROXY_ENGINE_NOT_FOUND: {http: 500, retryable: false}
+        PROXY_ENGINE_CHECKSUM_MISMATCH: {http: 500, retryable: false}
+        PROXY_ENGINE_VERSION_NOT_FOUND: {http: 404, retryable: false}
+        PROXY_ENGINE_NOT_READY: {http: 503, retryable: true}
+        PROXY_ENGINE_API_UNAVAILABLE: {http: 503, retryable: true}
+        PROXY_ENGINE_START_FAILED: {http: 500, retryable: false}
+        PROXY_ENGINE_CRASHED: {http: 503, retryable: true}
+        PROXY_INBOUND_CONFLICT: {http: 409, retryable: true}
+        PROXY_OUTBOUND_REFCOUNT_MISMATCH: {http: 500, retryable: false}
+        PROXY_CONNECTION_REFUSED: {http: 200, retryable: true}
+        PROXY_AUTH_FAILED: {http: 200, retryable: false}
+        PROXY_TLS_FAILED: {http: 200, retryable: false}
+        PROXY_TIMEOUT: {http: 200, retryable: true}
+        PROXY_CONNECTION_FAILED: {http: 200, retryable: true}
+        PROXY_DNS_FAILED: {http: 200, retryable: true}
+        RUNTIME_SPAWN_FAILED: {http: 500, retryable: false}
+        RUNTIME_CDP_TIMEOUT: {http: 500, retryable: true}
+        SANDBOX_UNAVAILABLE: {http: 500, retryable: false}
+        DIRECT_EGRESS_DISABLED: {http: 403, retryable: false}
+        DISPLAY_UNAVAILABLE: {http: 503, retryable: true}
+        STORAGE_BUSY: {http: 503, retryable: true}
+        STORAGE_MIGRATION_FAILED: {http: 500, retryable: false}
+        STORAGE_INTEGRITY_FAILED: {http: 500, retryable: false}
+        INTERNAL_UNEXPECTED: {http: 500, retryable: false}
     DeletionError:
       type: string
       enum:
