@@ -6,7 +6,7 @@
 
 - 每个宿主一个 Xray-core 进程，版本固定为 `v26.11.9` 或经准入的后继补丁版本。
 - 清单中的 `sha256` 是发布资产摘要；安装记录同时保存 `asset_sha256`（下载资产）与 `binary_sha256`（解包后可执行文件）。安装时校验 `asset_sha256`，启动时只校验 `binary_sha256`；文件缺失返回 `PROXY_ENGINE_NOT_FOUND`，摘要不符返回 `PROXY_ENGINE_CHECKSUM_MISMATCH`。不修改二进制。
-- 管理 API 只监听 `127.0.0.1` 的随机端口；不映射到容器外或局域网。
+- 管理 API 只监听控制面 UID 独占的 `127.0.0.1` 随机端口；浏览器内核使用独立 UID，宿主 LSM/防火墙只允许控制面 UID 访问；不映射到容器外或局域网。
 - 代理凭据只通过回环管理 API 或受保护引导通道传递，不进入 argv、日志、事件、持久化配置或浏览器。
 - 代理模式下浏览器只连接本运行档案的回环 HTTP 入站；直连模式没有入站，浏览器直接出口并标记降低保证。
 
@@ -109,8 +109,8 @@ Chromium 参数：
 - 第一个使用 key 的运行档案：`AddOutbound`，`ref_count=1`。
 - 后续使用相同 key：复用出站，`ref_count++`。
 - 引用计数只统计非终态运行时（`starting`/`running`/`stopping`），终态 `stopped`/`crashed`/`failed` 不计数。
-- 运行档案停止或失败 teardown：先删除其路由规则和入站，再在同一事务中按 `proxy_outbound_key` 执行 `ref_count--` 并清空 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port`；提交后再删除归零的 Xray 出站。teardown 必须幂等，同一引用只释放一次；若事务后 Xray 删除失败，`proxy_outbounds` 以 `ref_count=0` 保留为可重试孤儿，不从已清空的运行时重复递减。
-- 引用归零且 `RemoveOutbound` 成功：删除 `proxy_outbounds` 行；失败时保留 `ref_count=0` 的孤儿行，由对账重试，不从运行时重复递减。
+- 运行档案停止或失败 teardown：先从运行时快照 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag` 和 `proxy_port`，用快照删除路由规则和入站；再在同一事务中按快照 key 执行 `ref_count--` 并清空四个 `proxy_*` 字段；提交后再删除归零的 Xray 出站。teardown 必须幂等，同一引用只释放一次；若事务后 Xray 删除失败，`proxy_outbounds` 以 `ref_count=0` 保留为可重试孤儿，不从已清空的运行时重复递减。
+- 引用归零且 `RemoveOutbound` 成功：删除 `proxy_outbounds` 行；失败时保留 `ref_count=0` 的孤儿行，由对账重试，不从运行时重复递减。再次启动使用同一 key 前先查询 `GetOutbound`：存在则只 `ref_count++`，不存在才 `AddOutbound`；重启只重建 `ref_count>0` 的行，删除 `ref_count=0` 孤儿；对账删除前重新读取 `ref_count`，非零则放弃删除。
 - API 调用必须串行化；启动、失败回滚和引擎重建都要按非终态运行时对账引用计数；不一致时返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH` 并修复。
 
 ## 5. 协议映射
@@ -126,7 +126,7 @@ Chromium 参数：
 | Shadowsocks | A | `shadowsocks` | server、port、method、password | 2022 方法按清单 |
 | Trojan | A | `trojan` | server、port、password；TLS、WS | TLS 必须 |
 | Hysteria2 | B | `hysteria` | `version: 2`、address、port；hysteria transport、auth、TLS | 需要 UDP 出站 |
-| WireGuard | B | `wireguard` | peer 公钥、私钥、endpoint、allowed IPs；隧道内 DNS | 隧道内 DNS 必填；缺失时拒绝配置并返回 `PROXY_CONFIG_INVALID`，不得用本地 DNS 或 freedom 出站回退 |
+| WireGuard | B | `wireguard` | peer 公钥、私钥、endpoint、allowed IPs；隧道内 DNS | 隧道内 DNS 必填且只接受 IPv4/IPv6 字面量（Xray `remoteDNS`）；缺失或主机名/DoH URL 等非法值返回 `PROXY_CONFIG_INVALID`，不得用本地 DNS 或 freedom 出站回退 |
 
 共享 constraints：
 
@@ -164,16 +164,16 @@ Chromium 参数：
 ## 8. 故障与重启
 
 - 共享引擎退出：所有运行档案立即失败关闭，发布 `proxy.engine.failed`；网关按有界退避重启。
-- 重启后：通过 Xray API 重建所有 `proxy_outbounds`、运行档案入站和路由；入站使用原 `proxy_port`。
+- 重启后：通过 Xray API 重建 `ref_count>0` 的 `proxy_outbounds`、运行档案入站和路由；入站使用原 `proxy_port`；`ref_count=0` 孤儿行在重建前删除。
 - 重建成功：发布 `proxy.engine.rebuilt`；浏览器可恢复网络。
 - 重建失败：先把受影响运行时转入 `stopping`，终止内核进程组，删除入站与路由规则，在同一事务中递减出站引用并清空 `proxy_*`，释放配额/锁，teardown 完成后才标记 `failed`；teardown 失败保留 `stopping` 与 `last_error` 并重试；不得存在终态但仍有活内核或残留代理资源，不得直连回退；保留诊断信息。
-- 控制面重启：读取 `proxy_engine_state`、`runtimes` 和 `proxy_outbounds`；对非终态 `starting`/`stopping` 行先终止可归属内核、按 tag 删除其代理资源并在同一事务递减引用和清空 `proxy_*`，再转为 `stopped`；teardown 失败保留 `stopping` 与 `last_error`。引用计数只按非终态运行时对账，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
+- 控制面重启：读取 `proxy_engine_state`、`runtimes` 和 `proxy_outbounds`；能归属到仍存活引擎且入站、规则、出站均存在的 `running` 行保持 `running`；无主的 `starting`/`running`/`stopping` 行先终止可归属内核、按快照 tag 删除其代理资源并在同一事务递减引用和清空 `proxy_*`，再转为 `stopped`；teardown 失败保留 `stopping` 与 `last_error`。引用计数只按非终态运行时对账，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
 - 删除孤儿入站/规则时按 `rt:<id>:*` tag 匹配；不得误删其他运行档案的资源。
 - 升级引擎会重置连接池；不得静默替换运行中引擎。
 
 ## 9. 安全边界
 
-- Xray API 没有应用层鉴权，只能绑定回环；同用户本机进程的残余风险必须记录。无沙箱服务端模式必须把内核放在独立网络命名空间或等价边界，使管理 API 对内核不可达；无法证明时拒绝启动。桌面端不允许无沙箱启动。
+- Xray API 没有应用层鉴权，只能绑定控制面回环，并由控制面 UID 独占的 LSM/防火墙策略限制；浏览器内核使用独立 UID，页面发起的回环探测必须不可达。无沙箱服务端模式还必须把内核放在独立网络命名空间或等价边界，使管理 API 对内核不可达；无法证明时拒绝启动。桌面端不允许无沙箱启动。
 - API 端口与运行档案入站端口分开；API 不映射到容器外。
 - 代理凭据不进入日志、事件、错误、argv、浏览器配置或持久化引擎配置。
 - 引擎崩溃转储、core dump 和调试日志不得包含凭据；生产环境禁用 core dump。
@@ -190,15 +190,15 @@ Chromium 参数：
 - [ ] 每运行档案 HTTP 入站只绑定回环；不同档案端口/标签隔离。
 - [ ] 沙箱校验失败时网关不创建任何入站、出站或规则。
 - [ ] DoH 关闭和 IPv6 阻止的实际开关、能力清单字段与启动探针一致。
-- [ ] WireGuard 目标域名在隧道内解析；缺少隧道 DNS 的配置被拒绝，且没有本地 DNS/freedom 回退。
+- [ ] WireGuard 目标域名在隧道内解析；隧道 DNS 只接受 IP 字面量，缺失、主机名或 DoH URL 被拒绝并返回 `PROXY_CONFIG_INVALID`，且没有本地 DNS/freedom 回退。
 - [ ] 相同 `outbound_key` 的档案共享出站，连接数明显低于每档案独立出站。
 - [ ] mux/QUIC 复用能力与协议矩阵一致。
 - [ ] Hysteria2 通过 Xray `hysteria` v2 配置可连接；TUIC 被拒绝。
 - [ ] 强杀共享引擎后，所有运行档案失败关闭；原端口重建成功。
-- [ ] `ref_count` 只统计非终态运行时；teardown 在同一事务中递减并清空四个代理绑定字段，重复 teardown 不重复释放；归零出站删除失败时可作为孤儿重试。
+- [ ] `ref_count` 只统计非终态运行时；teardown 先快照四个代理绑定字段，再在同一事务中递减并清空，重复 teardown 不重复释放；归零出站删除失败时可作为孤儿重试，重启不重建孤儿。
 - [ ] 代理检查的节点/网络失败以 HTTP 200 `ProxyCheck.error_code` 返回，不使用 502；临时资源按 tag 删除。
 - [ ] 直连模式不创建任何 Xray 入站、出站或规则；服务端开关/审计与降低保证标记生效。
-- [ ] 共享引擎 API 不可从非回环地址访问。
+- [ ] 共享引擎 API 不可从非回环地址访问；浏览器页面发起的回环探测无法访问管理 API。
 - [ ] 代理凭据不出现在 API 响应、日志、事件和持久化配置。
 
 ## 11. 参考

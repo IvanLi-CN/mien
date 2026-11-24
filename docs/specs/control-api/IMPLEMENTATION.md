@@ -21,7 +21,7 @@
 ## Remaining Gaps
 
 - 登录、首次改密、会话、Token scope、CSRF/Origin、错误结构、分页、幂等、一次性票据、健康检查、审计和代理 API 均未实现。
-- 公开白名单、401/403/404 优先级、`ticketAuth` 与 `x-required-scope` 尚需在 OpenAPI 中落地；生成与双向枚举比对作业尚未接入 CI。
+- 公开白名单、401/403/404 优先级、`ticketAuth` 与 `x-required-scope` 已写入 OpenAPI；生成与双向枚举比对作业尚未接入 CI。
 - 有界日志尾部端点、导入导出端点与 `ProfileImportResult`/`ProfileExportEnvelope` 尚未实现；`block_start_on_check_failure` 必须在实现与 schema 中保持不存在。
 - OpenAPI、事件 schema 与错误码已建立；实现后需要用生成客户端和 fixture 建立契约测试。
 

@@ -72,9 +72,8 @@ CREATE TABLE profiles (
   updated_at TEXT NOT NULL,
   archived_at TEXT,
   deleted_at TEXT,
-  deletion_error TEXT CHECK (deletion_error IS NULL OR deletion_error IN ('busy','permission_denied','io_error','not_found','unknown')),
-  CHECK (status <> 'deleted' OR deleted_at IS NOT NULL),
-  CHECK (deletion_error IS NULL OR status = 'deleted')
+  deletion_error TEXT CHECK (deletion_error IS NULL OR deletion_error IN ('busy','permission_denied','io_error','unknown')),
+  CHECK (status <> 'deleted' OR deleted_at IS NOT NULL)
 );
 
 CREATE INDEX idx_profiles_group ON profiles(group_id);
@@ -93,8 +92,8 @@ CREATE TABLE kernel_installs (
   version TEXT NOT NULL,
   platform TEXT NOT NULL CHECK (platform IN ('macos-arm64','linux-x86_64','windows-x64')),
   path TEXT NOT NULL,
-  asset_sha256 TEXT NOT NULL CHECK (length(asset_sha256) = 64),
-  binary_sha256 TEXT CHECK (binary_sha256 IS NULL OR length(binary_sha256) = 64),
+  asset_sha256 TEXT NOT NULL CHECK (length(asset_sha256) = 64 AND asset_sha256 NOT GLOB '*[^0-9a-f]*'),
+  binary_sha256 TEXT CHECK (binary_sha256 IS NULL OR (length(binary_sha256) = 64 AND binary_sha256 NOT GLOB '*[^0-9a-f]*')),
   manifest_json TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0,1)),
   installed_at TEXT NOT NULL,
@@ -109,8 +108,8 @@ CREATE TABLE proxy_engine_installs (
   version TEXT NOT NULL,
   platform TEXT NOT NULL CHECK (platform IN ('macos-arm64','linux-x86_64','windows-x64')),
   path TEXT NOT NULL,
-  asset_sha256 TEXT NOT NULL CHECK (length(asset_sha256) = 64),
-  binary_sha256 TEXT CHECK (binary_sha256 IS NULL OR length(binary_sha256) = 64),
+  asset_sha256 TEXT NOT NULL CHECK (length(asset_sha256) = 64 AND asset_sha256 NOT GLOB '*[^0-9a-f]*'),
+  binary_sha256 TEXT CHECK (binary_sha256 IS NULL OR (length(binary_sha256) = 64 AND binary_sha256 NOT GLOB '*[^0-9a-f]*')),
   manifest_json TEXT NOT NULL,
   license TEXT NOT NULL CHECK (license = 'MPL-2.0'),
   source_url TEXT NOT NULL,
@@ -175,7 +174,7 @@ CREATE TABLE admin_credentials (
 CREATE TABLE api_tokens (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  token_prefix TEXT NOT NULL CHECK (length(token_prefix) BETWEEN 4 AND 16),
+  token_prefix TEXT CHECK (token_prefix IS NULL OR length(token_prefix) BETWEEN 4 AND 16),
   token_hash TEXT NOT NULL UNIQUE,
   scopes_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -303,10 +302,10 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 - 首个发布无存量库，以下路径针对发布后升级；全部按“加新、回填、切换、后删旧”拆分迁移。
 - `kernel_installs`/`proxy_engine_installs`：先新增可空 `asset_sha256`、`binary_sha256`，再按安装记录逐一计算可执行文件摘要；旧 `sha256` 若存在则作为 `asset_sha256`。文件存在时写入 `binary_sha256`；文件缺失时把该安装置为 `active=0`、保留路径与元数据、将摘要保持 NULL，并在迁移报告中列出 `(version, platform, path)`。`binary_sha256` 在基线中保持可空（`NULL` 或 64 位十六进制），迁移不强制 NOT NULL；启动时这类记录返回 `KERNEL_NOT_FOUND`/`PROXY_ENGINE_NOT_FOUND`，必须重新安装或显式移除，不允许用发布资产摘要冒充二进制摘要。最后一个迁移删除旧 `sha256`。
 - `runtimes.proxy_outbound_key`：停止流程必须在同一事务中递减 `ref_count` 并写 NULL；迁移先对 `stopped`/`crashed`/`failed` 行按非终态引用重建计数，再清空这些行的 `proxy_*`，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
-- `profiles.import_source_id` 与 `api_tokens.token_prefix`：均为可回退的新列；前者允许 NULL，后者从已有哈希无法反推，只能对新 Token 写入或保留空值并在 UI 隐藏前缀。
+- `profiles.import_source_id` 与 `api_tokens.token_prefix`：均为可回退的新列；前者允许 NULL；后者从已有哈希无法反推，旧 Token 保持 NULL 并在 UI 隐藏前缀，新 Token 必须写入 4–16 字符展示前缀，不允许空串。
 - `profiles.window_json`：先对所有 `active`、`archived`、`deleted` 行做 preflight；优先保留 `fingerprint_json.window`，缺失时用合法 `window_json` 回填，然后走 schema 校验。两种来源都缺失、或旧值非法时，列出全部 `profile_id` 并阻断迁移；不得写默认窗口，也不得只检查 `deleted`。回填完成后才删除旧列。
 - `event_tickets` 已在基线 DDL 中，不重建、不清空；若旧库确实缺少该表，才按基线创建，并保留已有会话/Token 引用。`admin_credentials` 同样保留已有行；为空时进入引导流程，不生成固定口令。
-- `event_log` 的旧字符串游标迁移：若旧库缺少 `sequence`，先新增可空列，按 `created_at`、旧 `id` 稳定排序回填连续整数，建立唯一索引并切换读取端；保留 `event_id` 作为外部去重标识。不得把旧游标值直接映射为字符串序号，也不得在回填前删除旧列。
+- `event_log` 的旧字符串游标迁移：若旧库缺少 `sequence`，先新增可空列，按 `created_at`、旧 `id` 稳定排序回填连续整数，建立唯一索引并切换读取端；随后必须用表重建收敛到基线 `sequence INTEGER PRIMARY KEY AUTOINCREMENT`（复制行、删除旧表、重命名）并删除旧 `id`。重建完成前写路径必须显式写入 `max(sequence)+1`，否则唯一索引允许多个 `NULL`，新事件没有可回放游标。保留 `event_id` 作为外部去重标识，不得在回填前删除旧列。
 - `audit_events` 的 `event_type`、`profile_id` 迁移：先新增可空列；`event_type` 从 `action` 回填，`profile_id` 从旧 metadata 中的合法档案标识回填，否则保持 NULL；建立索引后才切换筛选读取端，最后按基线约束收紧。不得丢弃旧审计行或把 `action` 当作新 `event_type` 的长期替代。
 - `profiles.deletion_error` 与 `runtimes.isolation`：新列默认 NULL；启动对账把无法确认的历史运行时置 `unknown`，不猜 `enforced`。
 - 已发布档案不论状态，在删除 `window_json` 前必须仍有合法 `fingerprint_json.window`；否则迁移阻断并报告档案 ID，不写默认窗口。

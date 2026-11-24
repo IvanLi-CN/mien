@@ -43,7 +43,7 @@ Trusted baseline 是仓库中**所有已存在的 `vX.Y.Z` Git tag 与 GitHub Re
 ## 4. Ordering 与 collision
 
 - 使用 SemVer 2.0.0 的 stable 比较规则；canonical version 是 `MAJOR.MINOR.PATCH`。
-- 新 identity 的 target 必须严格大于所有已存在 tag/release 的核心版本；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形：先读取 reservation 并验证 policy/target/version/source SHA 完全一致，再从 collision 集合中排除该 reservation 自身，再放行；其他 identity 使用同一版本仍然冲突。不得仅因 version 相同就复用。
+- 新 identity 的 target 必须严格大于所有已存在 tag/release 的核心版本；任一已存在版本大于或等于 target 都拒绝。相同 identity 的 recovery 是唯一允许复用已存在版本的情形：先读取 reservation 并验证 policy/target/version/source SHA 完全一致，再从 collision 集合中排除该 identity 的完整匹配对象——reservation 自身，以及 policy/target/version/source SHA 完全匹配的 tag/release——然后放行；其他 identity 使用同一版本仍然冲突。不得仅因 version 相同就复用。
 - 相同 target 只允许作为同一 source identity 的 idempotent retry/recovery，不得重新分配 successor。
 - tag `vX.Y.Z` 已存在时，只能读取并验证其 peeled commit；如果指向不同 source，停止，不改写 tag。
 - Release record、container tag 或 GitHub Release 已属于另一个 source identity 时，停止并报告冲突。
@@ -68,7 +68,7 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 
 在构建、tag 创建或公开 Release 之前，workflow 使用 GitHub Release draft 建立 durable reservation：
 
-- draft 的 `tag_name` 为 `vX.Y.Z`，`target_commitish` 为 `source_sha`；draft 不创建公开 tag。
+- draft 的 `tag_name` 使用非 `v*` 的 reservation 标识 `mien-reservation-<canonical>-<run_id>`，`target_commitish` 为 `source_sha`；reservation 标识不占用 SemVer baseline，也不作为公开版本。Release 阶段由 release GitHub App 创建或验证 `vX.Y.Z`，再把 draft 的 `tag_name` 更新为 `vX.Y.Z`（或由 release job 建立最终 release）。
 - draft 正文记录 policy、target、canonical version、source SHA、workflow run 和 reservation 状态。
 - 已存在同 version、同 source 的 draft 时复用；同 version、不同 source 时冲突；任一 tag/release 占用该版本时，只能验证并恢复完全相同的已记录 identity。
 - reservation 是版本和 source 的 claim；后续 job 不从旧的 workflow artifact 或本地状态重新分配版本。
@@ -106,9 +106,9 @@ identity 写入 draft release 正文和 `release-identity.json`；相同 tuple �
 3. `test`：运行完整 CI 和 e2e；失败不构建发布物。
 4. `macos-arm64`、`docker-amd64`：在 reservation 的 `source_sha` 上构建并记录 digest，不公开发布。
 5. `stage-release`：把产物、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、校验和与 identity 写入 draft；校验 digest。
-6. `attest`：为所有产物、SBOM、许可包与 seccomp 发布物生成并验证 artifact attestation；缺失或失败即停止，不存在跳过分支。
+6. `attest`：为 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包与 seccomp 发布物生成并验证 artifact attestation；缺失或失败即停止，不存在跳过分支。
 7. `promote-docker`：将已验证 digest 提升到 `vX.Y.Z`；绑定 `release` environment。
-8. `release`：在 Docker 提升成功后创建或验证 tag，公开 GitHub Release；绑定 `release` environment。
+8. `release`：在 Docker 提升成功后校验当前 DMG 的手动测试通过记录，再创建或验证 tag，公开 GitHub Release；绑定 `release` environment。
 9. `verify-release`：下载公开资产，校验 checksum、AdHoc 签名、更新清单和 identity；失败标记 release 无效。
 
 Deploy 不在本仓库自动执行。任何部署目标都必须消费 `release-identity.json` 中已验证的 artifact digest，并保持 Release 的 canonical version、source SHA 和 digest 不变。

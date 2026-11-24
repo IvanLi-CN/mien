@@ -30,7 +30,7 @@
 
 - The system MUST support the Tier A protocols VLESS, VMess, Shadowsocks (AEAD and 2022 methods, plugins when declared), and Trojan, MUST support the Tier B protocols Hysteria2 and WireGuard when declared by the installed engine capability manifest, and MUST support HTTP, HTTPS and SOCKS5 as basic protocols. TUIC MUST be rejected in v1.
 - Inputs: 代理协议类型、服务器地址、端口、协议选项、凭据、引擎能力清单。
-- Outputs: 可以生成的引擎出站配置；basic 协议不参与 Tier A/B 门禁；未在清单中声明或未通过测试的协议必须被拒绝，不得静默降级为 HTTP/SOCKS；WireGuard 必须包含隧道内 DNS，缺失时返回 `PROXY_CONFIG_INVALID`。
+- Outputs: 可以生成的引擎出站配置；basic 协议不参与 Tier A/B 门禁；未在清单中声明或未通过测试的协议必须被拒绝，不得静默降级为 HTTP/SOCKS；WireGuard 必须包含隧道内 DNS，且只接受 IPv4/IPv6 字面量，缺失或非法值返回 `PROXY_CONFIG_INVALID`。
 
 ### REQ-PROXY-002
 
@@ -72,7 +72,7 @@
 
 - The system MUST resolve target destination domains through the proxy, and MUST NOT perform local DNS resolution for target hosts.
 - Inputs: 浏览器请求、协议出站、DNS 策略、bootstrap 配置。
-- Outputs: 目标域名由代理协议携带或经代理内 DNS 解析；仅代理节点主机名允许本地 bootstrap 解析；目标域名不出现在本机 DNS 查询中；WireGuard 缺少隧道内 DNS 时拒绝配置，不生成本地 DNS 或 freedom 回退。
+- Outputs: 目标域名由代理协议携带或经代理内 DNS 解析；仅代理节点主机名允许本地 bootstrap 解析；目标域名不出现在本机 DNS 查询中；WireGuard 隧道内 DNS 必须存在且为 IP 字面量，否则拒绝配置，不生成本地 DNS 或 freedom 回退。
 
 ### REQ-PROXY-009
 
@@ -124,15 +124,15 @@
 
 ### REQ-PROXY-017
 
-- The system MUST bind the Xray management API and every runtime HTTP inbound to `127.0.0.1` only, allocate a stable per-runtime port, and document the residual risk that same-user local processes can use the loopback endpoints.
-- Inputs: 端口分配、运行时生命周期、本机进程、管理 API。
-- Outputs: 非回环地址无法连接；运行时结束后入站端口关闭；管理 API 不暴露到容器外；安全文档记录同用户残余风险。
+- The system MUST bind the Xray management API and every runtime HTTP inbound to `127.0.0.1` only, allocate a stable per-runtime port, and restrict the management API to the control-plane UID with an LSM/firewall boundary; the browser kernel MUST run under a separate UID.
+- Inputs: 端口分配、运行时生命周期、本机进程、管理 API、控制面 UID、浏览器内核 UID。
+- Outputs: 非回环地址无法连接；页面发起的回环探测无法访问管理 API；运行时结束后入站端口关闭；管理 API 不暴露到容器外。
 
 ### REQ-PROXY-018
 
 - The system MUST treat direct mode as an explicit risky configuration and MUST NOT create a runtime inbound/outbound for a direct profile.
 - Inputs: 档案代理模式、启动请求、宿主类型（桌面/服务端）、`MIEN_ALLOW_DIRECT_EGRESS`、审计上下文。
-- Outputs: 直连档案不创建入站/出站；UI 与 API 标记 `direct=true`、降低保证（`reduced_assurance=true`）和风险说明；桌面端允许直连但必须展示降低保证；服务端必须在 `MIEN_ALLOW_DIRECT_EGRESS=1` 时才能启动并写入审计事件，否则返回 `DIRECT_EGRESS_DISABLED`（403）并拒绝启动；T-18 的远程 DNS、非代理 UDP、DoH、IPv6 与失败关闭控制只适用于代理模式，不得对直连模式声称具备；不得把直连伪装成代理。
+- Outputs: 直连档案不创建入站/出站；UI 与 API 标记 `direct=true`、降低保证（`reduced_assurance=true`）和风险说明；桌面端允许直连但必须展示降低保证；服务端必须在 `MIEN_ALLOW_DIRECT_EGRESS=1` 时才能启动并写入审计事件，否则返回 `DIRECT_EGRESS_DISABLED`（403）并拒绝启动；T-18 的远程 DNS 与失败关闭保证只适用于代理模式，不得对直连模式声称具备；直连模式仍应用内核支持的 `webrtc`/`network` 标志（至少禁用非代理 UDP、禁用 DoH、阻止 IPv6），无法应用时拒绝启动或记录为已声明限制；不得把直连伪装成代理。
 
 ### REQ-PROXY-019
 
@@ -142,7 +142,7 @@
 
 ### REQ-PROXY-020
 
-- The system MUST publish a protocol engine capability manifest containing version, platform, release-asset `sha256`, license, a `protocols` object map (`protocols.<name> = {tier, transports, tls_modes, methods?, plugins?, notes?}` with `tier` in `A|B|basic`), connection-reuse support, and known limitations, and MUST use it to drive UI and validation.
+- The system MUST publish a protocol engine capability manifest containing version, platform, release-asset `sha256`, license, a `protocols` object map (`protocols.<name> = {tier, transports, tls_modes, methods?, plugins?, obfuscation?, notes?}` with `tier` in `A|B|basic` and bound to the protocol name), connection-reuse support, and known limitations, and MUST use it to drive UI and validation.
 - Inputs: 引擎安装包、构建清单、测试结果、引擎安装记录。
 - Outputs: 机器可读清单；清单 `sha256` 只表示发布资产，安装记录另存 `asset_sha256` 与 `binary_sha256`；Tier A/B 与 basic 分类由清单数据驱动；UI 不展示未声明能力；协议组合按清单拒绝或标注；升级前可比对差异。
 
@@ -162,7 +162,7 @@
 
 - The system MUST bind the Xray management API to loopback only, serialize mutations, make add/remove idempotent, and reconcile outbound refcounts after restart.
 - Inputs: 管理 API 地址、并发启动/停止请求、引擎重启、`runtimes` 与 `proxy_outbounds` 持久化状态。
-- Outputs: 无重复出站、无孤儿入站或规则、引用计数按非终态运行时可重建；控制面重启时对非终态 `starting`/`stopping` 行先终止可归属内核与代理资源，teardown 成功后转 `stopped`；共享引擎重建失败时先转 `stopping`，teardown 完成后才转 `failed`；teardown 失败保留 `stopping` 与 `last_error`；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 不暴露到非回环地址。
+- Outputs: 无重复出站、无孤儿入站或规则、引用计数按非终态运行时可重建；控制面重启时能归属且资源完整的 `running` 行保持 `running`，无主的 `starting`/`running`/`stopping` 行先终止可归属内核与代理资源，teardown 成功后转 `stopped`；共享引擎重建失败时先转 `stopping`，teardown 完成后才转 `failed`；teardown 失败保留 `stopping` 与 `last_error`；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 不暴露到非回环地址。
 
 ### REQ-PROXY-024
 
@@ -212,7 +212,7 @@
 
 - Method: 启动后扫描 argv、日志、事件、API 响应和持久化文件，检查凭据是否只经回环 API 传递。
 - covers: `REQ-PROXY-006`
-- Pass condition: 凭据不出现在 argv、日志、事件、API 响应或持久化引擎配置；重启可重新生成；管理 API 只绑定回环。
+- Pass condition: 凭据不出现在 argv、日志、事件、API 响应或持久化引擎配置；重启可重新生成；管理 API 只绑定控制面回环并由控制面 UID 独占的 LSM/防火墙策略限制。
 
 ### VER-PROXY-007
 
@@ -278,7 +278,7 @@
 
 - Method: 从非回环地址连接管理 API 和运行档案入站，并在运行时结束后重试；检查安全文档。
 - covers: `REQ-PROXY-017`
-- Pass condition: 非回环连接被拒绝；运行时结束后入站端口关闭；管理 API 不可从非回环访问；文档记录同用户残余风险。
+- Pass condition: 非回环连接被拒绝；运行时结束后入站端口关闭；管理 API 不可从非回环访问，且浏览器内核 UID 与页面发起的回环探测不能访问；控制面 UID 的残余风险已记录。
 
 ### VER-PROXY-018
 
@@ -302,7 +302,7 @@
 
 - Method: 使用相同节点/凭据启动多个档案，再使用不同凭据启动一个档案；检查 Xray 出站、连接和引用计数。
 - covers: `REQ-PROXY-021`
-- Pass condition: 相同 key 只创建一个出站并复用；不同凭据创建不同出站；`ref_count` 只计非终态运行时；teardown 先清空四个代理绑定字段再递减，重复 teardown 不重复释放；最后一个引用释放时删除；日志不泄露凭据。
+- Pass condition: 相同 key 只创建一个出站并复用；不同凭据创建不同出站；`ref_count` 只计非终态运行时；teardown 先快照四个代理绑定字段，再递减并清空，重复 teardown 不重复释放；最后一个引用释放时删除；日志不泄露凭据。
 
 ### VER-PROXY-022
 
@@ -314,7 +314,7 @@
 
 - Method: 并发启动/停止档案，重启引擎，检查 Xray API 访问控制、幂等和引用计数对账。
 - covers: `REQ-PROXY-023`
-- Pass condition: 无重复出站、无孤儿入站/规则；引用计数按非终态运行时重建；控制面重启时非终态行先清理资源再转 `stopped`/`failed`；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 仅回环可达，但同 UID 进程仍可调用（无沙箱时为内核 UID，残余风险见 SECURITY T-15/T-22）；无沙箱模式要求内核与管理 API 处于不可互相路由的边界。并发操作不产生竞争状态。
+- Pass condition: 无重复出站、无孤儿入站/规则；引用计数按非终态运行时重建；控制面重启时能归属且资源完整的 `running` 行保持 `running`，无主的 `starting`/`running`/`stopping` 行先清理资源再转 `stopped`；不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`；API 仅回环可达，但回环不提供调用者鉴权，必须由控制面 UID 独占的 LSM/防火墙策略限制，浏览器内核使用独立 UID，页面发起的回环探测不可达；无沙箱模式还要求内核与管理 API 之间不可路由。并发操作不产生竞争状态。
 
 ### VER-PROXY-024
 

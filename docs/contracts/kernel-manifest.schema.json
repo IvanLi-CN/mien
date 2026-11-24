@@ -31,10 +31,19 @@
     },
     "flags": {
       "type": "object",
-      "required": ["window-size"],
+      "required": ["window-size", "fingerprint-hardware-concurrency"],
       "additionalProperties": {
         "$ref": "#/$defs/flagSpec"
-      }
+      },
+      "allOf": [
+        {
+          "properties": {
+            "fingerprint-hardware-concurrency": {
+              "required": ["per_platform_values"]
+            }
+          }
+        }
+      ]
     },
     "seed_derived": {
       "type": "array",

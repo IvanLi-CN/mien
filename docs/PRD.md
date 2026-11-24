@@ -182,9 +182,9 @@ Mien 是本地优先、可服务化部署的指纹浏览器环境管理平台。
 | VMess | Tier A | TCP、WS、gRPC、AEAD | 用户 ID、加密选型、传输 |
 | Shadowsocks | Tier A | AEAD、2022、按能力清单的插件 | 方法、密码、插件参数 |
 | Trojan | Tier A | TLS、WS | 密码、TLS、传输 |
-| Hysteria2 | Tier B | QUIC、TLS、混淆 | 需要容器允许 UDP 出站 |
+| Hysteria2 | Tier B | QUIC、TLS；混淆不在当前引擎能力清单 | 需要容器允许 UDP 出站 |
 | TUIC | 后续 | QUIC | Xray 当前不支持；不进入 v1 |
-| WireGuard | Tier B | UDP | 按引擎清单与独立测试 |
+| WireGuard | Tier B | UDP、隧道内 DNS（仅 IP 字面量） | 按引擎清单与独立测试 |
 
 Tier A 参与发布门禁；Tier B 必须明确标注能力与失败原因，不得静默降级为其他协议或直连。
 

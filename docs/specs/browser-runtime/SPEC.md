@@ -34,13 +34,13 @@
 - The system MUST enforce the runtime state machine and MUST emit a state event for every transition.
 - Inputs: 启动、停止、内核退出、超时、控制面重启。
 - Outputs: 合法转移序列；非法转移必须被拒绝并记录；外部观察者可以通过事件流重建状态。
-- Transitions: `stopped -> starting`（start）、`starting -> running`（CDP 就绪，或“进程存活 + 代理模式下的入站就绪 + 有界宽限”；直连模式没有入站条件）、`starting -> stopping`（启动中 stop 取消，或 post-resource 失败后进入 teardown）、`starting -> failed`（校验、生成、沙箱、spawn 前失败，确认没有创建任何代理资源或子进程）、`running -> stopping`（stop、内核退出或共享引擎故障后进入 teardown）、`stopping -> stopped`（用户停止/取消完成，或控制面重启后的孤儿清理）、`stopping -> failed`（post-resource 启动失败或共享引擎失败，teardown 完成后进入终态）、`stopping -> crashed`（内核退出，teardown 完成后进入终态）、`crashed -> starting`（退避重试）、`crashed -> stopped`、`failed -> starting`（用户显式重试且已确认无残留）与 `failed -> stopped`（清理或停止）。`starting`/`running` 不得直接写 `failed` 或 `crashed`;teardown 未完成时必须保留 `stopping` 并记录 `last_error`。
+- Transitions: `stopped -> starting`（start）、`starting -> running`（CDP 就绪，或“进程存活 + 代理模式下的入站就绪 + 有界宽限”；直连模式没有入站条件）、`starting -> stopping`（启动中 stop 取消、就绪前内核退出，或 post-resource 失败后进入 teardown）、`starting -> failed`（校验、生成、沙箱、spawn 前失败，确认没有创建任何代理资源或子进程）、`running -> stopping`（stop、内核退出或共享引擎故障后进入 teardown）、`stopping -> stopped`（用户停止/取消完成，或控制面重启后的孤儿清理）、`stopping -> failed`（post-resource 启动失败或共享引擎失败，teardown 完成后进入终态）、`stopping -> crashed`（内核退出，teardown 完成后进入终态）、`crashed -> starting`（退避重试）、`crashed -> stopped`、`failed -> starting`（用户显式重试且已确认无残留）与 `failed -> stopped`（清理或停止）。`starting`/`running` 在需要 teardown 的路径上不得直接写 `failed` 或 `crashed`；pre-resource 失败允许 `starting -> failed`；teardown 未完成时必须保留 `stopping` 并记录 `last_error`。
 
 ### REQ-RUNTIME-003
 
 - The system MUST make start and stop idempotent per profile and MUST allow at most one supervised runtime per profile.
 - Inputs: 重复的启动/停止请求、并发请求、档案锁。
-- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；`starting` 中的 stop 是取消，转入 `stopping`，清理完成后返回 `stopped`；已停止时停止返回成功；对 `crashed`/`failed` 运行时执行停止只做幂等清理并返回 `stopped`；并发启动不得产生两个内核。
+- Outputs: 已在运行时启动返回现有运行时；启动中返回进行中；`starting` 中的 stop 是取消，转入 `stopping`，清理完成后返回 `stopped`；`stopping` 中的启动请求被拒绝或返回在途停止状态，teardown 未完成、锁未释放时不得开始新启动；已停止时停止返回成功；对 `crashed`/`failed` 运行时执行停止只做幂等清理并返回 `stopped`；并发启动不得产生两个内核。
 
 ### REQ-RUNTIME-004
 
@@ -83,20 +83,20 @@
 
 - The system MUST detect kernel exit, record exit code and recent logs, and apply bounded restart behavior without an infinite crash loop.
 - Inputs: 内核退出事件、自动重启配置、退避窗口。
-- Outputs: 内核退出后先进入 `stopping` 执行同一 teardown，清理完成再写 `crashed`；记录退出码与最近日志；默认不自动重启；启用自动重启时最多 3 次，使用递增退避；稳定运行后重置计数。teardown 失败时保持 `stopping` 并重试，不得在资源仍存在时写 `crashed`。
+- Outputs: 内核退出后先进入 `stopping` 执行同一 teardown，清理完成再写 `crashed`；记录退出码与最近日志；默认不自动重启；启用自动重启时最多 3 次，使用递增退避；稳定运行后重置计数。内核退出发生在已发起的停止/优雅关闭过程中时，终态为 `stopped`，不记为 `crashed`，不发 `runtime.crashed`；仅无在途停止请求的意外退出写 `crashed`。teardown 失败时保持 `stopping` 并重试，不得在资源仍存在时写 `crashed`。
 
 ### REQ-RUNTIME-011
 
 - The system MUST stop a runtime by requesting graceful shutdown, waiting for a bounded timeout, then terminating the whole process group; it MUST remove the runtime's route rule and inbound and release its shared-outbound reference, while leaving the shared engine running for other profiles.
 - Inputs: 停止请求、进程状态、超时配置。
-- Outputs: 正常退出或强制终止后状态 `stopped`；清理顺序固定为终止进程组 → 按 `ruleTag` 删除路由规则 → 删除入站 → 在同一事务中按 `proxy_outbound_key` 递减非终态共享出站引用并清空 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag`、`proxy_port` → 释放锁；若引用归零，再删除 Xray 出站和 `proxy_outbounds` 行。强制终止记录为审计事件。重试时若 `proxy_outbound_key` 已为空，只重试孤儿出站清理，不重复递减。
+- Outputs: 正常退出或强制终止后状态 `stopped`；清理顺序固定为终止进程组 → 快照 `proxy_outbound_key`/`proxy_inbound_tag`/`proxy_rule_tag`/`proxy_port` → 按快照 `ruleTag` 删除路由规则和入站 → 在同一事务中按快照 key 递减非终态共享出站引用并清空四个 `proxy_*` 字段 → 释放锁；若引用归零，再删除 Xray 出站和 `proxy_outbounds` 行。强制终止记录为审计事件。重试时若 `proxy_outbound_key` 已为空，只重试孤儿出站清理，不重复递减。
 - Invariant: `proxy_outbounds.ref_count` 只统计非终态运行时；`stopped`、`crashed`、`failed` 运行时不得保留 `proxy_*` 字段或仍计数的出站引用。
 
 ### REQ-RUNTIME-012
 
 - The system MUST reconcile non-terminal runtime records after a control-plane or container restart using PID, process start time, and command line, without killing processes it cannot safely attribute.
 - Inputs: `runtimes` 记录、进程表、档案锁、数据目录。
-- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时；对 `starting`/`stopping` 中断行，终止可归属内核进程组、删除该档案的入站与规则、清空 `proxy_*`、递减非终态引用后写 `stopped`；teardown 失败时保留 `stopping` 或原非终态并记录 `last_error`，不得在资源仍存在时写 `failed`，后续对账重试；恢复完成后不保留中间态。
+- Outputs: 可归属进程被接管或安全终止；不可归属进程被标记为孤儿并按策略清理；不产生重复运行时；对 `starting`/`stopping` 中断行，终止可归属内核进程组、删除该档案的入站与规则、清空 `proxy_*`、仅当 `proxy_outbound_key` 非空时递减非终态引用（已为空时只重试孤儿出站清理，不重复递减）后写 `stopped`；teardown 失败时保留 `stopping` 或原非终态并记录 `last_error`，不得在资源仍存在时写 `failed`，后续对账重试；恢复完成后不保留中间态。
 
 ### REQ-RUNTIME-013
 
@@ -114,7 +114,7 @@
 
 - The system MUST write structured, rotated, redacted logs per runtime and MUST retain enough information to diagnose startup and crash failures.
 - Inputs: 内核 stdout/stderr、运行时事件、错误码。
-- Outputs: JSON Lines 日志；单文件上限 10 MB，最多 5 个文件；密码、Token、Cookie 和完整代理 URL 不出现；`GET /api/v1/profiles/{id}/logs?limit=` 从运行时日志环或轮转文件读取有界、脱敏的尾部，超出上限的 `limit` 被拒绝，响应不含凭据、Cookie、授权头或完整 URL；桌面宿主提供等价 IPC/本地日志路径回退。
+- Outputs: JSON Lines 日志；单文件上限 10 MB，最多 5 个文件；密码、Token、Cookie 和完整代理 URL 不出现；`GET /api/v1/profiles/{id}/logs?limit=` 从运行时日志环或轮转文件读取有界、脱敏的尾部，`limit` 上限为 1000 行，超出上限的 `limit` 被拒绝，响应不含凭据、Cookie、授权头或完整 URL；桌面宿主提供等价 IPC/本地日志路径回退。
 
 ### REQ-RUNTIME-016
 
@@ -153,7 +153,7 @@
 
 - Method: 驱动启动、成功、停止、崩溃、超时、就绪前退出、共享引擎故障和控制面重启路径，收集事件流。
 - covers: `REQ-RUNTIME-002`
-- Pass condition: 事件序列符合状态机，包括 `starting -> stopping -> stopped`（取消）、`starting -> failed`（pre-resource）、`starting -> stopping -> failed`（post-resource）、`running -> stopping -> crashed`、`running -> stopping -> failed`；非法转移被拒绝；teardown 失败时保持 `stopping`；终态无残留内核或代理资源；最终状态与数据库一致。
+- Pass condition: 事件序列符合状态机，包括 `starting -> stopping -> stopped`（取消）、`starting -> stopping -> crashed`（就绪前退出）、`starting -> failed`（pre-resource）、`starting -> stopping -> failed`（post-resource）、`running -> stopping -> crashed`、`running -> stopping -> failed`；非法转移被拒绝；teardown 失败时保持 `stopping`；终态无残留内核或代理资源；最终状态与数据库一致。
 
 ### VER-RUNTIME-003
 

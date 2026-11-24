@@ -12,7 +12,7 @@
 
 - `profile`: 一个可独立启动的浏览器环境，拥有唯一 ULID、独立数据目录（`chrome`、`downloads`、`logs`）、指纹规格、可选代理和运行偏好。
 - `archive`: 软删除状态；档案不再出现在默认列表，数据目录原地保留，可通过 restore 回到 `active`。
-- `deleted`: 回收站状态；数据目录移动到 `<data-root>/trash/<profile-id>` 并写入 `deleted_at`；档案不可启动，只能 restore 或 purge。
+- `deleted`: 回收站状态；数据目录移动到 `<data-root>/trash/<profile-id>` 并写入 `deleted_at`；档案不可启动，可 restore、purge 或只读读取。
 - `purge`: `DELETE` 携带 `permanent=true` 的永久删除；先删除数据目录再删除数据库记录，失败时保留 `deleted` 状态并写入 `deletion_error` 供重试。
 - `profile status`: `active`、`archived` 或 `deleted`；与运行时 `state` 分离。
 - `data root`: macOS 的 `~/Library/Application Support/Mien` 或 Docker 的 `/data`。
@@ -45,8 +45,8 @@
 - The system MUST treat duplicate as a new profile. Duplication MUST generate a new fingerprint seed and a new browser data directory; no copy option may reuse the source seed.
 - Inputs: 源档案标识、可选的配置复制选项 `copy_fingerprint` 与 `copy_proxy`。
 - Outputs: 新档案标识；不得共享运行时、数据目录、下载目录、种子或 Cookie。
-- Defaults: `copy_fingerprint=false`。
-- Copy semantics: `copy_fingerprint=true` 时复制指纹规格的显式字段（`platform`、`platform_version`、`brand`、`brand_version`、`hardware_concurrency`、`languages`、`timezone`、`window`、`spoof`、`webrtc`、`network`），但 MUST 始终生成新的 `seed`；不得复用源档案种子。生成的新种子若与任何现有档案相同必须内部重抽，不返回用户可见的冲突错误。
+- Defaults: `copy_fingerprint=false`、`copy_proxy=true`。
+- Copy semantics: `copy_fingerprint=true` 时复制指纹规格的显式字段（`platform`、`platform_version`、`brand`、`brand_version`、`hardware_concurrency`、`languages`、`timezone`、`window`、`spoof`、`webrtc`、`network`），但 MUST 始终生成新的 `seed`；不得复用源档案种子。生成的新种子若与任何现有档案相同必须内部重抽，不返回用户可见的冲突错误。`copy_proxy=true` 时复制代理配置（协议、服务器、端口、非秘密选项与加密凭据重新绑定到新档案），不复制运行状态、健康检查结果或连接池；`copy_proxy=false` 时新档案没有代理。
 
 ### REQ-PROFILE-005
 
@@ -57,9 +57,9 @@
 ### REQ-PROFILE-006
 
 - The system MUST implement the profile lifecycle as `active <-> archived`、`active|archived -> deleted`、`deleted -> active` 与 `deleted -> purge`，并 MUST 拒绝启动 `deleted` 档案。
-- Transitions: `POST /api/v1/profiles/{id}/archive` 把 `active` 转为 `archived` 并写 `archived_at`；`POST /api/v1/profiles/{id}/restore` 把 `archived` 或 `deleted` 转为 `active` 并清空 `archived_at`；`DELETE /api/v1/profiles/{id}?permanent=false` 把 `active|archived` 转为 `deleted`，把数据目录移动到 `<data-root>/trash/<profile-id>` 并写 `deleted_at`；`DELETE /api/v1/profiles/{id}?permanent=true` 对 `deleted` 档案先删除数据目录、再删除数据库记录。
+- Transitions: `POST /api/v1/profiles/{id}/archive` 把 `active` 转为 `archived` 并写 `archived_at`；`POST /api/v1/profiles/{id}/restore` 把 `archived` 或 `deleted` 转为 `active`，清空 `archived_at` 与 `deleted_at`；`DELETE /api/v1/profiles/{id}?permanent=false` 把 `active|archived` 转为 `deleted`，把数据目录移动到 `<data-root>/trash/<profile-id>` 并写 `deleted_at`，对已 `deleted` 的档案幂等返回当前状态；`DELETE /api/v1/profiles/{id}?permanent=true` 仅接受 `deleted` 档案，先删除数据目录、再删除数据库记录；对 `active|archived` 返回 `PROFILE_NOT_DELETED`（409）。
 - Inputs: 档案标识、`permanent` 删除模式、确认令牌。
-- Outputs: 状态与目录移动同步；软删除或 purge 前必须确认运行时已停止并完成 teardown，运行中档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止或移动/删除其目录。从回收站恢复前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409），不得创建空目录，行保持 `deleted`。恢复成功时目录移回 `<data-root>/profiles/<profile-id>`；`deleted` 档案的启动请求返回 `PROFILE_DELETED`（409）且不得隐式恢复，但 restore、purge、读取与 purge 重试仍可用；purge 目录删除失败时保留 `deleted` 状态、不删除记录、写入并返回稳定 `deletion_error`，修复后可重试 purge；目录已缺失时 purge 视为目录删除已完成并继续删除行，行删除失败才保留记录。
+- Outputs: 状态与目录移动同步；软删除或 purge 前必须确认运行时已停止并完成 teardown，运行中档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止或移动/删除其目录。软删除目录移动失败时行保持原状态、目录不动、`deleted_at` 保持 NULL，写入可重试的 `deletion_error` 并返回 `PROFILE_PURGE_FAILED`（500）；移动成功后才在事务中写 `deleted_at`，事务提交失败时把目录移回原位置。从回收站恢复前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409），不得创建空目录，行保持 `deleted`。恢复成功时目录移回 `<data-root>/profiles/<profile-id>` 并清空 `deleted_at`；`deleted` 档案的启动请求返回 `PROFILE_DELETED`（409）且不得隐式恢复，但 restore、purge、读取与 purge 重试仍可用；purge 目录删除失败时保留 `deleted` 状态、不删除记录、写入并返回稳定 `deletion_error`，修复后可重试 purge；目录已缺失时 purge 视为目录删除已完成并继续删除行，行删除失败才保留记录。
 
 ### REQ-PROFILE-007
 
@@ -78,7 +78,7 @@
 
 - The system MUST validate import input against the declared export schema before writing anything, and MUST expose a dry-run that creates no rows or directories.
 - Inputs: `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy?}`；`format` 为 `plain|encrypted`；`payload` 为明文导出对象或不透明加密容器；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止；`conflict_strategy` 为 `new_id|abort`，默认 `new_id`。
-- Outputs: `POST /api/v1/profiles/import/validate` 返回逐项草稿、逐项 `errors` 与冲突项，且不写数据库、不建目录；`POST /api/v1/profiles/import` 返回 `ProfileImportResult`，其 `items[]` 每项包含 `profile`、`status` 和 `errors`。
+- Outputs: `POST /api/v1/profiles/import/validate` 返回逐项草稿、逐项 `errors` 与冲突项，且不写数据库、不建目录；`POST /api/v1/profiles/import` 在单个事务内提交，任一档案、分组或标签写入失败即回滚已创建的行与目录，返回 `ProfileImportResult`，其 `items[]` 每项包含 `profile`、`status` 和 `errors`，`status` 只表示该项解析结果，不表示部分落库。
 - Conflict identity: 档案冲突以导出项的 `source_profile_id` 与目标库 `profiles.import_source_id`（或现有 `profiles.id`）匹配；分组与标签以名称匹配。导出必须携带稳定的 `source_profile_id`，导入不得复用该值作为新档案 ID。
 - Conflict semantics: `new_id` 为冲突项分配新 ULID、保留 `import_source_id` 并保留配置；`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`，不产生任何档案、目录、分组或标签。
 - Validation: 非法 schema、未知 `schema_version`、超大文件、字段超限、代理配置形状、分享链接字段、`../` 与绝对路径、符号链接必须被拒绝；加密导出未提供口令或口令错误时返回字段级错误且不回显口令。
@@ -120,7 +120,7 @@
 
 - The system MUST let each profile bind an installed kernel version and MUST implement kernel migration as an explicit, audited, reversible operation.
 - Inputs: 目标 `kernel_version`、当前 `kernel_version`、已安装内核记录（含 `asset_sha256` 与 `binary_sha256`）、指纹规格、沙箱能力。
-- Outputs: 预检平台、能力清单（含 `window-size` 与 `per_platform_values`）、指纹规格一致性和沙箱可用性；运行中的档案 MUST 先停止；预检通过后写入新 `kernel_version`，并记录前后版本、预检结果和执行者的审计事件。
+- Outputs: 预检平台、能力清单（含 `window-size` 与 `per_platform_values`）、指纹规格一致性和沙箱可用性；运行中的档案返回 `RUNTIME_CONFLICT`（409），不得隐式停止；仅已停止的档案可迁移；预检通过后写入新 `kernel_version`，并记录前后版本、预检结果和执行者的审计事件。
 - Failure semantics: 预检或迁移失败时保留原内核绑定，不产生部分迁移的档案；迁移后重新校验指纹规格并提示派生特征变化；保留上一版本用于回滚，回滚同样写审计事件。
 
 ## Verification

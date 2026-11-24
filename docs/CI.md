@@ -82,14 +82,14 @@ flowchart TD
 | Job | 内容 | 失败处理 |
 | --- | --- | --- |
 | `resolve-target` | 读取 `release_target` 和 trusted baseline（所有 `vX.Y.Z` tag 与 GitHub Release 的 SemVer 最大值，包含 prerelease 与已失效版本），解析 canonical version；先读取已有 reservation/identity，再执行 collision 检查；校验 `main` source、`CI Main / verify` | 不构建，不创建公开 release；完全匹配的同一 identity 允许 recovery；其他任何已有 tag/release 大于或等于 target 时 fail closed |
-| `reserve` | 创建或复用 draft GitHub Release，写入 policy、target、version、source SHA 和 run ID；后续 job 从 reservation 读取 `source_sha` 并 checkout 该 SHA，不使用 main HEAD | 不构建；同 version 不同 source 直接冲突 |
+| `reserve` | 创建或复用 draft GitHub Release，使用非 `v*` 的 reservation 标识作为 `tag_name`，写入 policy、target、version、source SHA 和 run ID；后续 job 从 reservation 读取 `source_sha` 并 checkout 该 SHA，不使用 main HEAD | 不构建，不创建 `vX.Y.Z`；同 version 不同 source 直接冲突 |
 | `test` | 在 reservation 的 `source_sha` 上调用 `ci-reusable.yml`，`profile=release`，运行全量测试与 e2e | 不构建发布物 |
 | `macos-arm64` | 在 `release` environment 中于 `source_sha` 上构建 Tauri 应用，下载并校验内核/Xray；应用、Chromium 内核与全部 helper 使用 JIT entitlements，Xray/frameworks 不带；生成 DMG、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、entitlements 与更新清单，记录 DMG SHA-256 | identity 已记录 DMG digest 时跳过构建并复用已上传资产；重新构建使先前手动测试证据作废 |
 | `docker-amd64` | 在 `source_sha` 上用 `buildx` 从同一 source 独立构建两次 `linux/amd64` 并比对 digest；不相等即失败。相等后以 `staging-<run_id>` 临时 tag 推送并记录 digest；Trivy、SBOM、容器许可扫描与 cosign keyless 签名 | 不进入 stage-release；许可扫描失败或 identity 已记录 digest 不一致时拒绝 |
-| `stage-release` | 在 `release` environment 中汇总产物到 draft，包含宿主侧 seccomp 发布物与 `LICENSE`/`NOTICE`/`LICENSES/`，校验 SHA-256/digest，写入 `release-identity.json` | 本次构建 digest 与 identity 已记录 digest 不一致时拒绝；draft 保持未公开，不创建 tag |
-| `attest` | 对 DMG、容器 digest、SBOM、许可包和 seccomp 发布物生成 GitHub artifact attestation；无跳过分支 | attestation 失败或缺失则不进入 promote-docker，不公开 release |
+| `stage-release` | 在 `release` environment 中汇总产物到 draft，包含宿主侧 seccomp 发布物与 `LICENSE`/`NOTICE`/`LICENSES/`，校验 SHA-256/digest，写入 `release-identity.json` | 本次构建 digest 与 identity 已记录 digest 不一致时拒绝；draft 保持未公开，不创建 `v*` tag |
+| `attest` | 对 DMG、内核与 Xray-core 二进制、容器 digest、SBOM、许可包和 seccomp 发布物生成 GitHub artifact attestation；无跳过分支 | attestation 失败或缺失则不进入 promote-docker，不公开 release |
 | `promote-docker`（阶段 7） | 把已验证 digest 提升为 `ghcr.io/<owner>/mien-server:vX.Y.Z` 并记录最终 digest；绑定 `release` environment | 不公开 release |
-| `release`（阶段 8） | 校验 draft identity 后创建或验证 tag，公开 GitHub Release；绑定 `release` environment | 不公开；保留 draft 供同 identity recovery |
+| `release`（阶段 8） | 校验 draft identity 和当前 DMG 的手动测试通过记录（绑定 DMG SHA-256）后创建或验证 tag，公开 GitHub Release；绑定 `release` environment | 手动测试记录缺失、未通过或绑定旧 DMG 时拒绝公开；保留 draft 供同 identity recovery |
 | `verify-release` | 下载公开资产，校验 checksums、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、seccomp 发布物、AdHoc 签名、entitlements、更新清单和 identity | 标记 release 无效；不得静默忽略 |
 
 tag 在 `release` job 才创建或验证，workflow 不接受 tag push 作为入口。失败后使用相同 `release_target` 和相同 `source_sha` 重跑：先读取已有 reservation 和 identity，checkout reservation 的 `source_sha`；identity 已记录某产物 digest 时对应构建 job 跳过，`stage-release` 遇到 digest 不一致即拒绝，不重新分配版本，不创建 successor。release 资产保持不可变，回滚使用上一版本 release，不覆盖已发布文件。
@@ -107,7 +107,7 @@ macOS job 的顺序固定为：
 5. 运行 `codesign --verify --deep --strict --verbose=2`，并用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`；用 `codesign -d --entitlements :-` 逐个断言应用、Chromium 内核与全部 helper 只包含上述两项，Xray 与 frameworks 不含 JIT 权限；在干净机器上加载真实页面。
 6. 生成 DMG、`SHA256SUMS`、SBOM、`LICENSE`/`NOTICE`/`LICENSES/`、`entitlements.plist` 和 Tauri 更新清单；更新清单使用独立 minisign 密钥签名。
 7. 在 `release` job 之前，由维护者在干净的 macOS 13+ 机器下载同一 run 的 DMG 和 `SHA256SUMS`（Actions artifact），先校验 SHA-256，再按发布说明手动放行，测试首次启动和升级；结果写入 draft 正文，未通过不得公开。
-8. 手动测试证据绑定具体的 DMG SHA-256。任何一次重新构建 macOS 产物（包括同 identity 重跑中 `macos-arm64` 重新执行）都使已有手动测试证据作废，必须对新 DMG 重做并重写 draft 正文；不得沿用旧结果。
+8. 手动测试证据绑定具体的 DMG SHA-256。任何一次重新构建 macOS 产物（包括同 identity 重跑中 `macos-arm64` 重新执行）都使已有手动测试证据作废，必须对新 DMG 重做并重写 draft 正文；`release` job 必须拒绝缺失、未通过或绑定旧 DMG 的记录，不得沿用旧结果。
 
 `spctl --assess` 在 AdHoc 应用上预期失败，不作为 release gate 的成功条件；CI 记录这个预期结果。禁止在应用、安装器或发布脚本中自动移除 `com.apple.quarantine`，也禁止建议用户关闭系统级 Gatekeeper。
 
@@ -182,7 +182,7 @@ fork PR 不获得任何 release secret；不使用 `pull_request_target` 执行�
 
 tag 保护使用仓库 ruleset，目标模式 `v*`，启用 `Restrict updates`、`Restrict deletions` 与 `Restrict creations`。bypass 仅允许 release GitHub App（由受保护的 `release` environment 签发），不允许任何人类角色或日常 `GITHUB_TOKEN` 绕过；`release` job 通过该 App 创建 `vX.Y.Z`。已有 tag 只能读取和验证 peeled commit，任意有 tag 写权限的身份不能抬高 trusted baseline。
 
-发布门禁还包括：仓库根 `LICENSE`、`NOTICE`、`LICENSES/` 存在且 `README` 已链接，第三方再分发义务检查完成；Docker 两次构建 digest 相等；artifact attestation 已生成并通过验证。任一项缺失即阻断公开 release。
+发布门禁还包括：仓库根 `LICENSE`、`NOTICE`、`LICENSES/` 存在且 `README` 已链接，第三方再分发义务检查完成；Docker 两次构建 digest 相等；artifact attestation 已生成并通过验证；GATE-001 的 `accepted` 结果必须携带完整 waiver 记录，P0 与阻断类 P1 不得使用 `accepted`。任一项缺失即阻断公开 release。
 
 ## 9. 失败、重跑与回滚
 
@@ -192,7 +192,7 @@ tag 保护使用仓库 ruleset，目标模式 `v*`，启用 `Restrict updates`�
 - 重跑时，identity 已记录 digest 的产物不再构建：`macos-arm64`、`docker-amd64` 直接复用已上传资产和 digest；`stage-release` 发现本次构建 digest 与已记录 digest 不一致时拒绝写入，不为迁就新构建而覆盖 identity。
 - 重新构建 macOS 产物使手动测试证据作废；必须对新 DMG 重做开箱/升级测试并重写 draft 正文后才能公开。
 - Docker digest 两次构建不相等时，不推送 staging tag、不进入 `stage-release`；按构建不可复现缺陷处理，不得以“只差一层元数据”为由接受。
-- `stage-release` 只写 draft；全部资产、identity 和 attestation 验证通过后，阶段 7 `promote-docker` 先提升镜像，阶段 8 `release` 再创建或验证 tag 并公开。公开后 `verify-release` 失败时，立即标记 release 无效并通知维护者。
+- `stage-release` 只写 draft；全部资产、identity 和 attestation 验证通过后，阶段 7 `promote-docker` 先提升镜像，阶段 8 `release` 再由 release App 创建或验证 `vX.Y.Z` tag 并公开。公开后 `verify-release` 失败时，立即标记 release 无效并通知维护者。
 - 回滚只使用上一版本 release；需要修正构建时必须选择新的 `release_target`，产生新的 version 和 identity。不覆盖已发布资产，不删除用户数据，不降低数据库迁移兼容性。
 
 ## 10. 实施顺序

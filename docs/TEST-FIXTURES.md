@@ -98,7 +98,7 @@
 | Fixture | 内容 | 用途 |
 | --- | --- | --- |
 | `api/openapi/` | 由 OpenAPI 生成的客户端与请求样例 | 契约测试 |
-| `api/errors/` | 每个稳定错误码的响应样例；`ProxyCheck` 错误的 200 `ok=false` 样例；`DIRECT_EGRESS_DISABLED`、`PROFILE_RESTORE_UNAVAILABLE`、版本未找到与分组/标签未找到样例 | 错误目录与 `ErrorCode` 枚举校验 |
+| `api/errors/` | 每个稳定错误码的响应样例；`ProxyCheck` 错误的 200 `ok=false` 样例；`DIRECT_EGRESS_DISABLED`、`PROFILE_RESTORE_UNAVAILABLE`、`PROFILE_NOT_DELETED`、`EVENT_REPLAY_WINDOW_EXPIRED`、版本未找到与分组/标签未找到样例 | 错误目录与 `ErrorCode` 枚举校验 |
 | `api/auth/` | 会话、Bearer、scope、CSRF、Origin、限流、管理员引导与首次改密后删除引导秘密 | 认证授权 |
 | `api/audit/` | `event_type`/`profile_id`/`action` 筛选与分页 | 活动记录契约 |
 | `events/*.json` | 每个事件类型的合法/非法实例 | 事件 schema |

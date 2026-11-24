@@ -153,7 +153,7 @@
 | RT-016 | 伪有头能力门禁 | `headless_chrome_ua_patch=false` 或缺失时拒绝启动并返回稳定错误；`true` 时只改变 UA，其他 Headless 特征仍被记录 |
 | RT-017 | 同档案并发启动/停止 | 并发 start 只产生一个运行时与一个内核，重复请求返回进行中而非第二个实例；start 与 stop 交错不产生孤儿内核、重复入站或锁残留；并发 stop 幂等，终态稳定 |
 | RT-018 | 跨档案数据隔离 | 两个档案并发运行时 Cookie、localStorage、缓存、会话与下载文件互不可见；默认下载目录为 `<data-root>/profiles/<id>/downloads`，权限 0700，路径包含校验拒绝越界 |
-| RT-019 | 归档/删除/恢复与清理 | `active <-> archived` 通过 archive/restore 切换且不移动目录；`DELETE permanent=false` 将目录移到 `<data-root>/trash/<id>` 并写入 `deleted_at`，`deleted` 不可启动；运行中档案删除返回 `RUNTIME_CONFLICT` 且不移动目录；恢复前检查 trash 目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录；恢复成功时目录回位且 `archived_at` 清空；`permanent=true` 先删目录再删行，目录已缺失时继续删行，失败保留 `deleted` 并写 `deletion_error` 供重试 |
+| RT-019 | 归档/删除/恢复与清理 | `active <-> archived` 通过 archive/restore 切换且不移动目录；`DELETE permanent=false` 将目录移到 `<data-root>/trash/<id>` 并写入 `deleted_at`，`deleted` 不可启动，重复请求幂等；运行中档案删除返回 `RUNTIME_CONFLICT` 且不移动目录；恢复前检查 trash 目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录；恢复成功时目录回位且 `archived_at`、`deleted_at` 均清空；`permanent=true` 仅接受 `deleted`，对 active/archived 返回 `PROFILE_NOT_DELETED`，先删目录再删行；目录移动/移除失败保留原状态或 `deleted` 并写 `deletion_error` 供重试 |
 | RT-020 | 崩溃循环 | 默认不自动重启；启用自动重启时最多 3 次递增退避，稳定运行后计数重置；超过上限进入 `crashed` 并停止重试；事件、退出码与日志尾部足以诊断，无无限重启 |
 | RT-021 | 共享引擎故障与重建失败 | 运行中强杀引擎时全部运行档案网络失败且无直连/其他节点回退，产生 `proxy.engine.failed`；重建成功产生 `proxy.engine.rebuilt` 并恢复原端口；重建失败先转入 `stopping`，拆除内核与进程组、入站/规则，并在同一事务递减出站引用、清空 `proxy_*`、释放配额与锁，再写 `failed`；teardown 失败保持 `stopping` 与 `last_error`，终态后无残留内核或端口 |
 | RT-022 | 沙箱校验先于资源创建 | 启动事务先校验沙箱，失败返回 `SANDBOX_UNAVAILABLE`，且不创建入站/出站/规则、不拉起进程、不占用配额；服务端显式无沙箱且通过包含性探针时写入审计与降级标记，`isolation=unsandboxed`；桌面无法确认时拒绝启动 |
@@ -174,7 +174,7 @@
 | PROXY-005 | Shadowsocks AEAD/2022 | 各声明方法与插件可连接；错误密码/方法/插件被拒绝 |
 | PROXY-006 | Trojan TLS/WS | TLS 与密码认证正确；证书错误、错误密码有明确分类 |
 | PROXY-007 | Hysteria2 QUIC（Tier B） | 按 Tier B 记录：受控节点可访问；容器允许 UDP 出站时成功；UDP 被阻止时明确报错；不得作为 Tier A 发布门禁或 PRD 必选协议 |
-| PROXY-008 | Hysteria2/WireGuard/TUIC | Hysteria2 与 WireGuard 按 Tier B 清单记录；WireGuard 必须有隧道内 DNS，缺失配置被拒绝；TUIC 在 v1 被拒绝；均不静默降级 |
+| PROXY-008 | TUIC 拒绝（v1） | TUIC 在 v1 被拒绝并返回 `TUIC_NOT_SUPPORTED`；不得静默降级或回退直连 |
 
 ### 7.2 配置与引擎生命周期
 
@@ -204,13 +204,14 @@
 | 编号 | 用例 | 通过条件 |
 | --- | --- | --- |
 | PROXY-022 | 凭据脱敏 | 进程参数、日志、事件、API 响应和持久化文件均无 UUID/密码/私钥/完整分享链接 |
-| PROXY-023 | 回环边界 | 非回环地址不可连接运行档案入站或 Xray 管理 API；运行时结束后端口关闭；同用户与浏览器网络栈访问回环代理的残余风险有文档，页面不能触达管理 API 或数据库 |
-| PROXY-024 | 直连模式 | 不创建入站/出站；`direct=true`、`reduced_assurance=true` 与风险标记持续可见；服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时返回 `DIRECT_EGRESS_DISABLED` 并拒绝启动，允许时写审计；不声称拥有代理模式的 DNS/DoH/IPv6/UDP 防护 |
+| PROXY-023 | 回环边界 | 非回环地址不可连接运行档案入站或 Xray 管理 API；运行时结束后端口关闭；管理 API 由控制面 UID 独占的 LSM/防火墙策略限制，浏览器内核使用独立 UID，页面不能触达管理 API 或数据库；控制面 UID 的残余风险有文档 |
+| PROXY-024 | 直连模式 | 不创建入站/出站；`direct=true`、`reduced_assurance=true` 与风险标记持续可见；服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时返回 `DIRECT_EGRESS_DISABLED` 并拒绝启动，允许时写审计；不声称代理级远程 DNS/失败关闭保证，但仍验证 `webrtc`/`network` 标志生效 |
 | PROXY-025 | 恶意配置/链接 | 配置注入、路径、超长字段、非法端口、未知协议被拒绝；产品不直接透传用户 JSON |
 | PROXY-026 | 脱敏视图 | UI/API 只显示非秘密字段与 `credential_set`；无法读回旧凭据；可替换保存 |
 | PROXY-027 | 共享出站与连接复用 | 相同节点/凭据/传输/TLS/mux 的档案只创建一个出站并复用连接；不同凭据不共享；引用归零删除 |
 | PROXY-028 | 动态并发 | 并发启动/停止不同档案不产生重复出站、孤儿入站或规则；端口与标签稳定 |
-| PROXY-029 | 管理 API 边界 | API 仅回环可达；同 UID 进程调用被记录为接受风险；无沙箱模式验证内核 UID 与管理 API 处于不可互相路由的边界；操作串行、幂等；重启后引用计数与资源可对账 |
+| PROXY-029 | 管理 API 边界 | API 仅回环可达；由控制面 UID 独占的 LSM/防火墙策略限制，浏览器内核使用独立 UID；页面发起的回环探测不可达；无沙箱模式验证内核 UID 与管理 API 处于不可互相路由的边界；操作串行、幂等；重启后引用计数与资源可对账 |
+| PROXY-030 | Hysteria2/WireGuard（Tier B） | Hysteria2 与 WireGuard 按 Tier B 清单记录；WireGuard 隧道 DNS 只接受 IP 字面量，缺失或非法值被拒绝；均不静默降级；只记录，不作为门禁 |
 
 ### 7.5 协议引擎准入
 
@@ -306,7 +307,7 @@
 
 - P0 数量必须为 0；任何书面风险接受、环境决策或人工备注都不能豁免 P0。
 - P1 中的凭据/网络泄漏（DNS、WebRTC、IPv6、DoH）、失败关闭回退（直连或其他节点）、导入与档案路径穿越、崩溃循环、运行时重复或孤儿、沙箱状态未披露必须为 0；不得整类豁免或按环境放宽。
-- 其余 P1 只能逐项接受，必须记录缺陷编号、具名接受人、影响范围、到期日和修复计划；未满足则阻断发布。P2/P3 可记录后排期，但不得掩盖 P0/P1。
+- 其余 P1 只能逐项接受，必须记录缺陷编号、具名接受人、影响范围、到期日和修复计划；未满足则阻断发布。机器可读结果用 `accepted` 表示具名接受，且必须同时携带 waiver 记录；没有 waiver 的 `accepted` 等同失败。P2/P3 可记录后排期，但不得掩盖 P0/P1。
 - PRD-ACC-001 至 PRD-ACC-010 全部有证据，缺失任何一项即阻断，不得以“后续补充”推进。
 - 内核准入 KERNEL-001 至 KERNEL-010 通过。
 - 协议引擎准入 ENGINE-001 至 ENGINE-009 通过，Tier A 协议矩阵、共享出站与分享链接导入通过；Tier B 结果只记录，不作为门禁。
@@ -315,7 +316,7 @@
 - 隔离 proof（`enforced`/`unsandboxed`/`unknown`）与日志尾部端点的脱敏证据存在；停止档案的降低保证可见。
 - 桌面管理 UI 默认无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
 - 已知限制在发布说明和 UI 中可见。
-- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..025`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；`PROXY-007` 为 Tier B，只记录、不作为门禁；P0 非零或 P1 阻断类别非零同样拒绝。
+- 门禁自检（GATE-001）：测试报告必须按固定 required ID 集合给出机器可读结果；`FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..025`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009` 中任一项缺失、`fail`、`error`、`skipped` 或非 `pass` 都拒绝创建草稿与 promote；只有携带缺陷编号、具名接受人、影响范围、到期日和修复计划的 `accepted` 结果可按第 11 节逐项接受，P0 与阻断类 P1 不得使用 `accepted`；`PROXY-007` 与 `PROXY-030` 为 Tier B，只记录、不作为门禁。
 
 ## 12. 证据与报告
 

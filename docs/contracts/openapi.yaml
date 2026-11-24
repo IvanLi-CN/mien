@@ -356,7 +356,7 @@ paths:
           "$ref": "#/components/responses/Conflict"
         '500':
           "$ref": "#/components/responses/PurgeFailed"
-      description: permanent=false：active/archived -> deleted，目录移入 trash；permanent=true：仅对 deleted 档案先移除目录再删行，失败保留行并返回带 deletion_error 的 PROFILE_PURGE_FAILED。
+      description: permanent=false：active/archived -> deleted，目录移入 trash；已 deleted 时幂等返回。permanent=true：仅接受 deleted 档案，先移除目录再删行；对 active/archived 返回 PROFILE_NOT_DELETED。目录移动/移除失败返回带 deletion_error 的 PROFILE_PURGE_FAILED。
       x-required-scope: profiles.write
   "/api/v1/profiles/{profile_id}/duplicate":
     post:
@@ -447,7 +447,10 @@ paths:
           "$ref": "#/components/responses/NotFound"
         '409':
           description: 目录不可恢复（PROFILE_RESTORE_UNAVAILABLE）或状态冲突。
-          "$ref": "#/components/responses/Conflict"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
       x-required-scope: profiles.write
   "/api/v1/profiles/import":
     post:
@@ -538,7 +541,10 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         '403':
           description: scope 不足、CSRF/Origin 拒绝、强制改密，或服务端未启用直连出口（DIRECT_EGRESS_DISABLED）。
-          "$ref": "#/components/responses/Forbidden"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           "$ref": "#/components/responses/NotFound"
         '409':
@@ -721,7 +727,10 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         '404':
           description: 分组不存在（GROUP_NOT_FOUND）
-          "$ref": "#/components/responses/NotFound"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '409':
           "$ref": "#/components/responses/Conflict"
       x-required-scope: profiles.write
@@ -743,7 +752,10 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         '404':
           description: 分组不存在（GROUP_NOT_FOUND）
-          "$ref": "#/components/responses/NotFound"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
       x-required-scope: profiles.write
   "/api/v1/tags":
     get:
@@ -827,7 +839,10 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         '404':
           description: 标签不存在（TAG_NOT_FOUND）
-          "$ref": "#/components/responses/NotFound"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '409':
           "$ref": "#/components/responses/Conflict"
       x-required-scope: profiles.write
@@ -849,7 +864,10 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         '404':
           description: 标签不存在（TAG_NOT_FOUND）
-          "$ref": "#/components/responses/NotFound"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
       x-required-scope: profiles.write
   "/api/v1/proxies":
     get:
@@ -1083,7 +1101,10 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         '404':
           description: 内核版本不存在（KERNEL_VERSION_NOT_FOUND）
-          "$ref": "#/components/responses/NotFound"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '409':
           "$ref": "#/components/responses/Conflict"
       x-required-scope: kernels.manage
@@ -1134,7 +1155,10 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         '404':
           description: 协议引擎版本不存在（PROXY_ENGINE_VERSION_NOT_FOUND）
-          "$ref": "#/components/responses/NotFound"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '409':
           "$ref": "#/components/responses/Conflict"
       x-required-scope: engines.manage
@@ -1318,12 +1342,6 @@ paths:
           type: integer
           minimum: 1
         description: 最后收到的 event.sequence；从其后回放。
-      - name: ticket
-        in: query
-        schema:
-          type: string
-          minLength: 1
-        description: 一次性票据；不得使用长期 Bearer Token。
       - name: Origin
         in: header
         required: true
@@ -1337,6 +1355,12 @@ paths:
           "$ref": "#/components/responses/Unauthorized"
         '403':
           "$ref": "#/components/responses/Forbidden"
+        '409':
+          description: 回放游标早于保留窗口（EVENT_REPLAY_WINDOW_EXPIRED）
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           "$ref": "#/components/responses/ValidationError"
   "/api/v1/openapi.json":
@@ -1412,7 +1436,10 @@ paths:
           "$ref": "#/components/responses/Forbidden"
         '404':
           description: 运行时不存在（RUNTIME_NOT_FOUND）。
-          "$ref": "#/components/responses/NotFound"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           "$ref": "#/components/responses/ValidationError"
       x-required-scope: profiles.read
@@ -1563,7 +1590,7 @@ components:
           schema:
             "$ref": "#/components/schemas/Error"
     PurgeFailed:
-      description: 永久删除失败；档案仍为 deleted，可重试。目录移除失败返回 PROFILE_PURGE_FAILED，存储错误返回对应稳定错误码。
+      description: 目录移动/移除失败；软删除时档案保持原状态，purge 时仍为 deleted，均可重试。目录失败返回 PROFILE_PURGE_FAILED，存储错误返回对应稳定错误码。
       content:
         application/json:
           schema:
@@ -1682,7 +1709,6 @@ components:
       - busy
       - permission_denied
       - io_error
-      - not_found
       - unknown
     PurgeFailure:
       allOf:
@@ -1822,7 +1848,7 @@ components:
           anyOf:
           - "$ref": "#/components/schemas/DeletionError"
           - type: 'null'
-          description: 稳定、非敏感的 purge 失败原因；deleted 行保留以供重试。
+          description: 稳定、非敏感的目录移动/删除失败原因；软删除失败时行保持原状态，purge 失败时行保留 deleted，均可重试。
         isolation:
           "$ref": "#/components/schemas/Isolation"
         direct:
@@ -1856,6 +1882,18 @@ components:
           properties:
             direct:
               const: true
+      - if:
+          required:
+          - direct
+          properties:
+            direct:
+              const: true
+        then:
+          required:
+          - proxy_id
+          properties:
+            proxy_id:
+              type: 'null'
     ProfileInput:
       type: object
       required:
@@ -2528,10 +2566,12 @@ components:
         name:
           type: string
         prefix:
-          type: string
+          type:
+          - string
+          - 'null'
           minLength: 4
           maxLength: 16
-          description: 用于列表展示的前缀，不能用于认证；完整 Token 只在创建响应出现一次。
+          description: 用于列表展示的前缀，不能用于认证；旧 Token 迁移后为 null 并在 UI 隐藏前缀；完整 Token 只在创建响应出现一次。
         scopes:
           type: array
           items:
@@ -2882,8 +2922,10 @@ components:
       - FORBIDDEN_SCOPE
       - AUTH_PASSWORD_CHANGE_REQUIRED
       - EVENT_TICKET_INVALID
+      - EVENT_REPLAY_WINDOW_EXPIRED
       - PROFILE_NOT_FOUND
       - PROFILE_DELETED
+      - PROFILE_NOT_DELETED
       - PROFILE_PURGE_FAILED
       - PROXY_NOT_FOUND
       - RUNTIME_NOT_FOUND

@@ -27,7 +27,7 @@ Xray-core 提供 `HandlerService` 的 `AddInbound`、`RemoveInbound`、`AddOutbo
 - 路由规则以稳定 `ruleTag` 标识：`AddRule` 增量添加时必须设置 `shouldAppend=true`，不得清空或重建既有规则表；删除规则只按 `ruleTag` 调用 `RemoveRule`。
 - Xray 路由配置不存在 `routing.final` 字段，网关不得生成该字段；失败关闭依赖 `block`（blackhole）作为第一个出站，并在启动时断言该不变量，断言失败则拒绝服务而不是回退到直连。
 - 出站按 `outbound_key = hash(protocol, server, port, credential_ref, transport, TLS/REALITY, mux_settings)` 共享。相同 key 的档案共享一个出站；不同凭据或不同传输不共享。
-- 每个共享出站维护引用计数，但只统计非终止状态（`starting`/`running`/`stopping`）的运行时。第一个使用它的运行档案创建出站，最后一个停止的档案删除出站；停止时先清除该运行时的 `proxy_outbound_key`、`proxy_inbound_tag`、`proxy_rule_tag` 和 `proxy_port`，再递减引用计数，避免陈旧引用阻止删除。路由规则和入站则按运行档案创建和删除。
+- 每个共享出站维护引用计数，但只统计非终止状态（`starting`/`running`/`stopping`）的运行时。第一个使用它的运行档案创建出站，最后一个停止的档案删除出站；停止时先快照并删除该运行时的 `proxy_rule_tag` 与 `proxy_inbound_tag`，再在同一事务中按快照 `proxy_outbound_key` 递减引用并清空四个 `proxy_*` 字段；已清空的 key 不再重复递减。路由规则和入站则按运行档案创建和删除。
 - 在协议能力允许时启用 Xray mux；Hysteria2 使用其 QUIC 连接复用。连接复用能力由引擎能力清单声明，不能对不支持的协议假装复用。
 - Xray 的默认路由出站必须是 block；不得生成 direct 出站、系统代理回退或其他节点的静默降级。
 - 代理网关负责 API 调用的串行化、幂等、引用计数、失败回滚和启动时对账。引擎重启后，网关按原始 `proxy_port` 重建入站、出站和路由规则。

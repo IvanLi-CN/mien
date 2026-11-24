@@ -14,8 +14,8 @@
     "vmess": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls"]},
     "shadowsocks": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"], "methods": ["aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm"], "plugins": []},
     "trojan": {"tier": "A", "transports": ["tcp", "ws"], "tls_modes": ["tls"]},
-    "hysteria2": {"tier": "B", "transports": ["quic"], "tls_modes": ["tls"], "notes": "Tier B: requires UDP egress from the macOS host; container UDP allowance applies only to the Docker deployment. Obfuscation support is declared per engine, never assumed."},
-    "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"], "notes": "Tier B: UDP-only outbound with a mandatory tunnel DNS; configs without tunnel DNS are rejected. Needs UDP egress and independent end-to-end verification."}
+    "hysteria2": {"tier": "B", "transports": ["quic"], "tls_modes": ["tls"], "obfuscation": [], "notes": "Tier B: requires UDP egress from the macOS host; container UDP allowance applies only to the Docker deployment. No obfuscation method is declared for Xray v26.11.9, so obfuscated configs are rejected."},
+    "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"], "notes": "Tier B: UDP-only outbound with a mandatory tunnel DNS; DNS must be an IPv4/IPv6 literal, and missing or hostname values are rejected. Needs UDP egress and independent end-to-end verification."}
   },
   "limitations": [
     "TUIC is not supported in v1.",

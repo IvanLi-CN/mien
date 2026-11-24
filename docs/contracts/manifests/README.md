@@ -67,7 +67,8 @@
 | `macos-arm64` | `seatbelt` |
 | `windows-x64` | `win32-restricted-token`（restricted token + job object + integrity levels；普通渲染进程不使用 AppContainer） |
 
-清单声明的是构件设计依赖；产品仍需在服务流量前核验实际生效的沙箱状态。Docker 中无法确认 `namespace` 沙箱时返回 `SANDBOX_UNAVAILABLE`，服务端只有 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才允许启动并写入审计；桌面（`seatbelt`/`win32-restricted-token`）无法确认时同样拒绝启动，不存在桌面无沙箱例外。Docker 中的 `namespace` 沙箱要求强制 seccomp profile，不能记为“按需”。
+- 清单声明的是构件设计依赖；产品仍需在服务流量前核验实际生效的沙箱状态。Docker 中无法确认 `namespace` 沙箱时返回 `SANDBOX_UNAVAILABLE`，服务端只有 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才允许启动并写入审计；桌面（`seatbelt`/`win32-restricted-token`）无法确认时同样拒绝启动，不存在桌面无沙箱例外。Docker 中的 `namespace` 沙箱要求强制 seccomp profile，不能记为“按需”。
+- 内核清单的 `headless_chrome_ua_patch` 来自 fingerprint-chromium 148 源码中的 `patches/extra/fingerprint/010-headless.patch` 与 `002-user-agent-fingerprint.patch`：它只把 `HeadlessChrome` UA 改为 `Chrome`，不改变其他 Headless 特征；该字段只存在于内核清单，不属于引擎协议对象。
 
 ### 2.3 `network_controls`
 
@@ -76,7 +77,7 @@
 - `doh_mode`：`disabled` 或 `unsupported`；
 - `ipv6_mode`：`block` 或 `unsupported`。
 
-`unsupported` 表示该构件在该平台上无法强制执行对应控制。此时要求 `network.doh_mode=disabled` 与 `network.ipv6_mode=block` 的代理档案（REQ-FP-017）不得启动，也不得静默降级为直连；这是有效的“能力缺失”清单形态，可用于测试能力缺失路径。当前 `windows-x64` 清单把两项都声明为 `unsupported`，因为 Windows 宿主是后续目标。
+`unsupported` 表示该构件在该平台上无法强制执行对应控制。此时要求 `network.doh_mode=disabled` 与 `network.ipv6_mode=block` 的代理档案（REQ-FP-017）不得启动，返回 `KERNEL_UNSUPPORTED`（422），也不得静默降级为直连；这是有效的“能力缺失”清单形态，可用于测试能力缺失路径。当前 `windows-x64` 清单把两项都声明为 `unsupported`，因为 Windows 宿主是后续目标。
 
 ### 2.4 已知问题
 
@@ -90,7 +91,7 @@
 
 ### 2.5 协议分级（引擎清单）
 
-`protocols` 是协议名到能力对象的映射，每项包含 `tier`、`transports`、`tls_modes`，可选 `methods`、`plugins`、`notes`。`tier` 取值 `A`、`B`、`basic`：
+`protocols` 是协议名到能力对象的映射，每项包含 `tier`、`transports`、`tls_modes`，可选 `methods`、`plugins`、`obfuscation`、`notes`。`tier` 取值 `A`、`B`、`basic`，且必须与协议名绑定：`vless`/`vmess`/`shadowsocks`/`trojan` 只能为 `A`，`hysteria2`/`wireguard` 只能为 `B`，`http`/`https`/`socks5` 只能为 `basic`。
 
 | 级别 | 协议 | 含义 |
 | --- | --- | --- |
@@ -99,10 +100,9 @@
 | `basic` | HTTP、HTTPS、SOCKS5 | 基础正向代理能力，支持用户名密码与远程 DNS，不参与 Tier A/B 门禁 |
 
 - WireGuard 为 Tier B：`transports` 仅 `udp`、`tls_modes` 仅 `none`，需要 UDP 出站与独立端到端验证；失败时必须报错，不得降级到其他协议或直连。
-- Hysteria2 为 Tier B：需要 UDP 出站；Docker 部署还需要容器 UDP 许可，macOS 部署只需要宿主 UDP 出口。混淆支持按清单声明，不得默认存在。
+- Hysteria2 为 Tier B：需要 UDP 出站；Docker 部署还需要容器 UDP 许可，macOS 部署只需要宿主 UDP 出口。`obfuscation` 必须显式声明；Xray v26.11.9 声明为空，含混淆参数的配置必须拒绝，不得默认存在。
 - TUIC 不进入 v1，不得出现在任何清单中。
 - `connection_reuse: true` 表示 Xray 支持 mux/原生 QUIC 连接复用；具体协议组合与共享出站行为仍需 M0 runtime spike 确认。
-- `headless_chrome_ua_patch: true` 来自 fingerprint-chromium 148 源码中的 `patches/extra/fingerprint/010-headless.patch` 与 `002-user-agent-fingerprint.patch`：它只把 `HeadlessChrome` UA 改为 `Chrome`，不改变其他 Headless 特征。
 
 ## 3. 清单文件
 

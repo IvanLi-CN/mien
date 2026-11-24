@@ -367,6 +367,36 @@
         ],
         "properties": {
           "type": {
+            "enum": [
+              "profile.created",
+              "profile.updated",
+              "profile.archived",
+              "profile.restored",
+              "profile.duplicated",
+              "profile.purged"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "not": {
+              "required": [
+                "deletion_error"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
             "const": "kernel.installed"
           }
         }
@@ -802,11 +832,10 @@
                 "busy",
                 "permission_denied",
                 "io_error",
-                "not_found",
                 "unknown",
                 null
               ],
-              "description": "Set when a purge failed and the row stayed in deleted state for retry."
+              "description": "Set only on profile.deleted when a directory move or purge attempt failed and the row remains retryable; other profile event types must omit it."
             }
           },
           "additionalProperties": false
@@ -1046,8 +1075,10 @@
         "FORBIDDEN_SCOPE",
         "AUTH_PASSWORD_CHANGE_REQUIRED",
         "EVENT_TICKET_INVALID",
+        "EVENT_REPLAY_WINDOW_EXPIRED",
         "PROFILE_NOT_FOUND",
         "PROFILE_DELETED",
+        "PROFILE_NOT_DELETED",
         "PROFILE_PURGE_FAILED",
         "PROXY_NOT_FOUND",
         "RUNTIME_NOT_FOUND",

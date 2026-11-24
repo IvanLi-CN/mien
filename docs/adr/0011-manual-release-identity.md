@@ -19,11 +19,11 @@ Mien 同时发布 macOS DMG 和 Docker 镜像，未来还需要让多个消费�
 - 发布只由 `workflow_dispatch` 的单个 `release_target` 输入触发；支持 `patch`、`minor`、`major` 和 explicit `X.Y.Z`。不提供默认值，不从 PR label、合并顺序或兼容性分类推导 target。
 - `Version Policy` 为 `mien-semver-v1`：SemVer stable，trusted baseline 是所有已存在 `vX.Y.Z` Git tag 与 GitHub Release 的核心版本最大值，不论 draft、prerelease、invalidated 或公开状态；历史 prerelease/build metadata 按 `MAJOR.MINOR.PATCH` 核心元组占用序号。已存在版本永远占用序号，任何新 target 必须严格大于它们；首个版本只允许 explicit `0.1.0`。
 - workflow 在 reservation 前解析 canonical version，并绑定 `policy_id`、`release_target`、`canonical_version`、`source_sha`、`reservation_id`、artifact digest 和 publication target。
-- 在构建前创建 GitHub Release draft 作为 durable reservation；draft 使用 `vX.Y.Z` 作为 tag name，但不创建公开 tag。同 version、同 source 复用；同 version、不同 source 冲突。
+- 在构建前创建 GitHub Release draft 作为 durable reservation；draft 使用非 `v*` 的 `mien-reservation-<canonical>-<run_id>` 作为 tag name，不创建 `vX.Y.Z`，也不占用 SemVer baseline。Release 阶段才由 release GitHub App 创建或验证 `vX.Y.Z`，并把 draft 更新为最终 tag/release。同 version、同 source 复用；同 version、不同 source 冲突。
 - 产生目标 `main` SHA 的 merged PR 必须通过 `CI PR / required`，目标 SHA 本身必须通过 `CI Main / verify`；release source 必须是 `main` 上的正常 PR 合并结果。release workflow 不直接写 `main`。
 - Release 是独立阶段：draft 只接收已验证产物；所有 digest、checksum、SBOM、AdHoc 签名和更新清单通过后，才创建或验证 tag 并公开 GitHub Release。
 - tag 只在 Release 阶段创建或验证；已存在 tag 时必须验证 peeled commit，指向不同 source 则停止，不改写。
-- 失败重跑使用相同 `release_target`，先读取 reservation/identity 并 checkout 其中绑定的 `source_sha`；即使 `main` 已前进也恢复原 SHA。collision 检查会排除与当前 identity 完全匹配的 reservation 自身，其他 identity 使用同一版本仍然冲突。若原 SHA 不可取则停止，不重建旧 identity、不分配 successor；只补齐缺失步骤。
+- 失败重跑使用相同 `release_target`，先读取 reservation/identity 并 checkout 其中绑定的 `source_sha`；即使 `main` 已前进也恢复原 SHA。collision 检查会排除当前 identity 的完整匹配对象：reservation 自身，以及 policy/target/version/source SHA 完全匹配的 tag/release；其他 identity 使用同一版本仍然冲突。若原 SHA 不可取则停止，不重建旧 identity、不分配 successor；只补齐缺失步骤。
 - 本仓库的 Release 后不再自动 Deploy；后续部署消费者必须复用 `release-identity.json` 的 digest，不能按分支或 `latest` 重新构建。
 - 每次发布至少构建一次 macOS DMG 和 Docker 镜像；两者可以共享 canonical version，但各自验证 digest。
 
@@ -44,11 +44,11 @@ Mien 同时发布 macOS DMG 和 Docker 镜像，未来还需要让多个消费�
 - 失败重跑必须复用同 identity；修复 source 需要新的 release boundary，不能伪装成 recovery。
 - `release-identity.json` 和 draft 正文成为排障、审计和下游 digest 消费的入口。
 - 需要一个可执行的 policy validator 和 reservation 检查；在当前文档阶段，这些是 M4 前的实现前置条件。
-- tag ruleset 启用 `Restrict creations`，只允许 release GitHub App 绕过；人类与日常 `GITHUB_TOKEN` 不能创建或改写 `v*` tag。
+- tag ruleset 启用 `Restrict creations`、`Restrict updates` 与 `Restrict deletions`，只允许 release GitHub App 绕过；人类与日常 `GITHUB_TOKEN` 不能创建、改写或删除 `v*` tag。
 
 ## 验证
 
-- `release_target` 缺失或非法时 workflow 拒绝；任一已有 tag/release 核心版本大于或等于新 target 时拒绝，失效/prerelease/build metadata 版本仍占用序号；同一 identity 的 reservation 从 collision 集合中排除。
+- `release_target` 缺失或非法时 workflow 拒绝；除当前 identity 的完整匹配对象外，任一已有 tag/release 核心版本大于或等于新 target 时拒绝，失效/prerelease/build metadata 版本仍占用序号；reservation 及其匹配 tag/release 从 collision 集合中排除。
 - 无 baseline 时只有 explicit `0.1.0` 通过；symbolic target 失败。
 - 同 version、不同 source 的 reservation 冲突。
 - 已存在 tag 指向不同 source 时停止。

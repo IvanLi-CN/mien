@@ -7,7 +7,7 @@
 架构必须满足以下硬约束。
 
 - 指纹内核固定为 fingerprint-chromium `148.0.7778.215`，不修改、不分叉，升级必须经过独立准入。
-- 协议引擎固定为构建清单中的 Xray-core，每个宿主一个共享进程、不修改；安装时校验 `asset_sha256`，启动前校验可执行文件 `binary_sha256`；运行时通过只绑定回环的 Xray gRPC 管理 API 动态增删入站、出站与路由规则，升级必须经过协议矩阵准入。
+- 协议引擎固定为构建清单中的 Xray-core，每个宿主一个共享进程、不修改；安装时校验 `asset_sha256`，启动前校验可执行文件 `binary_sha256`；运行时通过控制面 UID 独占的本地 Xray gRPC 管理 API 动态增删入站、出站与路由规则，升级必须经过协议矩阵准入。
 - 每个档案独占浏览器数据目录与运行时；创建/复制生成新种子，导入可保留导出种子以复现指纹，允许两个档案拥有相同 seed 但数据目录和运行时仍独立；档案之间不共享 Cookie、缓存或存储。
 - 代理模式下 Chromium 只连接所属运行档案的回环 HTTP 入站；直连模式没有该入站，浏览器直接出口并标记降低保证。VLESS、VMess、Shadowsocks、Trojan、Hysteria2 等协议与凭据由共享 Xray 引擎处理，产品不自行实现协议。
 - Docker 默认有头运行，使用 Xvfb；无头与伪有头是显式降级选项。
@@ -100,10 +100,10 @@ flowchart TB
 
 | 组件 | 绑定 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| 服务端控制面 | 容器内 `0.0.0.0:8080` | 开启 | 由部署者映射；必须置于认证之后 |
+| 服务端控制面 | 默认 `127.0.0.1:8080`；Docker 对外发布时显式 `0.0.0.0:8080` | 开启 | 非回环绑定必须同时设置 `MIEN_PUBLIC_URL`；由部署者映射；必须置于认证之后 |
 | 桌面自动化 API | `127.0.0.1` 随机端口 | 关闭 | 用户显式启用；Token 鉴权；绑定地址必须是回环，非回环配置在启动时拒绝 |
 | 每运行档案 HTTP 入站 | `127.0.0.1` 固定分配端口 | 每个代理运行档案一个 | 不对外暴露；代理模式下 Chromium 只连接此处；直连档案没有入站 |
-| Xray gRPC 管理 API | `127.0.0.1` 随机端口 | 常驻 | 无应用层鉴权；同 UID 进程可调用，残余风险见 SECURITY T-15/T-22/T-27；无沙箱服务端必须用独立网络边界使内核不可达；不映射到容器外 |
+| Xray gRPC 管理 API | 控制面回环随机端口 | 常驻 | 无应用层鉴权；必须由控制面 UID 独占的 LSM/防火墙策略限制，浏览器内核使用独立 UID；页面发起的回环探测必须不可达，残余风险见 SECURITY T-15/T-22/T-27；无沙箱服务端必须用独立网络边界使内核不可达；不映射到容器外 |
 | CDP | `127.0.0.1` 随机端口 | 按档案启用 | 不对外暴露 |
 | noVNC | 容器内 `0.0.0.0:6080` | 关闭 | 一次性令牌或独立认证 |
 | Xvfb | 容器内 `:99` | 有头模式 | Unix socket，不监听 TCP |
@@ -152,7 +152,7 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `profiles` | `id`, `name`, `group_id`, `notes`, `fingerprint_json`, `fingerprint_schema`, `kernel_version`, `proxy_id`, `import_source_id`, `runtime_json`, `status`, `created_at`, `updated_at`, `archived_at`, `deleted_at`, `deletion_error` | 档案本体；`id` 为 ULID；`import_source_id` 记录导入来源 ID 用于冲突检测，不作为新 ID；`status` 为 `active`/`archived`/`deleted`；目录删除失败时保留 `deleted` 并记录 `deletion_error` 供重试；窗口尺寸只存在于 `fingerprint_json`，不再有 `window_json` |
+| `profiles` | `id`, `name`, `group_id`, `notes`, `fingerprint_json`, `fingerprint_schema`, `kernel_version`, `proxy_id`, `import_source_id`, `runtime_json`, `status`, `created_at`, `updated_at`, `archived_at`, `deleted_at`, `deletion_error` | 档案本体；`id` 为 ULID；`import_source_id` 记录导入来源 ID 用于冲突检测，不作为新 ID；`status` 为 `active`/`archived`/`deleted`；软删除目录移动失败时保留原状态并记录 `deletion_error`，purge 目录删除失败时保留 `deleted` 并记录 `deletion_error`，均可重试；窗口尺寸只存在于 `fingerprint_json`，不再有 `window_json` |
 | `groups` | `id`, `name`, `sort_order` | 分组；名称在组内唯一 |
 | `tags` | `id`, `name`, `color` | 标签；名称唯一 |
 | `profile_tags` | `profile_id`, `tag_id` | 多对多；`idx_profile_tags_tag(tag_id)` 支撑按标签筛选 |
@@ -162,7 +162,7 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 | `proxy_engine_installs` | `version`, `platform`, `path`, `asset_sha256`, `binary_sha256`, `manifest_json`, `license`, `source_url`, `active`, `installed_at` | 已安装 Xray-core；双哈希语义同内核；协议矩阵、许可与回滚 |
 | `proxy_engine_state` | `pid`, `api_port`, `state`, `started_at`, `last_error` | 单实例引擎运行态；控制面启动时对账 |
 | `proxy_outbounds` | `outbound_key`, `route_key_json`, `ref_count`, `created_at`, `updated_at` | 共享出站引用计数；`ref_count` 只统计非终态运行时；运行时停止时在同一事务中递减引用并清空 `runtimes.proxy_*` |
-| `api_tokens` | `id`, `name`, `token_prefix`, `token_hash`, `scopes_json`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；`token_prefix` 仅用于列表展示，完整值只存 HMAC 哈希与 scope 集合 |
+| `api_tokens` | `id`, `name`, `token_prefix`, `token_hash`, `scopes_json`, `created_at`, `last_used_at`, `revoked_at` | 自动化 Token；`token_prefix` 仅用于列表展示且可为 NULL（旧 Token），认证只使用 HMAC 哈希与 scope 集合 |
 | `sessions` | `id`, `token_hash`, `created_at`, `expires_at`, `last_used_at`, `revoked_at` | 服务端登录会话；Cookie 只存随机标识，库中只存哈希 |
 | `admin_credentials` | `id`, `password_hash`, `algo`, `params_json`, `must_change`, `bootstrap_pending`, `updated_at` | 单管理员凭据（`id=1`）；Argon2id 参数版本化；首次登录强制改密，改密后清空引导标记并删除引导密码来源 |
 | `event_log` | `sequence`, `event_id`, `type`, `payload_json`, `created_at` | WebSocket 事件回放；`sequence` 为自增整数游标，`event_id` 为外部去重标识；按保留策略清理 |
@@ -173,7 +173,7 @@ SQLite 使用 WAL、外键和显式迁移。运行态以数据库记录为准，
 
 档案生命周期：`active <-> archived` 由 archive/restore 驱动；`active|archived -> deleted` 由 `DELETE permanent=false` 驱动，目录移动到 `<data-root>/trash/<id>` 并写 `deleted_at`；`deleted -> active` 由 restore 驱动，恢复前必须确认 trash 目录仍是目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409）且不创建空目录；`deleted -> purge` 由 `DELETE permanent=true` 驱动，先删除目录再删除行；目录已缺失时视为已删除并继续删行，目录删除失败或行删除失败则保留 `deleted` 并写 `deletion_error`。软删除或 purge 前必须确认运行时不处于非终态；运行中的档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止。`deleted` 档案不能启动，也不能通过运行控制隐式恢复；启动或修改返回 `PROFILE_DELETED`（409），restore/purge/读取仍可用；已 purge 或从未存在的 ID 返回 `PROFILE_NOT_FOUND`（404）。
 
-Profile 响应中的 `isolation` 派生自最近一次运行时的 `runtimes.isolation`；没有运行时记录时为 `unknown`。成功启动的运行时只能是 `enforced` 或服务端显式授权的 `unsandboxed`；停止档案仍保留最后一次已知值，proof strip 的 `unsandboxed`/`unknown` 警告优先于 `stopped` 的中性样式。
+Profile 响应中的 `isolation` 派生自最近一次 `runtimes.isolation != 'unknown'` 的运行时；没有这样的记录时为 `unknown`。成功启动的运行时只能是 `enforced` 或服务端显式授权的 `unsandboxed`；`starting` 行或 pre-resource 失败行不得抹掉上一次已知值，停止档案仍保留最后一次已知值，proof strip 的 `unsandboxed`/`unknown` 警告优先于 `stopped` 的中性样式。
 
 数据目录布局：
 
@@ -254,7 +254,7 @@ sequenceDiagram
   Core-->>UI: 状态事件 + proxy_port（CDP URL 仅由受保护的 Runtime 查询返回）
 ```
 
-启动流程是串行的资源获取过程。先写入 `starting` 记录；沙箱校验必须发生在创建任何代理资源和启动内核之前：桌面无法确认 seatbelt/restricted-token 时以 `SANDBOX_UNAVAILABLE` 拒绝；服务端只有显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才写 `unsandboxed` 并审计。通过后把 `isolation` 定为 `enforced` 或服务端显式 `unsandboxed` 并持久化，`unknown` 只用于没有成功运行时记录或历史迁移行。代理模式在共享引擎就绪后创建出站、入站和路由；直接模式跳过这些资源，服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时返回 `DIRECT_EGRESS_DISABLED`，设置时写审计；直连模式不声称具备 DoH/IPv6/非代理 UDP 防护，并在 Profile/Runtime 返回 `direct=true` 与降低保证。每次增量建规则都带稳定 `ruleTag` 并使用 `shouldAppend=true`，使新规则追加在引导配置的 blackhole 之后，且引导配置不得包含 `routing.script`。任何一步失败都回滚并返回稳定错误码。代理检查结果只是警告，不阻断启动；内核校验失败、引擎校验失败、沙箱不可用、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。`headless` 使用 `--headless=new`；`pseudo_headful` 还要求内核能力清单声明 `headless_chrome_ua_patch=true`，只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
+启动流程是串行的资源获取过程。先写入 `starting` 记录；沙箱校验必须发生在创建任何代理资源和启动内核之前：桌面无法确认 seatbelt/restricted-token 时以 `SANDBOX_UNAVAILABLE` 拒绝；服务端只有显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才写 `unsandboxed` 并审计。通过后把 `isolation` 定为 `enforced` 或服务端显式 `unsandboxed` 并持久化，`unknown` 只用于没有成功运行时记录或历史迁移行。代理模式在共享引擎就绪后创建出站、入站和路由；直接模式跳过这些资源，服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1` 时返回 `DIRECT_EGRESS_DISABLED`，设置时写审计。直连模式不声称具备代理级远程 DNS 或失败关闭保证，但仍必须应用内核支持的 `webrtc`/`network` 标志（至少禁用非代理 UDP、禁用 DoH、阻止 IPv6），并在 Profile/Runtime 返回 `direct=true` 与降低保证；无法应用所需标志时拒绝启动或记录为已声明的限制，不得静默 no-op。每次增量建规则都带稳定 `ruleTag` 并使用 `shouldAppend=true`，使新规则追加在引导配置的 blackhole 之后，且引导配置不得包含 `routing.script`。任何一步失败都回滚并返回稳定错误码。代理检查结果只是警告，不阻断启动；内核校验失败、引擎校验失败、沙箱不可用、代理配置无效、规格不一致、端口冲突或配额不足必须拒绝。`headless` 使用 `--headless=new`；`pseudo_headful` 还要求内核能力清单声明 `headless_chrome_ua_patch=true`，只改变 `HeadlessChrome` UA 为 `Chrome`，其他 Headless 特征仍保留。
 
 ### 7.2 停止档案
 
@@ -271,24 +271,24 @@ sequenceDiagram
   Core->>K: SIGTERM（或平台等价信号）
   K-->>Core: 退出
   Core->>Core: 等待超时，必要时终止进程组
+  Core->>Core: 快照 proxy_outbound_key / proxy_inbound_tag / proxy_rule_tag / proxy_port
   Core->>GW: 删除本档案路由规则与入站
   GW->>PE: RemoveRule(ruleTag) + RemoveInbound
-  Core->>Core: 清空 proxy_outbound_key / proxy_inbound_tag / proxy_rule_tag / proxy_port
-  Core->>GW: 递减非终态出站引用
+  Core->>Core: 同一事务按快照 key 递减非终态引用并清空四个 proxy_* 字段
   GW->>PE: 引用归零时 RemoveOutbound
   Core->>Core: 写入 stopped，释放锁
   Core-->>UI: 状态事件
 ```
 
-停止操作幂等。已经停止的档案再次停止返回成功，不报错。路由规则只按稳定 `ruleTag` 删除，不靠位置或全量重写。清理顺序固定为：终止进程 → 删除规则与入站 → 清空运行时的 `proxy_*` 字段 → 递减非终态引用计数；因此 `proxy_outbounds.ref_count` 只统计非终态运行时，不会因终态行残留而漂移。共享引擎不因单个档案停止而退出；只有引用归零的出站被删除。强制终止后必须记录事件，标记该次运行非正常结束。
+停止操作幂等。已经停止的档案再次停止返回成功，不报错。路由规则只按稳定 `ruleTag` 删除，不靠位置或全量重写。清理顺序固定为：终止进程 → 快照 `proxy_*` → 删除规则与入站 → 在同一事务中按快照 key 递减非终态引用并清空 `proxy_*` 字段 → 释放锁；因此 `proxy_outbounds.ref_count` 只统计非终态运行时，不会因终态行残留而漂移。共享引擎不因单个档案停止而退出；只有引用归零的出站被删除。强制终止后必须记录事件，标记该次运行非正常结束。
 
 ### 7.3 控制面重启对账
 
 1. 读取 `runtimes` 中非终态记录和 `proxy_engine_state`。
 2. 检查共享 Xray 引擎 PID、进程启动时间和 API 端口是否匹配；检查各内核 PID 与数据目录。
-3. 对 `starting`/`stopping` 这类中断行，终止可归属的内核进程组，删除对应入站与规则，清空 `proxy_*` 字段并递减非终态引用计数，然后写 `stopped`；teardown 失败时保留非终态与 `last_error` 并重试，不得提前写 `failed`。
-4. 共享引擎不存在或不可接管时，安全终止残留引擎并启动新实例，然后按 `proxy_port` 重建所有运行档案的出站、入站和路由规则；重建使用原 `ruleTag` 与 `shouldAppend=true`。
-5. 共享引擎可接管时，通过 Xray gRPC 管理 API 列出出站/入站，补齐缺失配置并删除孤儿入站或规则；引擎报告的 `ruleTag` 是规则归属的唯一依据。
+3. 能归属到仍存活引擎且入站、规则、出站均存在的 `running` 行保持 `running`；无主的 `starting`/`running`/`stopping` 行终止可归属的内核进程组，快照并删除对应入站与规则，按非空快照 key 递减非终态引用并清空 `proxy_*` 字段，然后写 `stopped`；teardown 失败时保留非终态与 `last_error` 并重试，不得提前写 `failed`。
+4. 共享引擎不存在或不可接管时，安全终止残留引擎并启动新实例，然后只按 `proxy_port` 重建 `ref_count>0` 的运行档案出站、入站和路由规则；`ref_count=0` 孤儿行在重建前删除；重建使用原 `ruleTag` 与 `shouldAppend=true`。
+5. 共享引擎可接管时，通过 Xray gRPC 管理 API 列出出站/入站，补齐缺失配置，删除孤儿入站、规则与 `ref_count=0` 出站；引擎报告的 `ruleTag` 是规则归属的唯一依据。
 6. 不可确认归属的内核进程不得盲目杀死，记录隔离事件；按配置清理超时孤儿。
 7. 清理过期锁文件、临时规则、残留调试端口；未完成操作在 teardown 完成后以 `stopped` 或 `failed` 告知 UI，不留中间态。
 
@@ -464,7 +464,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 - 浏览器渲染进程运行不可信网页，必须假定其可被攻击。
 - 代理配置、分享链接和导入文件是外部输入，必须校验。
 - 服务端控制面暴露在网络上，必须认证、限流和防 CSRF。
-- CDP、noVNC 和 Xray gRPC 管理 API 是高权限入口，默认只绑定回环或关闭；回环不是调用者身份，Xray API 的同 UID 可达性按 SECURITY T-15/T-22 接受，无沙箱模式额外要求网络边界（见 §10.3）。
+- CDP、noVNC 和 Xray gRPC 管理 API 是高权限入口，默认只绑定回环或关闭；回环不是调用者身份，管理 API 必须由控制面 UID 独占的 LSM/防火墙策略限制，浏览器内核使用独立 UID，页面发起的回环探测必须不可达；无沙箱模式额外要求网络边界（见 §10.3）。
 - 内核与协议引擎二进制是供应链输入，必须校验和版本绑定。
 
 ### 10.2 关键控制
@@ -476,9 +476,9 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 | 密钥 | 桌面使用系统钥匙串；服务端使用 `/data/secrets/master.key`（0600）或 `MIEN_MASTER_KEY`；字段级 AES-256-GCM；API Token 从不使用 AES-GCM，只用 HKDF-peppered 哈希，主密钥轮换使全部 Token 失效并要求重发。 |
 | 进程 | 参数数组启动，不经过 shell；进程组管理；档案锁；并发配额；子进程 `env_clear` 后只注入白名单变量。 |
 | 文件 | 档案目录 0700；路径规范化并校验前缀；导入文件大小限制；符号链接拒绝。 |
-| 网络 | 每运行档案 HTTP 入站、Xray gRPC 管理 API 与 CDP 都绑定回环，但回环只限制可达范围、不提供调用者鉴权；非回环服务端必须设置 `MIEN_PUBLIC_URL` 并使用 `Secure` Cookie；仅当来源在 `MIEN_TRUSTED_PROXIES` 中时才采信 `X-Forwarded-For`/`X-Forwarded-Proto`，限流按校验后的客户端 IP；noVNC 一次性令牌；容器网络最小化。 |
+| 网络 | 每运行档案 HTTP 入站、Xray gRPC 管理 API 与 CDP 都绑定回环，但回环只限制可达范围、不提供调用者鉴权；管理 API 额外要求控制面 UID 独占的 LSM/防火墙策略，浏览器内核使用独立 UID；非回环服务端必须设置 `MIEN_PUBLIC_URL` 并使用 `Secure` Cookie；仅当来源在 `MIEN_TRUSTED_PROXIES` 中时才采信 `X-Forwarded-For`/`X-Forwarded-Proto`，限流按校验后的客户端 IP；noVNC 一次性令牌；容器网络最小化。 |
 | 内核 | 安装时校验 `asset_sha256`，启动时校验可执行文件的 `binary_sha256`；能力清单；版本固定；沙箱状态检查；不允许静默升级。 |
-| 协议引擎 | Xray-core 单实例共享进程；安装时校验 `asset_sha256`，启动时校验 `binary_sha256`；协议能力清单；管理 API 只绑定回环；凭据不写日志；MPL-2.0 许可与来源信息。 |
+| 协议引擎 | Xray-core 单实例共享进程；安装时校验 `asset_sha256`，启动时校验 `binary_sha256`；协议能力清单；管理 API 只绑定控制面回环并由控制面 UID 独占；凭据不写日志；MPL-2.0 许可与来源信息。 |
 | 容器 | 非 root；只读根文件系统；强制 seccomp 配置（由宿主侧发布物提供并在容器创建前读取，非“按需”）；`--tmpfs /tmp:rw,noexec,nosuid,size=1g`；`/dev/shm` 显式定量；HOME/XDG 可写目录位于 `/data`；丢弃能力；`no-new-privileges`；镜像扫描；不使用 Docker socket。 |
 | 日志 | 密码、Token、Cookie、UUID、私钥、完整代理 URL、分享链接和敏感头脱敏；有界且有长度上限的日志尾部端点；审计事件独立保留。 |
 
@@ -539,7 +539,7 @@ UI 通过 `ControlTransport` 抽象选择 Tauri 或 HTTP 适配器；命令、DT
 
 - 构建时从固定 URL 下载 Xray-core 发行包，分别记录 `asset_sha256` 与解包后 `binary_sha256`，同时记录版本、平台、协议矩阵、许可和来源信息；运行时只比对 `binary_sha256`。
 - 引擎不提交到 Git；macOS 应用与 Docker 镜像均包含未修改的二进制、MPL-2.0 许可证与来源信息。
-- 引擎启动时使用最小引导配置，其中 blackhole 必须是第一个出站；启动时断言该顺序，失败关闭不依赖不存在的 `routing.final`。代理出站、每档案回环 HTTP 入站和路由规则通过仅绑定回环的 Xray gRPC 管理 API 动态创建，每条规则带稳定 `ruleTag`，增量 `AddRule` 使用 `shouldAppend=true`，删除按 `ruleTag` 进行。
+- 引擎启动时使用最小引导配置，其中 blackhole 必须是第一个出站；启动时断言该顺序，失败关闭不依赖不存在的 `routing.final`。代理出站、每档案回环 HTTP 入站和路由规则通过控制面 UID 独占的回环 Xray gRPC 管理 API 动态创建，每条规则带稳定 `ruleTag`，增量 `AddRule` 使用 `shouldAppend=true`，删除按 `ruleTag` 进行。
 - 引擎版本轴独立于应用和内核，升级前比对能力清单并跑协议矩阵；引擎随应用/镜像交付，不做运行中原地替换；运行中的档案不被静默替换，升级会重置共享连接池。
 - TUIC 不进入 v1；Hysteria2 依赖锁定版本中的 Xray 实现，并在发布准入中验证。
 

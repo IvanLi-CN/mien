@@ -15,14 +15,14 @@ fingerprint-chromium 的版本差异直接影响指纹行为与稳定性。`150.
 - macOS 使用 ARM64 DMG 中的内核；Docker 与后续 Windows 桌面使用对应平台的 148 构建。
 - 内核二进制按平台随发布物供应，构建时下载并校验发布资产摘要；不提交到 Git。
 - 发布资产摘要与安装后可执行文件摘要分开记录：清单与发布物中的 `sha256` 是发布资产（DMG/TAR.XZ/ZIP）摘要；安装记录同时保存 `asset_sha256`（下载资产）和 `binary_sha256`（解包后可执行文件）。运行时以安装记录的 `binary_sha256` 校验可执行文件，不得用清单的发布资产摘要代替。
-- 可执行文件缺失返回 `KERNEL_NOT_FOUND`，摘要不符返回 `KERNEL_CHECKSUM_MISMATCH`；两种情况都拒绝启动，且不启动协议引擎。
+- 可执行文件缺失返回 `KERNEL_NOT_FOUND`，摘要不符返回 `KERNEL_CHECKSUM_MISMATCH`；两种情况都拒绝启动该档案的代理链路，不创建它的入站、出站或规则，但不启动、停止或重启宿主上共享的 Xray 引擎，其他运行档案不受影响。
 - 每个内核安装附带能力清单，声明支持的开关、取值、派生特征、已知缺陷和沙箱要求。
 - 能力清单是可演进契约：`flags` 在所有平台声明 `window-size`（类型 `string`，并带候选集合）；沙箱要求用 `sandbox_kind`（`namespace|seatbelt|win32-restricted-token|none`）表达，取代 `requires_namespace_sandbox` 布尔；`network_controls` 允许 `disabled|unsupported` 与 `block|unsupported`，使缺失该能力的平台清单仍是合法 fixture；`flagSpec` 提供 `values` 或 `per_platform_values`，CPU、语言、时区等能力校验由清单数据驱动，而不是硬编码在 UI 或校验器中。
 - 每个 148 平台清单必须登记上游已知问题 #98（canvas 子区域与完整读回不一致）、#99（WebGL readPixels 不同读回尺寸不一致）与 #102（打包 16 位格式越界）；#108 只适用于 `windows-x64`，不得登记到 macOS/Linux 清单；150 的 #94、#95、#104、#112 只作为版本选择证据，不写入 148 清单。
 - 产品不修改、不分叉内核。升级只接受经过内核准入测试的上游版本。
 - 应用更新与内核更新分离。档案固定自己的 `kernel_version`，同一宿主可并存多个内核版本；应用更新不静默改写档案内核，运行中的档案不得被替换。
 - 内核迁移是显式的每档案操作：迁移前预检平台、能力清单、指纹规格（含窗口尺寸与派生特征）和沙箱可用性；迁移写入审计事件；迁移后重新校验指纹规格并提示派生特征变化。运行中的档案必须先停止才能迁移。
-- 保留上一内核版本用于回滚，直到用户确认或达到保留期限。
+- 保留每个仍被任一档案 `kernel_version` 引用的内核版本，并额外保留上一版本用于回滚；删除任何内核版本前必须确认没有档案或回滚记录引用它，用户确认或保留期限只能清理不再被引用的旧版本。
 - 内核准入必须覆盖：指纹探针一致性、canvas/WebGL 读回、目标站点加载、有头/无头、macOS/Docker、沙箱状态、崩溃与内存、代理泄漏。
 - Docker 的 namespace 沙箱必须配合强制 seccomp profile；profile 路径与允许列表是 M0 交付物和发布工件，M0 门禁必须在 Docker 中以非特权 user namespace 证明其生效。不得把 seccomp 描述为“按需”加固。
 

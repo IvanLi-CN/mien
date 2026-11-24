@@ -32,7 +32,7 @@
 
 ### REQ-FP-002
 
-- The system MUST generate a non-zero 32-bit seed using a cryptographically secure random source; every create and every duplicate copy (`copy_fingerprint=true`) MUST generate a fresh seed rather than reusing the source profile's seed. Create and duplicate therefore never collide on a generated seed. Import preserves the exported seed for reproducibility, so an imported profile may share a seed with its source; that is allowed and is not a conflict error. `FINGERPRINT_SEED_CONFLICT` is not part of the contract.
+- The system MUST generate a non-zero 32-bit seed using a cryptographically secure random source; every create and every duplicate copy (`copy_fingerprint=true`) MUST generate a fresh seed rather than reusing the source profile's seed. A duplicate's generated seed differs from its source; collisions between generated seeds of unrelated profiles are not conflict errors. Import preserves the exported seed for reproducibility, so an imported profile may share a seed with its source; that is allowed and is not a conflict error. `FINGERPRINT_SEED_CONFLICT` is not part of the contract.
 - Import exception: importing an exported profile preserves the exported seed so the fingerprint remains reproducible; two profiles sharing a seed after import is allowed and is not an error.
 - Inputs: 创建或复制档案请求、导入载荷、密码学随机源。
 - Outputs: 非零种子；复制总是得到新种子；不得使用时间戳、邮箱、档案名称或其他可预测值作为种子；种子不被视为秘密。
@@ -127,7 +127,7 @@
 
 - The system MUST require `network.doh_mode=disabled` and `network.ipv6_mode=block` for proxied profiles, and MUST verify that the selected kernel manifest declares the corresponding controls before launch.
 - Inputs: 指纹规格、内核能力清单、启动参数、启动探针。
-- Outputs: 有效配置中 DoH 不绕过代理且 IPv6 直连被阻止；清单声明 `doh_mode=unsupported` 或 `ipv6_mode=unsupported` 时清单仍合法，但代理档案 MUST NOT 启动，返回 `KERNEL_UNSUPPORTED`（422）且不得静默降级为直连；探针失败同样阻止启动。
+- Outputs: 有效配置中 DoH 不绕过代理且 IPv6 直连被阻止；清单声明 `doh_mode=unsupported` 或 `ipv6_mode=unsupported` 时清单仍合法，但代理档案 MUST NOT 启动，返回 `KERNEL_UNSUPPORTED`（422）且不得静默降级为直连；直连档案仍应用内核支持的 DoH/IPv6/非代理 UDP 标志并记录降低保证，无法应用时拒绝启动或记录为已声明限制，不声称代理级远程 DNS/失败关闭；探针失败同样阻止启动。
 
 ### REQ-FP-018
 
@@ -139,7 +139,7 @@
 
 - The system MUST derive the expected sandbox mechanism from the manifest `sandbox_kind` (`namespace|seatbelt|win32-restricted-token|none`), replacing the former `requires_namespace_sandbox` boolean, and MUST require the effective sandbox to be verified before any proxy resource is created or the kernel is spawned.
 - Inputs: 清单 `sandbox_kind`（Linux `namespace` 同时要求强制 seccomp profile）、宿主/容器配置、启动计划、沙箱探测结果、`ALLOW_UNSANDBOXED`。
-- Outputs: 沙箱生效时写入 `isolation=enforced`；任何宿主无法确认时返回 `SANDBOX_UNAVAILABLE` 且不创建出站、入站、路由规则或子进程；服务端显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才继续启动，写 `isolation=unsandboxed` 并记录审计与启动警告；桌面端无法确认 seatbelt/restricted-token 时返回 `SANDBOX_UNAVAILABLE`，不存在桌面无沙箱例外。
+- Outputs: 沙箱生效时写入 `isolation=enforced`；任何宿主无法确认时返回 `SANDBOX_UNAVAILABLE` 且不创建出站、入站、路由规则或子进程；服务端显式 `ALLOW_UNSANDBOXED=1` 且通过包含性探针与独立 UID/网络边界时才继续启动，写 `isolation=unsandboxed` 并记录审计与启动警告；`sandbox_kind=none` 按无沙箱处理，桌面端直接返回 `SANDBOX_UNAVAILABLE`，服务端只有通过上述 `ALLOW_UNSANDBOXED` 门禁才启动；桌面端无法确认 seatbelt/restricted-token 时返回 `SANDBOX_UNAVAILABLE`，不存在桌面无沙箱例外。
 - Semantics: 启动事务顺序、`runtimes.isolation` 持久化与 proof strip 推导由 `browser-runtime` REQ-RUNTIME-014/018 定义。
 
 ### REQ-FP-020
@@ -263,7 +263,7 @@
 
 - Method: 在 `sandbox_kind=namespace` 且 seccomp 生效、无法启用命名空间沙箱、`ALLOW_UNSANDBOXED=1` 显式无沙箱、以及 `sandbox_kind=none` 四种配置下启动，检查启动顺序、代理资源与 `isolation`。
 - covers: `REQ-FP-019`, `REQ-RUNTIME-014`
-- Pass condition: 沙箱校验发生在创建代理资源与启动内核之前；生效时 `isolation=enforced`；任何宿主无法确认时 `SANDBOX_UNAVAILABLE` 且无出站/入站/规则/子进程；服务端显式无沙箱且通过包含性探针时 `isolation=unsandboxed` 并写审计与警告；桌面无法确认时拒绝启动。
+- Pass condition: 沙箱校验发生在创建代理资源与启动内核之前；生效时 `isolation=enforced`；任何宿主无法确认时 `SANDBOX_UNAVAILABLE` 且无出站/入站/规则/子进程；服务端显式无沙箱且通过包含性探针时 `isolation=unsandboxed` 并写审计与警告；`sandbox_kind=none` 在桌面端被拒绝，在服务端只有通过 `ALLOW_UNSANDBOXED` 门禁才以 `isolation=unsandboxed` 启动；桌面无法确认时拒绝启动。
 
 ### VER-FP-020
 

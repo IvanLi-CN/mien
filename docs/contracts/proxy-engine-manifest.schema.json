@@ -43,11 +43,17 @@
     "protocols": {
       "type": "object",
       "minProperties": 1,
-      "propertyNames": {
-        "enum": ["http", "https", "socks5", "vless", "vmess", "shadowsocks", "trojan", "hysteria2", "wireguard"]
-      },
-      "additionalProperties": {
-        "$ref": "#/$defs/protocolSpec"
+      "additionalProperties": false,
+      "properties": {
+        "http": {"$ref": "#/$defs/basicProtocolSpec"},
+        "https": {"$ref": "#/$defs/basicProtocolSpec"},
+        "socks5": {"$ref": "#/$defs/basicProtocolSpec"},
+        "vless": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "vmess": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "shadowsocks": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "trojan": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "hysteria2": {"$ref": "#/$defs/tierBProtocolSpec"},
+        "wireguard": {"$ref": "#/$defs/tierBProtocolSpec"}
       }
     },
     "limitations": {
@@ -91,10 +97,34 @@
           "uniqueItems": true,
           "items": {"type": "string"}
         },
+        "obfuscation": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string"},
+          "description": "Obfuscation methods declared by this engine. Empty means the engine does not support obfuscated configurations; configs carrying obfuscation must be rejected."
+        },
         "notes": {
           "type": "string"
         }
       }
+    },
+    "tierAProtocolSpec": {
+      "allOf": [
+        {"$ref": "#/$defs/protocolSpec"},
+        {"properties": {"tier": {"const": "A"}}}
+      ]
+    },
+    "tierBProtocolSpec": {
+      "allOf": [
+        {"$ref": "#/$defs/protocolSpec"},
+        {"properties": {"tier": {"const": "B"}}}
+      ]
+    },
+    "basicProtocolSpec": {
+      "allOf": [
+        {"$ref": "#/$defs/protocolSpec"},
+        {"properties": {"tier": {"const": "basic"}}}
+      ]
     }
   }
 }

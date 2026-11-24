@@ -1,4 +1,5 @@
 {
+  "_notice": "Modified from moby/profiles seccomp/default.json at a0fa70805f742f7da15b367770d802ea2a86c68b by the Mien project; see PROVENANCE.json and docs/THIRD-PARTY.md for the modification record.",
   "defaultAction": "SCMP_ACT_ERRNO",
   "defaultErrnoRet": 1,
   "archMap": [
@@ -1095,16 +1096,9 @@
       ],
       "action": "SCMP_ACT_ERRNO",
       "errnoRet": 38,
-      "includes": {
-        "minKernel": "5.3"
-      },
       "excludes": {
         "caps": [
           "CAP_SYS_ADMIN"
-        ],
-        "arches": [
-          "s390",
-          "s390x"
         ]
       }
     },
@@ -1129,6 +1123,15 @@
           "CAP_SYS_CHROOT"
         ]
       }
+    },
+    {
+      "names": [
+        "mount",
+        "umount2",
+        "chroot"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "comment": "Allow Chromium namespace sandbox setup to mount/umount its private filesystems and chroot into the sandbox root. The container runs with cap-drop ALL; namespace root is confined to the new user namespace, so do not add CAP_SYS_ADMIN or CAP_SYS_CHROOT to the container."
     },
     {
       "names": [

@@ -7,7 +7,7 @@
 - 少服务：v1 不引入 Postgres、Redis、消息队列或外部会话服务。
 - 可验证：进程、网络、密钥和时间都通过可替换端口注入，便于测试。
 - 安全边界清晰：内核、协议引擎、控制面、代理凭据和浏览器数据分层隔离；容器 seccomp 配置是版本化发布物，不是部署者可选项。
-- 许可可审计：链接依赖只接受宽松许可；协议引擎与容器内 GPL/LGPL/MPL 组件以独立进程分发并履行许可与来源义务；项目自身以 Apache-2.0 发布。
+- 许可可审计：链接依赖只接受宽松许可；协议引擎与容器内 GPL/LGPL/MPL 组件以独立进程或独立静态资源目录分发并履行许可与来源义务；项目自身以 Apache-2.0 发布。
 - 版本可回滚：内核、协议引擎、数据库和应用分别版本化，升级不静默改变已有档案。
 
 ## 2. 版本策略
@@ -63,7 +63,7 @@
 | 协议引擎 | Xray-core v26.11.9+ | 固定补丁版本与 SHA-256 | 单实例动态入站/出站/路由；VLESS/VMess/SS/Trojan/Hysteria2/WireGuard；MPL-2.0 |
 | 容器基础 | Debian bookworm-slim | 固定摘要 | 需要 X11、Chromium 运行库与字体 |
 | 容器 init | tini | 固定 | 信号转发与僵尸进程回收 |
-| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）+ AppArmor | 固定文件与 SHA-256 | 允许非特权用户命名空间的 Chromium 命名空间沙箱；宿主侧发布物供 Docker 创建前加载，镜像副本仅审计，不得改用默认或 `unconfined` |
+| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）；宿主需允许非特权用户命名空间（解除 AppArmor userns 限制或加载等价宿主配置） | 固定文件与 SHA-256（seccomp） | 允许非特权用户命名空间的 Chromium 命名空间沙箱；宿主侧发布物供 Docker 创建前加载，镜像副本仅审计，不得改用默认或 `unconfined` |
 | 虚拟显示 | Xvfb + openbox | 固定主版本 | 无桌面环境的有头运行 |
 | 远程查看 | x11vnc + noVNC/websockify | 固定主版本 | 可选、一次性令牌、默认关闭；GPL-2.0、MPL-2.0、LGPL-3.0 义务见 `THIRD-PARTY.md` |
 | 任务编排 | cargo xtask | 固定 | 仓库内构建、校验、打包任务 |
@@ -163,9 +163,9 @@
 - 前端依赖允许 MIT、Apache-2.0、BSD、ISC；锁文件提交并定期审计。
 - fingerprint-chromium 为 BSD-3-Clause；发布物保留版权与许可声明。
 - Xray-core 为 MPL-2.0，作为独立进程分发，不链接；发布物保留许可证、来源信息并完成再分发合规评审。
-- 容器内 openbox、x11vnc（GPL-2.0）、noVNC（MPL-2.0）、websockify（LGPL-3.0）作为独立可执行程序分发，不链接到 Mien；发布说明提供各组件锁定版本的许可文本、源码链接与 Corresponding Source 获取方式，修改后必须公开修改文件。
+- 容器内 openbox、x11vnc（GPL-2.0）、websockify（LGPL-3.0）作为独立进程分发，noVNC（MPL-2.0）作为独立静态资源目录分发；均不链接到 Mien；发布说明提供各组件锁定版本的许可文本、源码链接与 Corresponding Source 获取方式，修改后必须公开修改文件。
 - 项目自身许可证为 Apache-2.0，仓库根提供 `LICENSE`；发布门禁要求 `LICENSE`、`NOTICE`、`LICENSES/`、SBOM 与许可扫描同时通过，未知或不兼容许可阻断发布。
-- API Token 只保存 HKDF pepper 的哈希，不使用 AES-GCM 或其他可逆存储；主密钥轮换后旧 Token 全部失效并要求重新签发。
+- API Token 只保存展示前缀与 HKDF pepper 的 HMAC 哈希，不使用 AES-GCM 或其他可逆存储；主密钥轮换后旧 Token 全部失效并要求重新签发。
 - TUIC 不进入 v1；协议矩阵与 Xray 能力清单、测试结果绑定。
 - 所有发布物生成 SBOM；容器镜像固定摘要并签名。
 

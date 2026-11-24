@@ -57,4 +57,4 @@
 | VMess | VMess | 基于用户 ID 与加密选型的代理协议，支持多种传输。 |
 | Shadowsocks | Shadowsocks | 基于 AEAD 或 2022 方法的加密代理协议。 |
 | Trojan | Trojan | 以 TLS 伪装为基础的密码认证代理协议。 |
-| Hysteria2 | Hysteria2 | 基于 QUIC 的代理协议，支持混淆与拥塞控制。 |
+| Hysteria2 | Hysteria2 | 基于 QUIC 的代理协议，支持拥塞控制；混淆取决于引擎能力清单，当前 Xray v26.11.9 不声明。 |

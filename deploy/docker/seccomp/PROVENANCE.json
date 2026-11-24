@@ -5,6 +5,6 @@
   "license": "Apache-2.0",
   "licenseUrl": "https://github.com/moby/profiles/blob/a0fa70805f742f7da15b367770d802ea2a86c68b/LICENSE",
   "upstreamSha256": "3320527d4568265ac97a077609b1bfd4cfd0d789eeb9239b7e094b1526675406",
-  "modifiedSha256": "e7742e636aeee82d4aea22eaac0c134b56c28370b3a5eb97c7e06e32ea6ac5ef",
-  "modification": "Added CLONE_NEWUSER-filtered clone() and unshare() allow rules; clone() excludes s390/s390x. Scoped clone3 to kernels >= 5.3 via includes.minKernel and excluded s390/s390x."
+  "modifiedSha256": "73204b8c5e4151b6ab82d3a87b970b34270cfafee382329cf399ff9e9342d070",
+  "modification": "Added CLONE_NEWUSER-filtered clone() and unshare() allow rules; clone() excludes s390/s390x. Kept the upstream clone3 ENOSYS rule without kernel/architecture narrowing so glibc always falls back to the filtered clone(). Added unconditional mount, umount2 and chroot allow rules because the mandatory --cap-drop ALL deployment drops capability-gated baseline rules; the namespace root is confined to Chromium's new user namespace."
 }

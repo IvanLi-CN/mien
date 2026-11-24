@@ -27,7 +27,8 @@
 | `AUTH_ORIGIN_INVALID` | 403 | 否 | `Origin`/`Referer` 不在允许列表；适用于 Cookie 写请求与 WebSocket 升级 |
 | `FORBIDDEN_SCOPE` | 403 | 否 | Token scope 不允许该操作 |
 | `AUTH_PASSWORD_CHANGE_REQUIRED` | 403 | 否 | 首次登录必须先修改初始密码 |
-| `EVENT_TICKET_INVALID` | 401 | 否 | WebSocket 一次性票据缺失、过期或已使用 |
+| `EVENT_TICKET_INVALID` | 401 | 否 | 无有效会话 Cookie 时，WebSocket 一次性票据缺失、过期或已使用 |
+| `EVENT_REPLAY_WINDOW_EXPIRED` | 409 | 否 | `after` 游标早于事件保留窗口；客户端必须重新同步，不得静默跳过事件 |
 
 ## 2. 资源与状态
 
@@ -35,7 +36,8 @@
 | --- | --- | --- | --- |
 | `PROFILE_NOT_FOUND` | 404 | 否 | 档案行不存在（含已永久删除） |
 | `PROFILE_DELETED` | 409 | 否 | 档案处于软删除 `deleted` 状态；只阻断启动或会改变档案的写操作，restore、purge、读取与删除重试仍可执行 |
-| `PROFILE_PURGE_FAILED` | 500 | 是 | 永久删除时目录移除失败；行保留为 `deleted` 并写入 `deletion_error` 供重试 |
+| `PROFILE_NOT_DELETED` | 409 | 否 | `permanent=true` 只接受 `deleted` 档案；对 `active`/`archived` 的永久删除请求被拒绝 |
+| `PROFILE_PURGE_FAILED` | 500 | 是 | 档案目录移动/移除失败；软删除时行保持原状态，purge 时行保留为 `deleted`，并写入 `deletion_error` 供重试 |
 | `PROXY_NOT_FOUND` | 404 | 否 | 代理配置不存在 |
 | `RUNTIME_NOT_FOUND` | 404 | 否 | 档案没有受监督运行时 |
 | `TOKEN_NOT_FOUND` | 404 | 否 | API Token 不存在 |

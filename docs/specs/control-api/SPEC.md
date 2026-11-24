@@ -11,12 +11,12 @@
 ## Terms and Interfaces
 
 - `session`: 服务端登录后创建的浏览器会话，使用 `HttpOnly`、`SameSite=Strict` Cookie。
-- `API token`: 自动化客户端使用的 Bearer Token，只保存哈希，带授权范围。
+- `API token`: 自动化客户端使用的 Bearer Token，数据库只保存展示前缀与 HMAC 哈希，带授权范围；前缀不能用于认证。
 - `scope`: Token 允许执行的操作集合，使用点号形式，例如 `profiles.read`、`profiles.write`、`runtime.control`、`tokens.manage`、`events.read`、`viewer.access`。OpenAPI 保持现有 HTTP Bearer Token scheme，以 `x-required-scope` 声明每个操作所需 scope；CI 将该值与 `TokenScope` 枚举逐项比对，不引入 OAuth2 token exchange。
-- `public allowlist`: 无需认证即可访问的端点集合，固定为 `GET /healthz`、`GET /readyz`、`GET /api/v1` 版本发现、`POST /api/v1/auth/login` 和 `GET /api/v1/openapi.json`；其他端点一律需要认证。
+- `public allowlist`: 无需认证即可访问的 API 端点集合，固定为 `GET /healthz`、`GET /readyz`、`GET /api/v1` 版本发现、`POST /api/v1/auth/login` 和 `GET /api/v1/openapi.json`；其他 API 端点一律需要认证。同源静态 Web UI 的登录页与静态资源也必须公开，否则无法登录；它们不属于 API allowlist。
 - `event`: 服务端通过 WebSocket 推送的运行时、代理和审计事件，`sequence` 为单调递增整数；断线重连使用 `after=<sequence>` 补齐。
 - `event ticket`: 单次使用的短 TTL WebSocket 票据；OpenAPI 声明 `ticketAuth`（`type: apiKey`、`in: query`、`name: ticket`），不得用匿名 `security: []` 代替。
-- `one-time secret`: `TokenCreated.token` 与 `EventTicket.ticket` 只在创建响应中出现一次，是仅响应字段，不能作为请求字段，也不能通过幂等重放再次返回。
+- `one-time secret`: `TokenCreated.token` 与 `EventTicket.ticket` 只在创建响应中出现一次，不能作为请求体字段，也不能通过幂等重放再次返回；`EventTicket.ticket` 唯一允许的请求位置是 WebSocket 升级的 `ticketAuth` 查询参数，服务端日志必须脱敏该参数。
 - `idempotency key`: 客户端为启动/停止、Token 创建等写操作提供的唯一键，用于安全重试；结果缓存与冲突规则见 REQ-API-010。
 - `profile log tail`: 运行时有界日志尾部，由 `GET /api/v1/profiles/{profile_id}/logs?limit=` 返回；来源为运行时日志环或轮转文件，响应已脱敏。
 - `export/import`: 导出请求体 `ProfileExportRequest` = `{format: plain|encrypted, passphrase?}`，导入请求体 `ProfileImportInput` = `{format, payload, passphrase?, conflict_strategy?: new_id|abort}`；`conflict_strategy` 默认 `new_id`，`passphrase` 为 write-only；载荷语义由 `profile-management` spec 与 `profile-export.schema.json` 定义。
@@ -52,9 +52,9 @@
 ### REQ-API-005
 
 - The system MUST hash API tokens at rest, support revocation and last-used tracking, and MUST enforce token scopes on every operation. Scopes are the `TokenScope` enum; HTTP Bearer authenticates the token and each operation declares its required scope with `x-required-scope`, which CI validates against that enum. No OAuth2 token exchange endpoint is introduced; token creation MUST NOT grant scopes the creator does not hold.
-- One-time secrets: `TokenCreated.token` and `EventTicket.ticket` are response-only fields, MUST NOT be declared write-only request inputs, and MUST never be logged, echoed, or replayed by an idempotent retry.
+- One-time secrets: `TokenCreated.token` is response-only; `EventTicket.ticket` is returned once and may only be submitted through the WebSocket `ticketAuth` query parameter. Neither may be a request-body field, be logged, be echoed, or be replayed by an idempotent retry; access logs must redact the ticket query parameter.
 - Inputs: Token 创建、Token 值、请求操作、Token 记录、scope 声明。
-- Outputs: 明文 Token 只在创建响应中出现一次；数据库只有哈希；撤销后立即失效；越权操作返回 403；请求体中出现一次性秘密字段被视为无效请求。
+- Outputs: 明文 Token 只在创建响应中出现一次；数据库只存展示前缀与 HMAC 哈希，前缀不能用于认证；撤销后立即失效；越权操作返回 403；请求体中出现一次性秘密字段被视为无效请求。
 
 ### REQ-API-006
 
@@ -89,9 +89,9 @@
 ### REQ-API-011
 
 - The system MUST authenticate WebSocket connections with the `ticketAuth` scheme (one-time ticket from `POST /api/v1/events/ticket`) or a session cookie, MUST reject long-lived tokens in URLs, and MUST validate `Origin` on every upgrade, including ticket-authenticated ones. The OpenAPI operation MUST declare `security: [{ticketAuth: []}, {cookieAuth: []}]` and MUST NOT use an anonymous `security: []`.
-- Replay: the cursor is the integer `event.sequence`; `after=<sequence>` replays retained events with a greater sequence. A non-integer or non-positive cursor is rejected with 422, and the server MUST NOT silently skip retained events. The replay window bound is recorded as an implementation fact.
+- Replay: the cursor is the integer `event.sequence`; `after=<sequence>` replays retained events with a greater sequence. A non-integer or non-positive cursor is rejected with 422; a cursor older than the retained window is rejected with 409 `EVENT_REPLAY_WINDOW_EXPIRED`, and the server MUST NOT silently skip retained events. The replay window bound is part of this contract.
 - Inputs: 会话 Cookie 或一次性票据、`ticket` 查询参数、整数 `after`、`Origin`、心跳。
-- Outputs: 认证通过后建立连接；断线重连按 `sequence > after` 补齐；缺失、过期或已使用的票据返回 401 `EVENT_TICKET_INVALID`；跨源升级返回 403 `AUTH_ORIGIN_INVALID`；URL 长效 Token 被拒绝；心跳用于检测死连接。
+- Outputs: 认证通过后建立连接；断线重连按 `sequence > after` 补齐；没有有效会话 Cookie 且票据缺失、过期或已使用时返回 401 `EVENT_TICKET_INVALID`，有效 Cookie 单独认证不需要票据；回放游标早于保留窗口时返回 409 `EVENT_REPLAY_WINDOW_EXPIRED`；跨源升级返回 403 `AUTH_ORIGIN_INVALID`；URL 长效 Token 被拒绝；心跳用于检测死连接。
 
 ### REQ-API-012
 
@@ -146,7 +146,7 @@
 
 - The system MUST expose profile export and import as `POST /api/v1/profiles/{profile_id}/export`, `POST /api/v1/profiles/import/validate` and `POST /api/v1/profiles/import`, matching the request/response shapes and payload semantics defined by `profile-management`.
 - Inputs: `ProfileExportRequest`、`ProfileImportInput`、CSRF Token 或 Bearer Token、`profiles.read`/`profiles.write` scope。
-- Outputs: 导出返回 `ProfileExportEnvelope`；`passphrase` 为 write-only，加密格式必填、明文格式禁止，且不得出现在 URL、查询串、日志、审计或错误消息；明文 `payload` 遵循 `profile-export.schema.json`；加密 `payload` 是不透明、带版本号的容器，使用 Argon2id 派生密钥与认证加密，envelope 版本参与 AAD。
+- Outputs: 导出返回 `ProfileExportEnvelope`；`passphrase` 为 write-only，`format=encrypted` 时必填、`format=plain` 时禁止，且不得出现在 URL、查询串、日志、审计或错误消息；明文 `payload` 遵循 `profile-export.schema.json`；加密 `payload` 是不透明、带版本号的容器，使用 Argon2id 派生密钥与认证加密，envelope 版本参与 AAD。
 - Import: `import/validate` 是 dry-run，不写行、不建目录，返回逐项草稿/errors/冲突；`import` 返回 `ProfileImportResult`，档案冲突以导出项 `source_profile_id` 匹配 `profiles.import_source_id` 或现有 `profiles.id`，分组/标签冲突按名称匹配；`conflict_strategy=new_id` 分配新档案 ID 并保留 `import_source_id`，`abort` 在写入前返回 `PROFILE_IMPORT_CONFLICT`。
 - Redaction: 导出中的代理只含 `credential_fields` 名称与非秘密 `options`，`credentials_removed=true`；秘密键被拒绝；导出不包含顶层 `runtime.window`，窗口尺寸只在指纹规格内。
 
@@ -175,7 +175,7 @@
 
 - Method: 逐个请求公开与受保护端点；对受保护端点分别使用无凭据、无效 Token、有效会话、缺 scope Token，并对不存在与软删除的档案 ID 发起请求。
 - covers: `REQ-API-003`
-- Pass condition: 仅 `/healthz`、`/readyz`、`GET /api/v1`、`POST /api/v1/auth/login`、`GET /api/v1/openapi.json` 无需认证；无凭据或无效凭据一律 401；缺 scope 返回 403 且不泄露资源是否存在；已授权但资源不存在返回 404；软删除档案的启动/修改返回 409 `PROFILE_DELETED`，restore/purge/读取仍可用；OpenAPI 为每个受保护操作声明 401/403，为按 ID 寻址的操作声明 404。
+- Pass condition: 仅 `/healthz`、`/readyz`、`GET /api/v1`、`POST /api/v1/auth/login`、`GET /api/v1/openapi.json` 这些 API 端点无需认证；同源静态 UI 的登录页与静态资源可公开；无凭据或无效凭据一律 401；缺 scope 返回 403 且不泄露资源是否存在；已授权但资源不存在返回 404；软删除档案的启动/修改返回 409 `PROFILE_DELETED`，restore/purge/读取仍可用；OpenAPI 为每个受保护操作声明 401/403，为按 ID 寻址的操作声明 404。
 
 ### VER-API-004
 
@@ -223,7 +223,7 @@
 
 - Method: 检查 OpenAPI 的 `/api/v1/events` security 声明；申请一次性票据建立 WebSocket，断开后带整数 `after=<sequence>` 重连，并测试非整数/非正游标、URL 长效 Token、缺票据与跨源 Origin。
 - covers: `REQ-API-002`, `REQ-API-011`
-- Pass condition: OpenAPI 声明 `ticketAuth`（apiKey in query）与 `cookieAuth`，不存在匿名 `security: []`；票据只能使用一次，缺失/过期/已用返回 401 `EVENT_TICKET_INVALID`；重连按 `sequence > after` 补齐且不跳过保留事件；非整数或非正 `after` 返回 422；URL 长效 Token 被拒绝；跨源升级返回 403 `AUTH_ORIGIN_INVALID`；心跳检测死连接。
+- Pass condition: OpenAPI 声明 `ticketAuth`（apiKey in query）与 `cookieAuth`，不存在匿名 `security: []`；票据只能使用一次，无有效 Cookie 且票据缺失/过期/已用时返回 401 `EVENT_TICKET_INVALID`，有效 Cookie 单独认证不需要票据；重连按 `sequence > after` 补齐且不跳过保留事件；非整数或非正 `after` 返回 422，早于保留窗口返回 409 `EVENT_REPLAY_WINDOW_EXPIRED`；URL 长效 Token 被拒绝；跨源升级返回 403 `AUTH_ORIGIN_INVALID`；心跳检测死连接。
 
 ### VER-API-012
 

@@ -39,12 +39,13 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 - GitHub Actions 的 `release` environment、tag 保护、artifact attestation 和发布后校验成为主要发布控制。
 - 发布说明必须包含 Gatekeeper 处理步骤，禁止建议全局关闭 Gatekeeper。
 - 应用、Chromium 内核与全部 helper 的签名命令必须传入 JIT entitlements；遗漏时 `codesign --verify` 仍可能通过，但 hardened runtime 下页面加载或 renderer 启动失败，因此 entitlements 断言必须逐个可执行文件执行并配合真实页面加载。Xray-core 与 frameworks 不得复制 JIT 权限。
+- ADR-0002 允许多个内核版本并存时，bundle 外的内核版本也必须由同一签名步骤签名并携带 JIT entitlements，安装到受控路径；不得写入已签名的 `.app` 内部，否则会破坏 bundle seal。启动前按安装记录校验签名与 entitlements，未签名或权限不符的版本拒绝启动。
 
 ## 验证
 
-- `codesign --verify --deep --strict --verbose=2` 对应用、内核和 Xray 通过。
+- `codesign --verify --deep --strict --verbose=2` 对应用、bundle 内内核、bundle 外已安装内核和 Xray 通过。
 - `codesign -dv --verbose=4` 显示 `Signature=adhoc`，且不存在 Developer ID TeamIdentifier。
-- `codesign -d --entitlements :-` 对应用、Chromium 内核及每个 renderer/GPU/utility helper 只显示 `com.apple.security.cs.allow-jit` 与 `com.apple.security.cs.allow-unsigned-executable-memory`，Xray-core 与 frameworks 不显示 JIT 权限；签名后的应用可在干净机器启动并成功加载真实页面。
+- `codesign -d --entitlements :-` 对应用、bundle 内外 Chromium 内核及每个 renderer/GPU/utility helper 只显示 `com.apple.security.cs.allow-jit` 与 `com.apple.security.cs.allow-unsigned-executable-memory`，Xray-core 与 frameworks 不显示 JIT 权限；签名后的应用可在干净机器启动并成功加载真实页面。
 - `spctl --assess --type execute` 预期拒绝；CI 记录结果但不把拒绝当作失败。
 - `SHA256SUMS` 可校验所有发布资产；Tauri 更新清单签名可验证，并拒绝降级。
 - 在干净 macOS 13+ 机器按发布说明完成首次启动和更新测试。
