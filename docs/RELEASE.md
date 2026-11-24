@@ -132,3 +132,16 @@ resolve-target 读取 draft 并解析 source_sha，reserve 复核绑定后通过
 - [`adr/0010-adhoc-macos-distribution.md`](adr/0010-adhoc-macos-distribution.md)
 - [`adr/0011-manual-release-identity.md`](adr/0011-manual-release-identity.md)
 - [`contracts/manifests/`](contracts/manifests/)
+
+## 9. 本仓库待配置项
+
+以下项目是发布入口可用前的人工配置或 CI 约束；在全部完成前，不得把 release workflow 当作公开发布入口。
+
+- **人工（wizard）— `release` environment**：在仓库设置受保护的 `release` environment，配置维护者审批者，并绑定 `macos-arm64`、`stage-release`、`promote-docker` 与 `release` jobs。环境只保存更新签名密钥，不保存 Apple 证书、Apple ID、Team ID 或 App-Specific Password。
+- **人工（wizard）— required secrets**：在 `release` environment 写入 `TAURI_SIGNING_PRIVATE_KEY`（更新私钥）与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（更新私钥口令）；使用 [`scripts/release/updater-keygen.sh`](../scripts/release/updater-keygen.sh) 在仓库外生成，绝不提交或打印私钥。
+- **CI — 更新签名使用**：release job 只能从 `release` environment 读取上述 secrets，为 Tauri 更新清单签名；PR、main 与普通测试 job 不得读取它们。Apple 代码签名不需要任何 secret，本仓库只使用 AdHoc 签名。
+- **人工（wizard）— `promote-docker` 绑定**：在 workflow 与 environment 设置中确认 `promote-docker` 绑定同一受保护 `release` environment，并要求每次单独重跑重新审批；它只能提升已验证 digest，不得重新构建或覆盖 GHCR tag。
+- **人工（wizard）— tag 保护**：配置两套针对 `v*` 的 ruleset：创建规则启用 Restrict creations，仅受保护 release App 可绕过；不可变规则启用 Restrict updates 与 Restrict deletions，bypass 为空。管理员、App 与 `GITHUB_TOKEN` 都不得改写或删除已存在 tag。
+- **CI — tag 与 release 边界**：workflow_dispatch 是唯一入口；`resolve-target`/`reserve` 固化 source SHA 与 reservation，只有最后的 `release` job 创建或验证 `vX.Y.Z` tag。未完成的骨架不得创建 tag、draft、GHCR tag 或公开 Release。
+- **人工（wizard）— DMG 放行**：在干净 macOS 13+ 机器下载同一 run 的 DMG 与 `SHA256SUMS`，先校验 SHA-256，再按发布说明手动首次启动和升级；将结果和被测 DMG SHA-256 写入 draft 正文。通过“系统设置 → 隐私与安全性 → 仍要打开”或 `xattr -dr com.apple.quarantine /Applications/Mien.app` 放行；不得关闭系统级 Gatekeeper。任何重建 DMG 都要求重新测试。
+- **CI — 发布前门禁**：只有当前 DMG 的人工测试、GATE-001、artifact attestation、更新清单签名、checksums、identity 与 Docker promotion 全部绑定同一 source/digest 后，才允许公开 Release；这些实际步骤尚未在本仓库实现。
