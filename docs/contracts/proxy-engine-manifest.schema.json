@@ -27,7 +27,8 @@
     },
     "sha256": {
       "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the published release asset (the downloaded archive), never the extracted engine binary digest. Install records carry asset_sha256 and binary_sha256 separately; engine verification uses binary_sha256."
     },
     "license": {
       "enum": ["MPL-2.0"]
@@ -41,8 +42,18 @@
     },
     "protocols": {
       "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/protocolSpec"
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "http": {"$ref": "#/$defs/basicProtocolSpec"},
+        "https": {"$ref": "#/$defs/basicProtocolSpec"},
+        "socks5": {"$ref": "#/$defs/basicProtocolSpec"},
+        "vless": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "vmess": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "shadowsocks": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "trojan": {"$ref": "#/$defs/tierAProtocolSpec"},
+        "hysteria2": {"$ref": "#/$defs/tierBProtocolSpec"},
+        "wireguard": {"$ref": "#/$defs/tierBProtocolSpec"}
       }
     },
     "limitations": {
@@ -54,13 +65,15 @@
     "protocolSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tier"],
+      "required": ["tier", "transports", "tls_modes", "obfuscation"],
       "properties": {
         "tier": {
-          "enum": ["A", "B", "C"]
+          "enum": ["A", "B", "basic"],
+          "description": "A = VLESS/VMess/Shadowsocks/Trojan release gate; B = Hysteria2/WireGuard declared support with explicit failure reporting; basic = HTTP/HTTPS/SOCKS5 base forward-proxy capability outside the A/B gates."
         },
         "transports": {
           "type": "array",
+          "minItems": 1,
           "uniqueItems": true,
           "items": {
             "enum": ["tcp", "udp", "ws", "grpc", "http", "httpupgrade", "quic"]
@@ -68,6 +81,7 @@
         },
         "tls_modes": {
           "type": "array",
+          "minItems": 1,
           "uniqueItems": true,
           "items": {
             "enum": ["none", "tls", "reality"]
@@ -83,10 +97,34 @@
           "uniqueItems": true,
           "items": {"type": "string"}
         },
+        "obfuscation": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string"},
+          "description": "Required explicit list of declared obfuscation methods. Empty means none are supported and configurations requesting obfuscation must be rejected."
+        },
         "notes": {
           "type": "string"
         }
       }
+    },
+    "tierAProtocolSpec": {
+      "allOf": [
+        {"$ref": "#/$defs/protocolSpec"},
+        {"properties": {"tier": {"const": "A"}}}
+      ]
+    },
+    "tierBProtocolSpec": {
+      "allOf": [
+        {"$ref": "#/$defs/protocolSpec"},
+        {"properties": {"tier": {"const": "B"}}}
+      ]
+    },
+    "basicProtocolSpec": {
+      "allOf": [
+        {"$ref": "#/$defs/protocolSpec"},
+        {"properties": {"tier": {"const": "basic"}}}
+      ]
     }
   }
 }

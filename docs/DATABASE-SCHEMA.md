@@ -1,16 +1,17 @@
 # Mien SQLite 数据库契约
 
-本文固定首个版本的逻辑 schema、约束、索引、迁移和加密边界。它是 `docs/ARCHITECTURE.md` 数据模型的详细化，不是可直接执行的迁移文件；实现时必须用 `sqlx` 迁移或等价机制把 DDL 拆成可重入、不可变的迁移。
+本文固定首个版本的逻辑 schema、约束、索引、迁移和加密边界。它是 `docs/ARCHITECTURE.md` 数据模型的详细化；第 2 节 DDL 必须能在空库直接执行，实现时再用 `sqlx` 迁移或等价机制把它拆成不可变、按版本递增的迁移。
 
 ## 1. 全局约定
 
 - SQLite 使用 WAL、外键和 `busy_timeout=5000`。
-- 主键使用 ULID 文本；时间使用 UTC ISO-8601 文本。
+- 业务主键使用 ULID 文本；单例表（`proxy_engine_state`、`admin_credentials`）与自增事件序列（`event_log.sequence`）除外；时间使用 UTC ISO-8601 文本。
 - JSON 字段只保存已经过 schema 校验的非秘密数据。
 - 代理凭据、API Token 明文、Cookie、主密钥和私钥不得以明文写入数据库。
-- 所有跨表写入必须在一个短事务内完成；不得在持锁时等待进程、网络或共享引擎。
+- 所有跨表写入必须在一个短事务内完成；不得在持有数据库事务或数据库写锁时等待进程、网络或共享引擎。代理生命周期的共享引擎写锁属于应用层串行化，不是数据库写锁。
 - 连接池为单写者语义；写冲突返回 `STORAGE_BUSY`，由调用方短退避重试。
 - 迁移只增不改；任何破坏性变更必须先备份并需要显式确认。
+- 第 2 节 DDL 必须能在空库中直接执行；CI 在 SQLite 上执行整份 DDL 并运行 `PRAGMA foreign_key_check` 与 `PRAGMA integrity_check`。
 
 ## 2. DDL
 
@@ -60,17 +61,19 @@ CREATE TABLE profiles (
   fingerprint_json TEXT NOT NULL,
   fingerprint_schema INTEGER NOT NULL,
   kernel_version TEXT NOT NULL,
-  proxy_id TEXT REFERENCES proxies(id) ON DELETE SET NULL,
+  proxy_id TEXT REFERENCES proxies(id) ON DELETE RESTRICT,
+  import_source_id TEXT,
   mode TEXT NOT NULL DEFAULT 'headful' CHECK (mode IN ('headful','headless','pseudo_headful')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived','deleted')),
   start_url TEXT,
-  window_json TEXT,
   automation_api INTEGER NOT NULL DEFAULT 0 CHECK (automation_api IN (0,1)),
   runtime_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   archived_at TEXT,
-  deleted_at TEXT
+  deleted_at TEXT,
+  deletion_error TEXT CHECK (deletion_error IS NULL OR deletion_error IN ('busy','permission_denied','io_error','unknown')),
+  CHECK (status <> 'deleted' OR deleted_at IS NOT NULL)
 );
 
 CREATE INDEX idx_profiles_group ON profiles(group_id);
@@ -83,11 +86,14 @@ CREATE TABLE profile_tags (
   PRIMARY KEY (profile_id, tag_id)
 );
 
+CREATE INDEX idx_profile_tags_tag ON profile_tags(tag_id);
+
 CREATE TABLE kernel_installs (
   version TEXT NOT NULL,
   platform TEXT NOT NULL CHECK (platform IN ('macos-arm64','linux-x86_64','windows-x64')),
   path TEXT NOT NULL,
-  sha256 TEXT NOT NULL,
+  asset_sha256 TEXT NOT NULL CHECK (length(asset_sha256) = 64 AND asset_sha256 NOT GLOB '*[^0-9a-f]*'),
+  binary_sha256 TEXT CHECK (binary_sha256 IS NULL OR (length(binary_sha256) = 64 AND binary_sha256 NOT GLOB '*[^0-9a-f]*')),
   manifest_json TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0,1)),
   installed_at TEXT NOT NULL,
@@ -102,7 +108,8 @@ CREATE TABLE proxy_engine_installs (
   version TEXT NOT NULL,
   platform TEXT NOT NULL CHECK (platform IN ('macos-arm64','linux-x86_64','windows-x64')),
   path TEXT NOT NULL,
-  sha256 TEXT NOT NULL,
+  asset_sha256 TEXT NOT NULL CHECK (length(asset_sha256) = 64 AND asset_sha256 NOT GLOB '*[^0-9a-f]*'),
+  binary_sha256 TEXT CHECK (binary_sha256 IS NULL OR (length(binary_sha256) = 64 AND binary_sha256 NOT GLOB '*[^0-9a-f]*')),
   manifest_json TEXT NOT NULL,
   license TEXT NOT NULL CHECK (license = 'MPL-2.0'),
   source_url TEXT NOT NULL,
@@ -137,6 +144,8 @@ CREATE TABLE runtimes (
   profile_id TEXT NOT NULL UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
   state TEXT NOT NULL CHECK (state IN ('starting','running','stopping','stopped','crashed','failed')),
   mode TEXT NOT NULL CHECK (mode IN ('headful','headless','pseudo_headful')),
+  isolation TEXT NOT NULL DEFAULT 'unknown' CHECK (isolation IN ('enforced','unsandboxed','unknown')),
+  last_known_isolation TEXT NOT NULL DEFAULT 'unknown' CHECK (last_known_isolation IN ('enforced','unsandboxed','unknown')),
   pid INTEGER,
   pgid INTEGER,
   proxy_port INTEGER,
@@ -153,9 +162,20 @@ CREATE TABLE runtimes (
 CREATE INDEX idx_runtimes_state ON runtimes(state);
 CREATE INDEX idx_runtimes_outbound ON runtimes(proxy_outbound_key);
 
+CREATE TABLE admin_credentials (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  password_hash TEXT NOT NULL,
+  algo TEXT NOT NULL CHECK (algo = 'argon2id'),
+  params_json TEXT NOT NULL,
+  must_change INTEGER NOT NULL DEFAULT 1 CHECK (must_change IN (0,1)),
+  bootstrap_pending INTEGER NOT NULL DEFAULT 0 CHECK (bootstrap_pending IN (0,1)),
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE api_tokens (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  token_prefix TEXT CHECK (token_prefix IS NULL OR length(token_prefix) BETWEEN 4 AND 16),
   token_hash TEXT NOT NULL UNIQUE,
   scopes_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -187,14 +207,14 @@ CREATE TABLE event_tickets (
 CREATE INDEX idx_event_tickets_expires ON event_tickets(expires_at);
 
 CREATE TABLE event_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id TEXT NOT NULL UNIQUE,
   type TEXT NOT NULL,
   payload_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 
-CREATE INDEX idx_event_log_type_created ON event_log(type, created_at);
+CREATE INDEX idx_event_log_type_sequence ON event_log(type, sequence);
 
 CREATE TABLE idempotency_keys (
   key TEXT NOT NULL,
@@ -211,6 +231,8 @@ CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
 CREATE TABLE audit_events (
   id TEXT PRIMARY KEY,
   actor TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  profile_id TEXT,
   action TEXT NOT NULL,
   target TEXT NOT NULL,
   result TEXT NOT NULL CHECK (result IN ('success','failure','denied')),
@@ -220,6 +242,8 @@ CREATE TABLE audit_events (
 );
 
 CREATE INDEX idx_audit_created ON audit_events(created_at DESC);
+CREATE INDEX idx_audit_event_type_created ON audit_events(event_type, created_at DESC);
+CREATE INDEX idx_audit_profile_created ON audit_events(profile_id, created_at DESC);
 CREATE INDEX idx_audit_action_created ON audit_events(action, created_at DESC);
 CREATE INDEX idx_audit_request ON audit_events(request_id);
 
@@ -235,25 +259,39 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
 ## 3. 约束与事务
 
-- 删除档案默认是软删除：写入 `archived_at`/`deleted_at`，不立即删除浏览器目录；永久删除必须是显式操作。
-- 档案生命周期使用 `profiles.status` 的 `active`/`archived`/`deleted`，运行状态只保存在 `runtimes`/`runtime_json`；`start_url`、`window_json` 和 `automation_api` 持久化启动偏好。
+- 软删除先移动目录到 `<data-root>/trash/<id>`，成功后才在事务中写 `status=deleted` 与 `deleted_at`；移动失败保持原状态与 NULL deleted_at，写稳定 deletion_error 并返回 PROFILE_PURGE_FAILED。提交失败按 REQ-PROFILE-006 移回目录；目录和行不能假称已同步。
+- 永久删除是显式操作：`DELETE ?permanent=true` 先删除 trash 目录，再删除行。目录已缺失时视为目录删除已完成并继续删行；目录删除失败或行删除失败时保留 `deleted` 行并写 `deletion_error`，供重试。`deletion_error` 只能是稳定、非敏感的原因标识（例如 `busy`、`permission_denied`），不得包含绝对路径、用户名或原始 OS 消息。
+- 档案生命周期：`active <-> archived` 由 archive/restore 驱动，restore 清空 `archived_at`；`active|archived -> deleted` 由软删除驱动；`deleted -> active` 由 restore 驱动，恢复前必须确认 `<data-root>/trash/<id>` 仍是目录，缺失时返回 `PROFILE_RESTORE_UNAVAILABLE` 且不创建空目录，恢复成功时清空 `archived_at`、`deleted_at` 与 `deletion_error`；`deleted -> purge` 由永久删除驱动。`deleted_at` 只记录最近一次软删除时间，状态判据始终是 `profiles.status`；`deleted` 档案不能启动，启动请求返回 `PROFILE_DELETED`，该错误只阻断启动或会改变档案的写操作，不影响 restore、purge、读取与删除重试。软删除或 purge 前必须先确认运行时不处于非终态；运行中的档案一律返回 `RUNTIME_CONFLICT`，不得隐式停止，也不得移动或删除目录。
+- 窗口尺寸只存在于 `fingerprint_json`；顶层启动偏好只保留 `start_url` 和 `automation_api`，数据库不再有 `window_json`，导出与偏好 API 也不得出现顶层 `window`。
+- 下载目录固定为 `<data-root>/profiles/<id>/downloads`（0700），作为 Chromium 默认下载目录；所有路径必须规范化并校验在该档案目录前缀内。
 - `runtimes.profile_id` 唯一，保证一个档案最多一个受监督运行时；启动/停止通过事务和档案锁串行化。
-- `proxy_outbounds.ref_count` 必须与 `runtimes` 中引用该 key 的行数一致；启动时对账并修复，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
+- `runtimes.isolation` 保存本次启动的实际沙箱状态：`enforced`、`unsandboxed` 或 `unknown`；成功启动只能写 `enforced` 或服务端显式授权的 `unsandboxed`，`unknown` 只用于没有成功运行时记录或历史迁移行。`runtimes.last_known_isolation` 保存最近一次成功结论，写 `starting` 或 pre-resource 失败不得覆盖它；`Profile.isolation` 与 proof strip 均派生自 `last_known_isolation`，`unknown` 不得当作安全。
+- `proxy_outbounds.ref_count` 只统计带 outbound key 的非终态运行时；停止或失败先快照绑定，再递减与清空。零引用复核、Xray 删除与数据库行删除持共享引擎写锁，和新引用获取互斥；外部 API 等待不持数据库事务。删除失败保留零引用孤儿。
+- `kernel_installs` 与 `proxy_engine_installs` 同时记录 `asset_sha256`（下载的发布资产摘要）与 `binary_sha256`（解包后可执行文件摘要）。安装时校验发布资产，运行时只校验 `binary_sha256`；文件缺失返回 `KERNEL_NOT_FOUND`/`PROXY_ENGINE_NOT_FOUND`，摘要不符返回 `KERNEL_CHECKSUM_MISMATCH`/`PROXY_ENGINE_CHECKSUM_MISMATCH`。`manifest_json` 保存安装时的候选清单。
+- `event_log.sequence` 是单调整数回放游标，event_id 只用于去重。按 REQ-API-011 保留 7 天且 `sum(length(CAST(payload_json AS BLOB))) <= 104857600` 字节，按 sequence 删除最旧前缀。回放与裁剪使用一致快照；high_water 取 sqlite_sequence 中 event_log 的最高已提交序号（无记录为 0），floor 为最早保留序号减一，空保留集时为 high_water；不得清零 sqlite_sequence 或复用序号。after<floor 返回 EVENT_REPLAY_WINDOW_EXPIRED，未来游标返回 VALIDATION_FAILED。
+- `event_tickets` 只保存一次性 WebSocket 票据哈希；票据绑定会话或 API Token，短 TTL、单次使用，用过或过期即失效；签发与升级都必须重新检查会话/Token 未撤销（`revoked_at IS NULL`）并校验 Origin 允许列表；会话或 Token 行删除时外键级联删除票据。
+- 管理员凭据单行存于 `admin_credentials`。引导密码来自 `MIEN_ADMIN_PASSWORD` 或 `MIEN_ADMIN_PASSWORD_FILE`（0600）；两者都未提供时生成高熵密码写入 `<data-root>/secrets/admin-bootstrap`（0600；Docker 下即 `/data/secrets/admin-bootstrap`，macOS 下位于应用数据根）。密码以 Argon2id 哈希写入，并置 `must_change=1`、`bootstrap_pending=1`；改密成功后清空这两个标记，并只删除应用自己生成的 `admin-bootstrap` 文件。环境变量或外部 Secret 无法由应用删除，必须由部署者撤销/轮换；审计事件记录来源类型，应用不得声称已删除外部 Secret。
+- `proxies.last_check_json` 保存最近一次 `ProxyCheck`。代理节点网络失败（拒绝连接、认证、TLS、超时、DNS）作为检查结果返回，HTTP 200 且 `ok=false`、`error_code` 稳定；检查失败不得改写为未声明的 502 响应。
+- `copy_fingerprint=true` 时复制显式字段但总是生成新 seed；生成结果与现有 seed 相同时内部重抽。导入保留导出 payload 中的 seed 以复现指纹，不做唯一性拒绝；数据库不建立 seed 唯一约束，也不存在用户可见的种子冲突错误码。
 - 共享引擎状态是单例；`proxy_engine_state.id=1` 固定。
+- purge 在确认运行时 teardown 且 trash 目录已移除后，在同一事务删除 profiles 行，级联删除 profile_tags 与终态 runtimes；groups、tags、所有 proxies（包括复制生成的独立行）、安装记录与历史审计保留。代理是独立全局资源，UI 提示凭据保留并提供显式删除入口；有档案引用时拒绝 DELETE proxy，不能靠 ON DELETE SET NULL 绕过 RESOURCE_IN_USE。
+- 导入清理按 REQ-PROFILE-009 的 `<data-root>/runtimes/imports/<request-id>.json` 请求目录清单进行；失败回滚后不重建 profiles 行，不使用 deletion_error 伪装清理状态；清理失败返回 PROFILE_IMPORT_CLEANUP_FAILED，后台/启动对账重试，仅删除无已提交档案引用的本请求目录。
 - 一个平台最多一个 active 内核和一个 active 引擎；切换 active 必须在事务中完成。
 - `event_log`、`idempotency_keys`、`sessions` 和审计事件按保留策略清理；清理不得删除当前运行时所需的行。
-- `event_tickets` 只保存一次性 WebSocket 票据哈希；过期或已使用票据不得复用，按保留策略清理。
-- 幂等响应只保存非敏感响应体；如果响应包含一次性 Token 或凭据，不写入 `response_json`。
+- 幂等响应只保存非敏感响应体；如果响应包含一次性 Token 或凭据，不写入 `response_json`。`tokensCreate` 即使带 `Idempotency-Key` 也不重放明文 Token，重复键返回 `IDEMPOTENCY_CONFLICT`。
 - `groups.name` 和 `tags.name` 唯一；冲突分别返回 `GROUP_NAME_CONFLICT`/`TAG_NAME_CONFLICT`。审计记录必须带 `request_id`，用于与请求和事件关联。
+- 审计以 `event_type` 为规范动作类型，`profile_id` 支撑按档案筛选，`action` 只作兼容字段保留；三个筛选维度必须都能走索引。`audit_events.profile_id` 是历史标识、不设外键，档案 purge 后审计记录仍保留原 ID。
 
 ## 4. 加密与数据边界
 
 - `proxies.config_ciphertext` 使用 AES-256-GCM 字段级加密；关联数据绑定 `proxy_id` 和字段名。
 - `credential_fields_json` 只记录已设置的凭据字段名，不记录值。
-- `api_tokens.token_hash` 只保存带 pepper 的哈希；明文只在创建响应中出现一次。
+- `api_tokens.token_hash` 只保存 `HMAC-SHA-256(pepper, token)`，其中 `pepper = HKDF-SHA256(master_key, info="mien/api-token-pepper/v1")` 不单独落盘；绝不使用 AES-GCM、SQLCipher 或其他可逆存储，比较使用常量时间实现。`token_prefix` 只保存 4 至 16 个字符的展示前缀，不能用于认证。明文只在创建响应中出现一次，且不得写入幂等缓存、日志或事件。
+- 主密钥轮换会改变 pepper，因此轮换后全部 API Token 立即失效并要求重新签发；迁移必须按 ADR-0003 的轮换步骤处理已加密字段。
 - `sessions.token_hash` 只保存随机标识哈希；Cookie 值不落库。
+- `admin_credentials.password_hash` 使用 Argon2id（随机 salt、参数版本化并存入 `params_json`），与主密钥独立；主密钥轮换不改变口令哈希。引导密码明文不得落库、日志、事件或镜像层。
 - `fingerprint_json` 和 `runtime_json` 不含秘密。
-- 主密钥、代理凭据、Token 明文和完整分享链接不得出现在日志、事件和错误中。
+- 主密钥、代理凭据、Token 明文、密码、Cookie、UUID、私钥和完整分享链接不得出现在日志、事件和错误中；`deletion_error` 只能是稳定原因标识，不含路径。
 
 ## 5. 迁移
 
@@ -263,17 +301,31 @@ VALUES (1, 'initial schema', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 - 迁移必须保留未知的 JSON 字段或拒绝加载，不得静默丢弃指纹规格。
 - 迁移完成后运行 `PRAGMA foreign_key_check` 和完整性检查。
 - 应用版本与数据库迁移版本独立；启动时发现数据库版本高于应用支持版本必须拒绝启动。
+- 对已发布的数据库，`admin_credentials`、`deletion_error`、`asset_sha256`/`binary_sha256`、`runtimes.isolation` 与 `idx_profile_tags_tag` 这类变更必须先加新表/新列/新索引，再在后续迁移删除旧列；不得在同一迁移里删除并重命名。
+- 首个发布无存量库，以下路径针对发布后升级；全部按“加新、回填、切换、后删旧”拆分迁移。
+- `kernel_installs`/`proxy_engine_installs`：先新增可空 asset_sha256/binary_sha256；旧 sha256 若为合法发布资产摘要则回填 asset_sha256，否则只允许从匹配版本/平台的已验证清单回填，仍缺失或不合法则列出记录并阻断，不伪造摘要。文件存在时计算 binary_sha256，文件缺失时 active=0、binary_sha256=NULL 并列入报告；这类记录启动返回 KERNEL_NOT_FOUND/PROXY_ENGINE_NOT_FOUND，须重新安装或显式移除。备份与确认后，以表重建收敛 asset_sha256 NOT NULL 及基线 CHECK/索引，binary_sha256 保持可空，最后删除旧 sha256；升级库与空库 schema 必须比对相同，不用资产摘要冒充可执行文件摘要。
+- `runtimes.proxy_outbound_key`：停止流程必须在同一事务中递减 `ref_count` 并写 NULL；迁移先对 `stopped`/`crashed`/`failed` 行按非终态引用重建计数，再清空这些行的 `proxy_*`，不一致返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
+- `profiles.import_source_id` 与 `api_tokens.token_prefix`：均为可回退的新列；前者允许 NULL；后者从已有哈希无法反推，旧 Token 保持 NULL 并在 UI 隐藏前缀，新 Token 必须写入 4–16 字符展示前缀，不允许空串。
+- `profiles.window_json`：先对所有 `active`、`archived`、`deleted` 行做 preflight；优先保留 `fingerprint_json.window`，缺失时用合法 `window_json` 回填，然后走 schema 校验。两种来源都缺失、或旧值非法时，列出全部 `profile_id` 并阻断迁移；不得写默认窗口，也不得只检查 `deleted`。回填完成后才删除旧列。
+- profiles 的表级 `CHECK (status <> 'deleted' OR deleted_at IS NOT NULL)` 不能原地添加。备份并确认后，与移除 window_json 的表重建一起收敛；重建前对 `status='deleted' AND deleted_at IS NULL` 列出 profile_id 并阻断，不伪造删除时间。安装表约束收紧与 profiles 重建均是具名破坏性迁移例外。
+- `event_tickets` 已在基线 DDL 中，不重建、不清空；若旧库确实缺少该表，才按基线创建，并保留已有会话/Token 引用。`admin_credentials` 同样保留已有行；为空时进入引导流程，不生成固定口令。
+- `event_log` 的旧字符串游标迁移（已发布的表重建例外：本节明确要求备份与显式确认，且必须在同一发布周期内完成；除此之外仍遵守“只增不改”）：若旧库缺少 `sequence`，先新增可空列，按 `created_at`、旧 `id` 稳定排序回填连续整数，建立唯一索引并切换读取端；随后必须用表重建收敛到基线 `sequence INTEGER PRIMARY KEY AUTOINCREMENT`（复制行、删除旧表、重命名）并删除旧 `id`。重建完成前写路径必须显式写入 `max(sequence)+1`，否则唯一索引允许多个 `NULL`，新事件没有可回放游标。保留 `event_id` 作为外部去重标识，不得在回填前删除旧列。
+- `audit_events` 的 `event_type`、`profile_id` 迁移：先新增可空列；`event_type` 从 `action` 回填，`profile_id` 从旧 metadata 中的合法档案标识回填，否则保持 NULL；建立索引后才切换筛选读取端，最后按基线约束收紧。不得丢弃旧审计行或把 `action` 当作新 `event_type` 的长期替代。
+- `profiles.deletion_error`、`runtimes.isolation` 与 `runtimes.last_known_isolation`：新列默认 NULL 或 `unknown`；启动对账把无法确认的历史运行时置 `unknown`，不猜 `enforced`；`last_known_isolation` 只由成功启动写入，迁移与对账不得用 `starting` 行覆盖。
+- 已发布档案不论状态，在删除 `window_json` 前必须仍有合法 `fingerprint_json.window`；否则迁移阻断并报告档案 ID，不写默认窗口。
 
 ## 6. 保留与清理
 
 | 数据 | 默认保留 |
 | --- | --- |
-| `event_log` | 7 天或 100 MB，取较小者 |
+| `event_log` | 最近 7 天且 payload UTF-8 总量至多 100 MiB；按最旧 sequence 前缀裁剪，边界见 REQ-API-011 |
 | `idempotency_keys` | 24 小时 |
 | `sessions` | 到期后清理 |
+| `event_tickets` | 过期或已使用即清理 |
 | `audit_events` | 90 天或按部署配置 |
 | 运行时日志 | 每档案 10 MB × 5 文件 |
-| 已归档档案数据 | 保留窗口由部署配置决定，永久删除需确认 |
+| `admin_credentials` | 不自动清理；随数据库备份/恢复 |
+| 已归档与软删除档案数据（含 `trash/`） | 保留窗口由部署配置决定，永久删除需确认 |
 
 ## 7. 参考
 

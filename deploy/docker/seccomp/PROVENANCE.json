@@ -1,0 +1,10 @@
+{
+  "component": "moby/profiles seccomp default baseline",
+  "sourceUrl": "https://github.com/moby/profiles/blob/a0fa70805f742f7da15b367770d802ea2a86c68b/seccomp/default.json",
+  "commit": "a0fa70805f742f7da15b367770d802ea2a86c68b",
+  "license": "Apache-2.0",
+  "licenseUrl": "https://github.com/moby/profiles/blob/a0fa70805f742f7da15b367770d802ea2a86c68b/LICENSE",
+  "upstreamSha256": "3320527d4568265ac97a077609b1bfd4cfd0d789eeb9239b7e094b1526675406",
+  "modifiedSha256": "43cf666b8a0eb6490dc623e8ea49758146fc5fcd6233ac38b16b181146fdfcfd",
+  "modification": "Reformatted the upstream file from tab indentation to two-space indentation, added _notice/comment metadata and the rules below; no baseline syscall rule was removed or reordered. archMap removed SCMP_ARCH_S390X because the product ships only linux/amd64 and does not implement the new namespace filters for s390; the retained upstream index-1 clone rule becomes inert after that removal. Added CLONE_NEWUSER-filtered clone() and unshare() bootstrap rules. Added CLONE_NEWPID-masked clone() for renderer namespace bootstrap; the zygote ChrootToSafeEmptyDir call carries no namespace bit and is already allowed by the retained baseline clone mask, so no CLONE_FS-specific rule is added. Kept clone3 ENOSYS so glibc falls back to filtered clone(). Added unconditional mount, umount2 and chroot because --cap-drop ALL disables capability-gated baseline rules; mount/chroot remain confined to Chromium's new user namespace."
+}

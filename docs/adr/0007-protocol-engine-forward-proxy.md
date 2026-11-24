@@ -31,7 +31,7 @@
 | 方案 | 优点 | 缺点 | 结论 |
 | --- | --- | --- | --- |
 | 在 Rust 核心中自行实现协议 | 单进程、无外部依赖 | 协议与密码学维护成本极高；REALITY/QUIC/mux 组合复杂 | 不采用 |
-| 使用 Xray-core | MPL-2.0；VLESS/VMess/SS/Trojan 成熟 | 不支持 Hysteria2/TUIC；协议矩阵较窄 | 备选 |
+| 使用 Xray-core | MPL-2.0；VLESS/VMess/SS/Trojan 成熟 | 当时版本不支持 Hysteria2/TUIC；协议矩阵较窄 | 备选（后被 ADR-0009 采用：v26.11.9 已支持 Hysteria2，仍不支持 TUIC） |
 | 使用 sing-box | 协议覆盖广；单二进制；跨平台；配置成熟 | GPL-3.0；额外进程；配置包含凭据 | 采用 |
 | 保留自建中继并转发到 sing-box | 保留原有指标与限流 | 多一跳、多一个进程；中继仍需处理协议边界 | 不采用 |
 | 只支持 HTTP/SOCKS | 实现简单 | 不满足 VLESS/VMess/SS 需求 | 不满足 |

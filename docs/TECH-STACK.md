@@ -6,8 +6,8 @@
 - 单一核心：桌面与服务端共享 Rust 核心，业务规则只有一份实现。
 - 少服务：v1 不引入 Postgres、Redis、消息队列或外部会话服务。
 - 可验证：进程、网络、密钥和时间都通过可替换端口注入，便于测试。
-- 安全边界清晰：内核、协议引擎、控制面、代理凭据和浏览器数据分层隔离。
-- 许可可审计：链接依赖只接受宽松许可；协议引擎以独立进程分发并保留 MPL-2.0 许可与来源信息。
+- 安全边界清晰：内核、协议引擎、控制面、代理凭据和浏览器数据分层隔离；容器 seccomp 配置是版本化发布物，不是部署者可选项。
+- 许可可审计：链接依赖只接受宽松许可；协议引擎与容器内 GPL/LGPL/MPL 组件以独立进程或独立静态资源目录分发并履行许可与来源义务；项目自身以 Apache-2.0 发布。
 - 版本可回滚：内核、协议引擎、数据库和应用分别版本化，升级不静默改变已有档案。
 
 ## 2. 版本策略
@@ -33,7 +33,7 @@
 | 错误 | thiserror；anyhow 仅宿主边界 | 固定 | 领域错误可分类，宿主错误可附加上下文 |
 | 时间 | time 0.3 | 固定 | UTC 时间、序列化和测试时钟 |
 | 标识 | ulid | 固定 | 档案、运行时和事件标识可排序 |
-| 加密 | aes-gcm、argon2、sha2、zeroize、secrecy | 固定 | 字段级认证加密、口令派生、Token 哈希与内存清理 |
+| 加密 | aes-gcm、argon2、hkdf、sha2、zeroize、secrecy | 固定 | 字段级认证加密、口令派生、Token pepper 派生与哈希、内存清理 |
 | 密钥 | keyring 3 | 固定 | macOS 钥匙串；服务端文件/环境变量适配 |
 | HTTP 客户端 | reqwest + rustls | 固定 | 代理检查回显、更新检查；不依赖系统 OpenSSL |
 | 进程 | tokio::process；Unix 用 nix | 固定 | 参数数组、进程组、信号和超时终止 |
@@ -63,11 +63,12 @@
 | 协议引擎 | Xray-core v26.11.9+ | 固定补丁版本与 SHA-256 | 单实例动态入站/出站/路由；VLESS/VMess/SS/Trojan/Hysteria2/WireGuard；MPL-2.0 |
 | 容器基础 | Debian bookworm-slim | 固定摘要 | 需要 X11、Chromium 运行库与字体 |
 | 容器 init | tini | 固定 | 信号转发与僵尸进程回收 |
+| 容器安全 | 版本化 seccomp 配置（`deploy/docker/seccomp/chromium.json`）与 `mien-chromium` AppArmor profile；宿主需允许非特权用户命名空间 | 两份宿主配置分别固定 SHA-256 并进入 checksum、SBOM 与 attestation | Chromium 命名空间沙箱；两份配置由宿主侧在容器创建前加载，镜像副本仅审计；不得改用默认 seccomp 或默认 unconfined |
 | 虚拟显示 | Xvfb + openbox | 固定主版本 | 无桌面环境的有头运行 |
-| 远程查看 | x11vnc + noVNC/websockify | 固定主版本 | 可选、一次性令牌、默认关闭 |
+| 远程查看 | x11vnc + noVNC/websockify | 固定主版本 | 可选、一次性令牌、默认关闭；GPL-2.0、MPL-2.0、LGPL-3.0 义务见 `THIRD-PARTY.md` |
 | 任务编排 | cargo xtask | 固定 | 仓库内构建、校验、打包任务 |
 | CI | GitHub Actions macOS ARM64 + linux/amd64 | 固定 | 原生平台构建、AdHoc 打包、镜像与扫描 |
-| 制品安全 | cargo-deny、cargo-audit、Trivy、Syft、cosign、GitHub artifact attestation（计划支持时） | 固定主版本 | 许可、漏洞、SBOM、镜像签名与制品证明 |
+| 制品安全 | cargo-deny、cargo-audit、Trivy、Syft、cosign、GitHub artifact attestation（必选） | 固定主版本 | 许可门禁、漏洞、SBOM、镜像签名与制品证明 |
 
 ## 4. 关键选型对比
 
@@ -162,20 +163,26 @@
 - 前端依赖允许 MIT、Apache-2.0、BSD、ISC；锁文件提交并定期审计。
 - fingerprint-chromium 为 BSD-3-Clause；发布物保留版权与许可声明。
 - Xray-core 为 MPL-2.0，作为独立进程分发，不链接；发布物保留许可证、来源信息并完成再分发合规评审。
+- 容器内 openbox、x11vnc（GPL-2.0）、websockify（LGPL-3.0）作为独立进程分发，noVNC（MPL-2.0）作为独立静态资源目录分发；均不链接到 Mien；发布说明提供各组件锁定版本的许可文本、源码链接与 Corresponding Source 获取方式，修改后必须公开修改文件。
+- 项目自身许可证为 Apache-2.0，仓库根提供 `LICENSE`；发布门禁要求 `LICENSE`、`NOTICE`、`LICENSES/`、SBOM 与许可扫描同时通过，未知或不兼容许可阻断发布。
+- API Token 只保存展示前缀与 HKDF pepper 的 HMAC 哈希，不使用 AES-GCM 或其他可逆存储；主密钥轮换后旧 Token 全部失效并要求重新签发。
 - TUIC 不进入 v1；协议矩阵与 Xray 能力清单、测试结果绑定。
 - 所有发布物生成 SBOM；容器镜像固定摘要并签名。
 
 ## 6. 构建与发布
 
-- Rust workspace：`mien-core`、`mien-server`、`mien-desktop`、`mien-cli`、`xtask`。
+- Rust workspace：`mien-core`、`mien-store-sqlite`、`mien-server`、`mien-desktop`、`mien-cli`、`xtask`。
 - 前端：`ui/`，由 Bun 安装依赖，Vite 构建静态资源。
 - 本地检查：`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo nextest run`、`biome check`、`tsc --noEmit`、`vitest run`。
-- 合约检查：OpenAPI 生成差异、JSON Schema 编译、事件 schema、导入导出 fixture。
+- 合约检查：OpenAPI 生成差异、JSON Schema 编译、事件 schema、导入导出 fixture；`contracts` CI job 重新生成 OpenAPI 并在有差异时失败。
 - 端到端：Playwright 连接 CDP；Docker 有头/无头；受控协议节点；DNS canary。
-- macOS：`aarch64-apple-darwin` 构建，嵌套内核与 Xray-core 做 AdHoc 签名；不公证、不 stapler；用 `codesign --verify`、SHA-256 和（支持时）artifact attestation 建立完整性。
-- Docker：`buildx` 构建 `linux/amd64`，非 root、只读根、`/data` 卷、健康检查、SBOM、Trivy、cosign。
+- macOS：`aarch64-apple-darwin` 构建，嵌套内核与 Xray-core 做 AdHoc 签名；不公证、不 stapler；用 `codesign --verify`、SHA-256 和 artifact attestation 建立完整性。
+- Docker：`buildx` 构建 `linux/amd64`；非 root、只读根、`--tmpfs /tmp:rw,noexec,nosuid,size=1g`、`--shm-size`、`/data` 卷、健康检查、SBOM、Trivy、cosign；同一源码构建两次并比较镜像 digest。
+- 容器安全：同一文件作为宿主侧发布物 `mien-seccomp-chromium-<version>.json` 进入 SHA-256SUMS、SBOM 与 attestation；镜像内只烘焙 `/opt/mien/seccomp/chromium.json` 审计副本。Docker daemon 在容器创建前只能读取宿主路径，`--security-opt` 不得指向镜像内文件；镜像副本与仓库源文件摘要不一致时阻断发布。
+- 发布物：SHA-256SUMS 覆盖应用包、内核、Xray-core、seccomp 配置与 SBOM；发布说明列出 GPL/LGPL/MPL 组件的许可与源码获取方式。
 - 内核与引擎：构建时下载、SHA-256 校验、写入能力清单；不提交二进制。
 - GitHub Actions 的 PR/main/release 拓扑、权限与门禁见 [`CI.md`](CI.md)。
+- M0 可行性门禁（seccomp、只读与 tmpfs/shm、管理员引导、Token 哈希、可信代理、直连、无沙箱包含性）与发布门禁见 [`SECURITY.md`](SECURITY.md) §8。
 
 ## 7. 测试工具链
 
@@ -195,10 +202,14 @@
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
 | WKWebView 与 Chromium 渲染差异 | UI 在桌面与服务端表现不同 | Playwright 覆盖关键页面；CSS 约束；视觉证据 |
+| Rust 异步生命周期与服务栈复杂度 | 实现周期拉长、竞态与资源泄漏 | 显式状态机、单写者队列、进程组监督、可替换端口注入测试 |
 | SQLite 单写者 | 并发写操作排队或超时 | 短事务、WAL、单写者队列、错误重试 |
 | Xray MPL-2.0 与共享引擎合规 | 再分发与共享故障域 | 独立进程、许可证与来源信息、再分发评审、失败关闭与重建 |
-| 共享引擎崩溃或 API 不可用 | 所有运行档案网络中断 | 失败关闭、全局事件、有界重启、原端口重建、不直连回退 |
-| Docker 沙箱不可用 | 安全边界削弱 | 启动前检测、默认拒绝、显式无沙箱开关与审计 |
+| 共享引擎崩溃或 API 不可用 | 代理运行档案网络中断 | 失败关闭、全局事件、有界重建活内核和原端口；直连不受影响，恢复失败才 teardown |
+| Docker 沙箱不可用 | 安全边界削弱 | 强制 seccomp 配置、非特权 userns 检查、启动前检测、默认拒绝、包含性探针、显式无沙箱开关与审计 |
+| seccomp 配置与镜像副本漂移 | 沙箱边界被静默削弱 | 配置作为版本化发布物，SHA-256 进入清单与 attestation；发布冒烟测试校验镜像副本摘要 |
+| 直连模式绕过代理保护 | 真实 IP 与流量暴露 | 桌面标记降低保证；服务端必须 `MIEN_ALLOW_DIRECT_EGRESS=1` 并审计；UI 不把直连伪装成代理 |
+| 可信代理或公开 URL 配置错误 | 限流与 Cookie 保护失效 | `MIEN_PUBLIC_URL`/`MIEN_TRUSTED_PROXIES` 启动时校验；只信任列表内代理；文档给出基线命令 |
 | Apple Silicon 模拟 amd64 | 性能下降 | 文档标注；性能基线在 x86_64 测量；原生 ARM64 后续 |
 | 上游内核缺陷 | 指纹或稳定性问题 | 固定 148、准入测试、沙箱、回滚 |
 | 依赖升级破坏兼容 | 构建或运行时故障 | 锁文件、MSRV、cargo-deny、分阶段升级 |
@@ -215,6 +226,7 @@
 | axum / sqlx / Tokio | 0.8.x / 0.8.x / 1.x |
 | Node / Bun | 22 LTS / 1.x |
 | Debian | bookworm-slim，固定镜像摘要 |
+| 容器 seccomp 配置 | `deploy/docker/seccomp/chromium.json`，发布物 SHA-256 |
 
 ## 10. 参考
 

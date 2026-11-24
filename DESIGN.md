@@ -137,7 +137,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 **The Asymmetry Rule.** 首屏的 Space rail、Live slab 与 profile field 共同形成不对称空间；禁止把三者都做成等宽卡片。
 
-**The Proof Rule.** 四段 proof 固定对应 fingerprint、proxy、runtime、isolation；未知与未运行是不同状态，不能都用灰色蒙混。
+**The Proof Rule.** 四段 proof 固定对应 fingerprint、proxy、runtime、isolation；IS 只读 Profile.isolation，即 `runtimes.last_known_isolation`（最近一次成功进入 running 的结论），不读取当前启动尝试的探测值。IS 的三值为 enforced、unsandboxed、unknown；RT 的六态与之正交。只有 RT=stopped 用中性低透明实心块；IS=unknown 始终用 `--faint` 虚线与 `?`，IS=unsandboxed 始终警告；停止不能覆盖 IS、FP 或 PX 警告。
 
 ### Responsive
 
@@ -181,7 +181,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 **Seed aura.** 每个 profile 根据种子与 Space 生成确定性的 orb 与角部 aura。Aura 让档案可辨认，不表示运行状态；同一档案的 aura 必须跨列表、详情与重开应用保持一致。
 
-**Proof strip.** 四段小条对应 fingerprint、proxy、runtime、isolation，并始终显示 `FP`/`PX`/`RT`/`IS` 标签或同等持久图例。已验证为 `--verified`，降级为 `--warning`，失败为 `--failed`，未运行或未知使用低透明中性色；标签必须可读，不能只靠位置或颜色区分。
+**Proof strip.** 四段始终显示 `FP`/`PX`/`RT`/`IS` 标签或持久图例。已验证用 `--verified`，降级用 `--warning`，失败用 `--failed`。中性低透明实心块与 stopped 文字只属于 RT 段；IS 只读 `last_known_isolation`，unknown 用 `--faint` 虚线、`?` 与 unknown 文案，unsandboxed 始终保留警告与降低保证。尚未启动的档案同时显示 RT=stopped 和 IS=unknown；停止不能清除 FP/PX/IS 警告。不得只靠位置或颜色区分。
 
 **Live slab.** 大尺寸会话卡把“正在发生什么”放在第一层：名称、线路、延迟、运行时长、fingerprint、route、uptime、sparkline 与 fail-closed 文案。
 
@@ -195,6 +195,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 - 用不等宽 profile 字段建立扫描层级；宽卡承载更长的名称或更多证据。
 - 给每个档案一个确定性身份 orb 与 aura，并在所有表面保持一致。
 - 使用四段 proof 与可读标签表达验证状态。
+- 在 proof 中区分 “未知” 与 “已停止”，并在停止档案上保留 `unsandboxed` 的降级标记。
 - 让 host-bound 限制、无头降级和 fail-closed 在界面中直接可见。
 - 保持标准控件：按钮、输入、下拉、对话框、键盘焦点。
 
@@ -206,6 +207,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 - 不要使用玻璃、霓虹、彩虹渐变文字、发光文字或大面积纯黑纯白。
 - 不要用装饰性插画、纸张纹理或印刷家具填充空白。
 - 不要把关键信息藏在 hover、右键菜单或详情页后面。
+- 不要把未知和已停止都画成同一种灰色实心 proof 块。
 - 不要伪造客户、截图、跑分或“不可检测”的承诺。
 
 ## Accessibility
@@ -229,7 +231,7 @@ Space 名称与计数可以由产品自定义；上表是首屏示例，不是�
 
 ## Reference
 
-- 已批准首屏 comp：[`docs/design/profiles-dark.png`](docs/design/profiles-dark.png)
+- 已批准首屏 comp：[`docs/design/profiles-dark.png`](docs/design/profiles-dark.png)。comp 是本地合成的布局与状态基线，档案名、节点、种子和数字均为示例，不是真实客户或生产指标；字段以 [`docs/UI-SURFACES.md`](docs/UI-SURFACES.md) 为准，comp 与字段契约冲突时以契约为准。
 - Profiles 方向契约：[`.impeccable/surfaces/ui-src-pages-profiles.md`](.impeccable/surfaces/ui-src-pages-profiles.md)
 - 产品事实：[`PRODUCT.md`](PRODUCT.md)
 - 产品需求：[`docs/PRD.md`](docs/PRD.md)

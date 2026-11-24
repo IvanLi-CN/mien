@@ -22,8 +22,8 @@
 4. 启动 fingerprint-chromium，通过该入站访问探针页；确认无直连回退。
 5. 再启动一个使用相同节点/凭据的档案；确认只创建一个出站、连接池共享。
 6. 启动一个使用不同凭据的档案；确认创建不同出站。
-7. 强杀 Xray；确认所有运行档案失败关闭、产生事件，并按原端口重建。
-8. 验证 Hysteria2；确认 TUIC 被拒绝。
+7. 强杀 Xray；确认代理档案失败关闭而直连不受影响；活且可归属内核保留绑定与原端口，有界重建后恢复；重建失败 teardown 后才进入 failed。
+8. 验证 Hysteria2（Tier B）：确认能力清单与失败标注正确，TUIC 被拒绝。
 9. 从非回环地址访问 API 和入站；确认不可达。
 10. 记录连接数、内存、启动耗时和重建耗时。
 
@@ -76,7 +76,7 @@
 
 M0 结束前必须冻结：
 
-- [`contracts/openapi.yaml`](contracts/openapi.yaml)：端点、DTO、错误、鉴权、分页。
+- [`contracts/openapi.yaml`](contracts/openapi.yaml)：端点、DTO、错误、鉴权、分页；`fingerprint-input.schema.json` 约束创建/更新请求，存储与导出仍使用 `fingerprint-spec.schema.json`。
 - [`contracts/events.schema.json`](contracts/events.schema.json)：事件枚举和 payload。
 - [`ERROR-CODES.md`](ERROR-CODES.md)：稳定错误码与 HTTP 映射。
 - [`DATABASE-SCHEMA.md`](DATABASE-SCHEMA.md)：表、约束、索引、迁移。
@@ -86,6 +86,26 @@ M0 结束前必须冻结：
 - [`TEST-FIXTURES.md`](TEST-FIXTURES.md)：测试 fixture 目录。
 
 任何契约变更必须同时更新对应 SPEC、测试和文档；不得只改代码。
+
+首个纵向切片合并前，`.github/workflows/ci-pr.yml` 的 `CI PR / required` 必须已是真实 required check，且 `contracts` job 已执行本节的 OpenAPI/schema/DDL/链接/`spec_contract_check`；不得以“M0 先写实现、之后再接 CI”跳过契约门禁。
+
+冻结后的契约必须在 CI 中通过 OpenAPI 生成差异、schema 编译、DDL 执行、内部 `$ref` 解析、链接检查与 `spec_contract_check`；任一检查失败即阻断合并。
+
+### 2.5 许可评审
+
+目标：在 M0 内闭合项目自身与第三方组件的许可义务，避免发布前返工。
+
+步骤：
+
+1. 确认项目以 Apache-2.0 发布；`LICENSE` 与 `README` 链接已就位，同一文本在 M4 随发布资产分发。
+2. 评审 Xray-core 的 MPL-2.0：独立进程分发、不链接、保留许可证与来源信息、明确 Corresponding Source 的提供方式。
+3. 评审内核的 BSD-3-Clause 与镜像内 GPL/LGPL 组件（Xvfb、openbox、x11vnc、tini、websockify、noVNC）的再分发义务。
+4. 确定 `NOTICE`、`LICENSES/`、SBOM 与许可扫描的生成方式，并把未处置许可项作为发布阻断项。
+
+通过条件：
+
+- 项目许可、第三方许可与分发方式在 `docs/THIRD-PARTY.md` 中闭合，无未决许可问题。
+- 发布物清单包含 `LICENSE`、`NOTICE`、`LICENSES/`、SBOM 与许可扫描结果。
 
 ## 3. M1：第一个纵向切片
 
@@ -120,14 +140,14 @@ M0 结束前必须冻结：
 - [ ] 内核与 Xray 清单校验通过。
 - [ ] Profiles/创建/详情/代理/内核/活动 surface 边界确认。
 - [ ] 测试 fixture 目录与所有权确认。
-- [ ] 项目自身许可证选择完成（发布前必需）。
+- [ ] 项目以 Apache-2.0 发布，`LICENSE` 与 `README` 链接就位，MPL-2.0/BSD-3-Clause 与容器组件许可义务闭合（M4 发布门禁复核）。
 - [ ] 第一个纵向切片验收标准确认。
 
 ## 5. 不阻塞开工的事项
 
-以下可以在 M1/M2 并行推进，不阻塞第一个切片：
+以下可以在 M1/M2 并行推进，不阻塞第一个切片；但 `CI PR / required`、`contracts` job 与链接/schema/DDL 检查必须先于首个切片就位，不属于可并行事项：
 
-- GitHub Actions CI/release workflow、AdHoc 打包、SBOM/许可构建。
+- release workflow、AdHoc 打包、SBOM/许可构建；PR CI required check 仍按 2.4 先行落地。
 - 10 档案容量与 24 小时浸泡。
 - noVNC 之外的远程查看增强。
 - 订阅、节点测速、多节点调度和 TUIC。

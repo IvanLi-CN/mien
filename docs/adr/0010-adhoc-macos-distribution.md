@@ -12,10 +12,10 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 
 ## 决策
 
-- macOS 应用、嵌套的 fingerprint-chromium、Xray-core 和 frameworks 使用 AdHoc 签名：`codesign --force --sign - --timestamp=none --options runtime`。
+- macOS 应用、嵌套的 fingerprint-chromium 及全部 helper、Xray-core 和 frameworks 使用 AdHoc 签名及 hardened runtime。JIT entitlements 只传给应用、内核和 renderer/GPU/utility helper；其他 helper 逐个签名但不授 JIT。签名清单必须枚举 bundle 内外每个可执行文件角色，未分类文件阻断打包；Xray/frameworks 不带 JIT。
 - 先逐个签嵌套二进制，再签应用；用 `codesign --verify --deep --strict --verbose=2` 验证结构完整性，用 `codesign -dv --verbose=4` 断言 `Signature=adhoc`。
 - 不执行 `notarytool`、`stapler` 或 Gatekeeper 成功验证。`spctl --assess` 对 AdHoc 应用预期失败，CI 只记录这个预期结果。
-- 发布物提供 `SHA256SUMS`、SBOM、许可证、已知限制和 Tauri 更新清单。仓库计划支持时，再为 DMG 和容器 digest 生成 GitHub artifact attestation。
+- 发布物提供 `SHA256SUMS`、SBOM、许可证、已知限制和 Tauri 更新清单，并必须为 DMG 和容器 digest 生成 GitHub artifact attestation。
 - macOS 更新使用 Tauri 的独立更新签名密钥，和 Apple 代码签名无关；客户端拒绝未签名或降级的更新包。
 - 发布由 GitHub Actions 的 `release.yml` 执行，由手动 `release_target` 触发；tag 只在 Release 阶段创建或验证，`release` environment 需要人工批准。target、reservation 和 recovery 见 [`ADR-0011`](0011-manual-release-identity.md)。
 - 不在应用、安装器或发布脚本中自动移除 `com.apple.quarantine`；发布说明要求用户先校验 SHA-256 或 attestation，再手动放行。
@@ -38,11 +38,14 @@ Mien 首个发布面向 macOS Apple Silicon。常规 macOS 分发需要 Develope
 - 自动更新仍可工作，但信任来自 Tauri 更新签名，而不是 Apple 签名；更新密钥成为关键发布资产。
 - GitHub Actions 的 `release` environment、tag 保护、artifact attestation 和发布后校验成为主要发布控制。
 - 发布说明必须包含 Gatekeeper 处理步骤，禁止建议全局关闭 Gatekeeper。
+- 应用、Chromium 内核与每个 renderer/GPU/utility helper 必须传入 JIT entitlements，并逐个验证两项权限与真实页面加载；其他 helper 仍须逐个 AdHoc 签名与验证，但与 Xray/frameworks 一样不带 JIT。签名清单必须枚举实际可执行文件及角色，拒绝未分类文件，不能把“全部 helper 均签名”误写成“全部 helper 均授予 JIT”。
+- ADR-0002 允许多个内核版本并存时，bundle 外的内核版本也必须由同一签名步骤签名并携带 JIT entitlements，安装到受控路径；不得写入已签名的 `.app` 内部，否则会破坏 bundle seal。启动前按安装记录校验签名与 entitlements，未签名或权限不符的版本拒绝启动。
 
 ## 验证
 
-- `codesign --verify --deep --strict --verbose=2` 对应用、内核和 Xray 通过。
+- `codesign --verify --deep --strict --verbose=2` 对应用、bundle 内内核、bundle 外已安装内核和 Xray 通过。
 - `codesign -dv --verbose=4` 显示 `Signature=adhoc`，且不存在 Developer ID TeamIdentifier。
+- `codesign -d --entitlements :-` 对应用、bundle 内外 Chromium 内核及每个 renderer/GPU/utility helper 只显示 `com.apple.security.cs.allow-jit` 与 `com.apple.security.cs.allow-unsigned-executable-memory`，Xray-core 与 frameworks 不显示 JIT 权限；签名后的应用可在干净机器启动并成功加载真实页面。
 - `spctl --assess --type execute` 预期拒绝；CI 记录结果但不把拒绝当作失败。
 - `SHA256SUMS` 可校验所有发布资产；Tauri 更新清单签名可验证，并拒绝降级。
 - 在干净 macOS 13+ 机器按发布说明完成首次启动和更新测试。

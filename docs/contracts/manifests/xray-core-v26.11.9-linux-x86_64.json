@@ -7,19 +7,20 @@
   "source_url": "https://github.com/XTLS/Xray-core/releases/tag/v26.11.9",
   "connection_reuse": true,
   "protocols": {
-    "http": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none", "tls"]},
-    "https": {"tier": "A", "transports": ["tcp"], "tls_modes": ["tls"]},
-    "socks5": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"]},
-    "vless": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls", "reality"]},
-    "vmess": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls"]},
-    "shadowsocks": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"], "methods": ["aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm"], "plugins": []},
-    "trojan": {"tier": "A", "transports": ["tcp", "ws"], "tls_modes": ["tls"]},
-    "hysteria2": {"tier": "B", "transports": ["quic"], "tls_modes": ["tls"], "notes": "Requires UDP egress."},
-    "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"]}
+    "http": {"tier": "basic", "transports": ["tcp"], "tls_modes": ["none", "tls"], "obfuscation": [], "notes": "Basic tier: username/password and remote DNS through the shared engine; outside the Tier A/B release gates."},
+    "https": {"tier": "basic", "transports": ["tcp"], "tls_modes": ["tls"], "obfuscation": [], "notes": "Basic tier: HTTP CONNECT over TLS with username/password and remote DNS; outside the Tier A/B release gates."},
+    "socks5": {"tier": "basic", "transports": ["tcp"], "tls_modes": ["none"], "obfuscation": [], "notes": "Basic tier: username/password and domain-name addressing; outside the Tier A/B release gates."},
+    "vless": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls", "reality"], "obfuscation": []},
+    "vmess": {"tier": "A", "transports": ["tcp", "ws", "grpc"], "tls_modes": ["none", "tls"], "obfuscation": []},
+    "shadowsocks": {"tier": "A", "transports": ["tcp"], "tls_modes": ["none"], "methods": ["aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm"], "plugins": [], "obfuscation": []},
+    "trojan": {"tier": "A", "transports": ["tcp", "ws"], "tls_modes": ["tls"], "obfuscation": []},
+    "hysteria2": {"tier": "B", "transports": ["quic"], "tls_modes": ["tls"], "obfuscation": [], "notes": "Tier B: requires UDP egress and container UDP allowance; no obfuscation method is declared for Xray v26.11.9, so obfuscated configs are rejected."},
+    "wireguard": {"tier": "B", "transports": ["udp"], "tls_modes": ["none"], "obfuscation": [], "notes": "Tier B: UDP-only outbound with a mandatory tunnel DNS; DNS must be an IPv4/IPv6 literal, and missing or hostname values are rejected. Needs UDP egress and independent end-to-end verification."}
   },
   "limitations": [
     "TUIC is not supported in v1.",
     "Shared engine is a single point of failure for all running profiles.",
-    "Management API is loopback-only and has no application-level authentication."
+    "Management API is loopback-only and has no application-level authentication.",
+    "Basic-tier protocols are not part of the Tier A/B release gates; they must still fail closed and never silently downgrade to direct egress."
   ]
 }

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mien.local/contracts/fingerprint-input.schema.json",
+  "title": "Mien fingerprint input",
+  "description": "Create and update input for a profile fingerprint. The seed is intentionally absent: every create and duplicate generates a fresh server-side seed, and update cannot change it. Stored, exported and imported specs use fingerprint-spec.schema.json, which requires seed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "platform",
+    "platform_version",
+    "brand",
+    "brand_version",
+    "hardware_concurrency",
+    "languages",
+    "timezone",
+    "window",
+    "webrtc",
+    "network"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "platform": {
+      "enum": ["windows", "macos", "linux"]
+    },
+    "platform_version": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
+    },
+    "brand": {
+      "enum": ["Chrome", "Edge", "Opera", "Vivaldi"]
+    },
+    "brand_version": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
+    },
+    "hardware_concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256,
+      "description": "Realistic core count for the persona platform. Validate against the installed kernel manifest flags.fingerprint-hardware-concurrency.per_platform_values."
+    },
+    "languages": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+      }
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_+\\-/]+$"
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 320,
+          "maximum": 7680
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 240,
+          "maximum": 4320
+        }
+      },
+      "description": "Canonical window size. This is the only place window size is stored."
+    },
+    "spoof": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-category spoof toggles. Omitted categories default to enabled. Only categories declared by the installed kernel capability manifest may appear.",
+      "properties": {
+        "font": {"type": "boolean", "default": true},
+        "audio": {"type": "boolean", "default": true},
+        "canvas": {"type": "boolean", "default": true},
+        "clientrects": {"type": "boolean", "default": true},
+        "gpu": {"type": "boolean", "default": true}
+      }
+    },
+    "webrtc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "disable_non_proxied_udp": {"type": "boolean", "default": true, "description": "Omitted means true. false is an advanced unsafe setting requiring explicit confirmation and audit."}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doh_mode", "ipv6_mode"],
+      "properties": {
+        "doh_mode": {"enum": ["disabled"]},
+        "ipv6_mode": {"enum": ["block"]}
+      }
+    }
+  }
+}

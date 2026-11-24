@@ -12,7 +12,9 @@
 }
 ```
 
-`code` 是稳定契约；`message` 是给人阅读的英文或本地化消息，不作为程序分支依据。`details` 只能包含字段级错误、资源标识和非敏感诊断；不得包含代理凭据、UUID、私钥、Cookie、Token、完整分享链接或目标 URL。
+`code` 是稳定契约；`message` 是给人阅读的英文或本地化消息，不作为程序分支依据。`details` 只能包含字段级错误、资源标识和非敏感诊断；不得包含代理凭据、UUID、私钥、Cookie、Token、完整分享链接、目标 URL 或任何 capability URL。
+
+本文的代码集合就是 `ErrorCode` 枚举的契约。OpenAPI 的 `Error.code` 必须引用由本目录生成的 `ErrorCode` 枚举；事件 `error_code` 与测试 fixture 的取值必须是该集合成员（事件字段允许 `null`）。CI 双向比对本文与契约枚举，出现新增、删除或 HTTP 映射漂移即失败（见第 7 节）。
 
 ## 1. 认证与授权
 
@@ -22,27 +24,41 @@
 | `AUTH_INVALID` | 401 | 否 | 会话过期、Token 无效或已被撤销 |
 | `AUTH_RATE_LIMITED` | 429 | 是 | 登录或认证尝试超过限流 |
 | `AUTH_CSRF_INVALID` | 403 | 否 | Cookie 会话写操作缺少或使用了错误 CSRF Token |
+| `AUTH_ORIGIN_INVALID` | 403 | 否 | `Origin`/`Referer` 不在允许列表；适用于 Cookie 写请求与 WebSocket 升级 |
 | `FORBIDDEN_SCOPE` | 403 | 否 | Token scope 不允许该操作 |
 | `AUTH_PASSWORD_CHANGE_REQUIRED` | 403 | 否 | 首次登录必须先修改初始密码 |
-| `EVENT_TICKET_INVALID` | 401 | 否 | WebSocket 一次性票据缺失、过期或已使用 |
+| `EVENT_TICKET_INVALID` | 401 | 否 | 无有效会话 Cookie 时，WebSocket 一次性票据缺失、过期或已使用 |
+| `EVENT_REPLAY_WINDOW_EXPIRED` | 409 | 否 | `after` 游标早于事件保留窗口；客户端必须重新同步，不得静默跳过事件 |
 
 ## 2. 资源与状态
 
 | 错误码 | HTTP | 可重试 | 含义 |
 | --- | --- | --- | --- |
-| `PROFILE_NOT_FOUND` | 404 | 否 | 档案不存在或已永久删除 |
+| `PROFILE_NOT_FOUND` | 404 | 否 | 档案行不存在（含已永久删除） |
+| `PROFILE_DELETED` | 409 | 否 | 档案处于软删除 `deleted` 状态；只阻断启动或会改变档案的写操作，restore、purge、读取与删除重试仍可执行 |
+| `PROFILE_NOT_DELETED` | 409 | 否 | `permanent=true` 只接受 `deleted` 档案；对 `active`/`archived` 的永久删除请求被拒绝 |
+| `PROFILE_PURGE_FAILED` | 500 | 是 | 档案目录移动/移除失败；软删除时行保持原状态，purge 时行保留为 `deleted`，并写入 `deletion_error` 供重试 |
 | `PROXY_NOT_FOUND` | 404 | 否 | 代理配置不存在 |
 | `RUNTIME_NOT_FOUND` | 404 | 否 | 档案没有受监督运行时 |
 | `TOKEN_NOT_FOUND` | 404 | 否 | API Token 不存在 |
 | `PROFILE_ARCHIVED` | 409 | 否 | 档案已归档，不能执行该操作 |
-| `RUNTIME_CONFLICT` | 409 | 否 | 同一档案已有其他启动/停止事务 |
-| `IDEMPOTENCY_CONFLICT` | 409 | 否 | 相同幂等键携带了不同请求 |
-| `RESOURCE_IN_USE` | 409 | 否 | 代理或引擎仍被运行档案引用 |
-| `FINGERPRINT_SEED_CONFLICT` | 409 | 否 | 指纹种子已被其他档案使用 |
+| `RUNTIME_CONFLICT` | 409 | 否 | 同一档案存在非终态运行时（starting/running/stopping）或在途启动/停止事务；并发启动、迁移、删除等操作需先解决状态冲突 |
+| `IDEMPOTENCY_CONFLICT` | 409 | 否 | 相同幂等键携带了不同请求；或该响应含一次性秘密（`tokensCreate`）而无法重放 |
+| `RESOURCE_IN_USE` | 409 | 否 | 代理仍被任意档案引用，或引擎仍被运行时引用；拒绝删除，不静默清空关联 |
 | `GROUP_NAME_CONFLICT` | 409 | 否 | 分组名称重复 |
 | `TAG_NAME_CONFLICT` | 409 | 否 | 标签名称重复 |
 | `PROFILE_IMPORT_CONFLICT` | 409 | 否 | 导入档案与现有档案冲突且未选择新 ID |
-| `VIEWER_NOT_AVAILABLE` | 404 | 否 | 查看器未启用或运行时没有可查看显示 |
+| `PROFILE_IMPORT_CLEANUP_FAILED` | 500 | 是 | 导入事务已回滚，但本请求新目录清理失败；无档案行残留，保留无秘密请求清单，由后台/启动对账重试，以 request_id 关联，不重建软删除行 |
+| `PROFILE_RESTORE_UNAVAILABLE` | 409 | 否 | 回收站目录缺失或已不可恢复；行保持 `deleted`，必须重试 purge 或人工处理 |
+| `VIEWER_NOT_AVAILABLE` | 404 | 否 | 查看器未启用或运行时没有可查看显示；运行时行缺失时优先返回 `RUNTIME_NOT_FOUND` |
+| `GROUP_NOT_FOUND` | 404 | 否 | 分组不存在 |
+| `TAG_NOT_FOUND` | 404 | 否 | 标签不存在 |
+
+找不到资源的语义必须区分“行不存在”和“资源仍存在但不可操作”：软删除且未 purge 的档案对启动或会改变档案的写操作返回 `PROFILE_DELETED`（409），不返回 404；restore、purge、读取和删除重试必须继续可用；已 purge 的档案与从未存在的 ID 返回 `PROFILE_NOT_FOUND`。查看器请求先检查档案与运行时，再检查查看器能力，不得用 `VIEWER_NOT_AVAILABLE` 掩盖缺失的运行时。
+
+restore 前必须确认 `<data-root>/trash/<profile-id>` 仍是目录；目录缺失时返回 `PROFILE_RESTORE_UNAVAILABLE`（409），不得创建空目录。该行保持 `deleted`，`deletion_error` 不变（可为 NULL，不由 restore 写入新值），由 purge 重试完成清理；purge 失败时才写 `deletion_error`。
+
+`tokensCreate` 接受 `Idempotency-Key`，但明文 Token 永远不重放：相同或不同请求体的重复键都必须返回 `IDEMPOTENCY_CONFLICT`（409），不得返回缓存的 201 响应；这是该码对“不可重放响应”的唯一扩展语义。其他写操作的相同键与相同请求仍返回原响应，只有不同请求体才冲突。
 
 ## 3. 输入与能力
 
@@ -63,27 +79,33 @@
 | --- | --- | --- | --- |
 | `QUOTA_EXCEEDED` | 429 | 是 | 并发运行档案数达到上限 |
 | `INSUFFICIENT_RESOURCES` | 503 | 是 | 内存、磁盘或文件描述符不足 |
-| `KERNEL_NOT_FOUND` | 500 | 否 | 已安装内核缺失 |
-| `KERNEL_CHECKSUM_MISMATCH` | 500 | 否 | 内核文件校验失败 |
-| `PROXY_ENGINE_CHECKSUM_MISMATCH` | 500 | 否 | Xray 文件校验失败 |
+| `KERNEL_NOT_FOUND` | 500 | 否 | 已安装内核的可执行文件缺失 |
+| `KERNEL_CHECKSUM_MISMATCH` | 500 | 否 | 内核发布资产或可执行文件摘要不符 |
+| `KERNEL_VERSION_NOT_FOUND` | 404 | 否 | 请求激活的内核版本没有安装记录 |
+| `PROXY_ENGINE_NOT_FOUND` | 500 | 否 | 已安装 Xray 的可执行文件缺失 |
+| `PROXY_ENGINE_CHECKSUM_MISMATCH` | 500 | 否 | Xray 发布资产或可执行文件摘要不符 |
+| `PROXY_ENGINE_VERSION_NOT_FOUND` | 404 | 否 | 请求激活的协议引擎版本没有安装记录 |
+
+安装记录同时保存 `asset_sha256`（下载的发布资产）与 `binary_sha256`（解包后可执行文件）。安装时校验 `asset_sha256`，运行时只校验 `binary_sha256`；文件缺失与摘要不符是两类不同错误，不得都用 `*_CHECKSUM_MISMATCH`。
 
 ## 5. 代理引擎
 
-| 错误码 | HTTP | 可重试 | 含义 |
-| --- | --- | --- | --- |
-| `PROXY_ENGINE_NOT_READY` | 503 | 是 | 共享引擎尚未启动或 API 尚未就绪 |
-| `PROXY_ENGINE_API_UNAVAILABLE` | 503 | 是 | Xray 管理 API 连接失败 |
-| `PROXY_ENGINE_START_FAILED` | 500 | 否 | 共享引擎无法启动 |
-| `PROXY_ENGINE_CRASHED` | 503 | 是 | 共享引擎异常退出，正在重启 |
-| `PROXY_INBOUND_CONFLICT` | 409 | 是 | 运行档案入站端口或标签已被占用 |
-| `PROXY_OUTBOUND_REFCOUNT_MISMATCH` | 500 | 否 | 共享出站引用计数对账失败 |
-| `PROXY_CONNECTION_REFUSED` | 502 | 是 | 节点拒绝连接或端口不可达 |
-| `PROXY_AUTH_FAILED` | 502 | 否 | 节点认证失败 |
-| `PROXY_TLS_FAILED` | 502 | 否 | TLS/REALITY 握手或证书校验失败 |
-| `PROXY_TIMEOUT` | 502 | 是 | 连接或请求超时 |
-| `PROXY_CONNECTION_FAILED` | 502 | 是 | 未归类的连接失败；不得替代上述稳定分类 |
-| `PROXY_DNS_FAILED` | 502 | 是 | 目标域名或节点解析失败 |
-| `PROXY_NOT_READY` | 503 | 是 | 代理检查未完成或未通过 |
+| 错误码 | 返回位置 | HTTP | 可重试 | 含义 |
+| --- | --- | --- | --- | --- |
+| `PROXY_ENGINE_NOT_READY` | 错误响应 | 503 | 是 | 共享引擎尚未启动或 API 尚未就绪 |
+| `PROXY_ENGINE_API_UNAVAILABLE` | 错误响应 | 503 | 是 | Xray 管理 API 连接失败 |
+| `PROXY_ENGINE_START_FAILED` | 错误响应 | 500 | 否 | 共享引擎无法启动 |
+| `PROXY_ENGINE_CRASHED` | 错误响应、事件 | 503 | 是 | 共享引擎异常退出，正在重启 |
+| `PROXY_INBOUND_CONFLICT` | 错误响应 | 409 | 是 | 运行档案入站端口或标签已被占用 |
+| `PROXY_OUTBOUND_REFCOUNT_MISMATCH` | 错误响应 | 500 | 否 | 共享出站引用计数对账失败 |
+| `PROXY_CONNECTION_REFUSED` | `ProxyCheck`、事件 | 200 | 是 | 节点拒绝连接或端口不可达 |
+| `PROXY_AUTH_FAILED` | `ProxyCheck`、事件 | 200 | 否 | 节点认证失败 |
+| `PROXY_TLS_FAILED` | `ProxyCheck`、事件 | 200 | 否 | TLS/REALITY 握手或证书校验失败 |
+| `PROXY_TIMEOUT` | `ProxyCheck`、事件 | 200 | 是 | 连接或请求超时 |
+| `PROXY_CONNECTION_FAILED` | `ProxyCheck`、事件 | 200 | 是 | 未归类的连接失败；不得替代上述稳定分类 |
+| `PROXY_DNS_FAILED` | `ProxyCheck`、事件 | 200 | 是 | 目标域名或节点解析失败 |
+
+代理检查（`POST /api/v1/proxies/{id}/check` 与分享链接检查）成功与失败都以 HTTP 200 返回 `ProxyCheck`：`ok=false` 时网络错误放在 `error_code`，`message` 为脱敏说明，延迟、出口 IP 和地区字段可为 null；事件 `proxy.check.completed` 携带同一 `error_code`。该字段只能取下面六个 `ProxyCheckErrorCode`，OpenAPI 与事件 schema 使用同一子集，不得接受 `PROFILE_NOT_FOUND` 等控制面错误。节点网络失败不属于控制面 HTTP 错误，不得用未声明的 502 表达。只有认证、授权、校验、存储、引擎未就绪等控制面失败才使用 HTTP 错误响应；检查未通过只是启动前警告，不阻断启动，因此不提供单独的“检查未就绪”错误码。
 
 ## 6. 运行时
 
@@ -91,8 +113,11 @@
 | --- | --- | --- | --- |
 | `RUNTIME_SPAWN_FAILED` | 500 | 否 | 内核进程无法创建 |
 | `RUNTIME_CDP_TIMEOUT` | 500 | 是 | CDP 在超时内未就绪 |
-| `SANDBOX_UNAVAILABLE` | 500 | 否 | Docker 中无法确认 Chromium 沙箱 |
+| `SANDBOX_UNAVAILABLE` | 500 | 否 | 任何宿主无法确认 Chromium 沙箱，或服务端无沙箱模式未通过包含性探针 |
+| `DIRECT_EGRESS_DISABLED` | 403 | 否 | 服务端未设置 `MIEN_ALLOW_DIRECT_EGRESS=1`，拒绝启动直连档案 |
 | `DISPLAY_UNAVAILABLE` | 503 | 是 | 有头模式所需 Xvfb/宿主显示不可用 |
+
+`SANDBOX_UNAVAILABLE` 在创建代理资源与启动进程之前返回。服务端显式 `ALLOW_UNSANDBOXED=1` 时必须同时通过包含性探针与独立 UID/网络边界，否则仍然拒绝；允许时运行时 `isolation=unsandboxed` 且必须写审计事件。桌面端没有无沙箱启动例外：无法确认 seatbelt/restricted-token 时拒绝启动。
 
 
 ## 7. 存储与内部
@@ -108,6 +133,10 @@
 
 - 新增错误码必须同时更新本文、OpenAPI、事件 schema 的相关枚举和测试。
 - 错误码一旦发布，只能弃用，不能改变语义后复用。
-- 代理凭据、Cookie、Token、UUID、私钥和完整分享链接永远不能进入 `message` 或 `details`。
+- 代理凭据、Cookie、Token、UUID、私钥、完整分享链接、目标 URL 与任何 capability URL（一次性查看器/票据 URL、CDP 端点）永远不能进入 message 或 details；自由文本与结构化数组都必须脱敏。
 - 可重试错误必须返回 `retryable=true`；客户端按指数退避重试，并设置上限。
 - UI 必须能根据 `code` 区分配置、引擎、节点和目标站点问题。
+- CI 必须同时校验：本文代码集合与 OpenAPI `Error.code` 枚举双向一致；每个代码的 HTTP 与 `retryable` 映射一致；事件 `error_code` 与 fixture 取值经契约测试验证属于该集合（允许 `null`）；生成物 `git diff --exit-code` 无漂移。代理检查的 HTTP 200 `ProxyCheck` 与 `proxy.check.completed` 事件只能使用第 5 节的 `ProxyCheckErrorCode`；运行时资源的 200/202 响应中的 `error_code` 是资源状态，使用完整 `ErrorCode`，不属于“成功响应包装错误”的例外。
+- 每个错误码至少有一个 `fixtures/api/errors/` 响应样例；`ProxyCheck` 错误还要有 `ok=false` 的 200 响应样例。没有样例或样例与目录不一致的代码不得发布。
+- 代码不得只存在于实现或 OpenAPI：目录是契约来源，枚举由目录生成或逐项校验；发现目录外代码、未使用代码或未声明状态码即构建失败。
+- 目录是错误码唯一契约源；OpenAPI 的 `ErrorCode` 与事件 schema 的 `errorCode` 都由目录生成，生成物提交后由 `git diff --exit-code` 校验，不手写第二份列表。
