@@ -49,7 +49,7 @@ flowchart TD
 | `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bun run license:check`、`bunx biome check .`、`bunx tsc --noEmit`、`actionlint` | Rust、前端依赖与静态检查；前端许可扫描失败阻断；不使用 `continue-on-error` |
 | `rust` | `cargo nextest run --workspace` | 单元和库级集成；失败上传 nextest JUnit 报告 |
 | `web` | `bun install --frozen-lockfile`、`bun run typecheck`、`bun run test`、`bun run build` | 前端类型、测试和静态资源构建 |
-| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 与相对链接/锚点解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 与 AppArmor 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；生成差异、未知错误码、映射漂移、断链或任一校验失败均阻断 |
+| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 与相对链接/锚点解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 与 AppArmor 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture、`cargo run -q -p xtask -- licenses --check` | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；许可报告漂移、生成差异、未知错误码、映射漂移、断链或任一校验失败均阻断；本任务只给 T1 workflow 补丁建议，不直接修改 workflow |
 | `integration` | 服务端启动、SQLite、档案生命周期、API 鉴权、代理配置与 Xray fixture | 使用真实进程和临时数据目录；不连接外部网络 |
 | `e2e smoke` | Docker `linux/amd64` + Xvfb + Playwright | PR 只跑一条代表性有头启动/停止链路；完整矩阵留在 main 与 release |
 | `required` | 聚合 `needs` 结果 | `if: always()`；任何上游 `failure`、`cancelled` 或意外 `skipped` 都判失败 |
@@ -207,6 +207,8 @@ GATE-001 由 gate-release 在产物/attestation/人工测试完成后评估；te
 3. 阶段 3：加入 Docker e2e smoke、内核下载校验和代理矩阵 fixture。
 4. 阶段 4：加入 macOS 打包 smoke、AdHoc 签名与 entitlements 验证、SBOM 与 Trivy。
 5. 阶段 5：启用 `release` environment、draft reservation、手动 `release_target` workflow、tag 保护（`Restrict updates` + `Restrict deletions` + `Restrict creations`，仅 release App 绕过 creations）、强制 attestation、更新清单和发布后验证；加入 Docker 双构建 digest 比对与 Apache-2.0 `LICENSE`/`NOTICE`/`LICENSES/` 门禁（对应 ROADMAP M4）。
+
+许可 contracts job 补丁建议（本任务不直接改 T1 workflow）：在依赖安装与 checkout 后加入 `cargo run -q -p xtask -- licenses --check`，失败直接阻断 `CI PR / required`；生成阶段由 release 的 `macos-arm64`、`docker-amd64` 分别生成 Rust/Bun 与容器 SBOM，并由 `stage-release` 汇总 `NOTICE`、`LICENSES/`、`third-party-report.json` 和 SBOM。该结构化检查不下载依赖。
 
 ## 11. 参考
 

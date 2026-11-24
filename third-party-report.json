@@ -1,0 +1,3675 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/third-party/generate.mjs",
+  "inputs": [
+    "docs/contracts/manifests/*.json",
+    "Cargo.lock",
+    "bun.lock",
+    "deploy/docker/*"
+  ],
+  "outputs": [
+    "NOTICE",
+    "LICENSES/",
+    "third-party-report.json"
+  ],
+  "licenseStatus": "pass",
+  "releaseStatus": "blocked",
+  "unresolvedLicenseItems": [
+    "Container image digest and package-level license evidence are supplied by the release docker-amd64 job.",
+    "Exact license texts for generated SPDX identifiers are supplied from pinned package/source archives by release staging; this offline generator never downloads them."
+  ],
+  "releaseBlockers": [
+    "Do not publish until docker-amd64 has supplied the image digest, package SBOM, and exact GPL/LGPL/MPL source/license evidence.",
+    "Do not publish until release staging replaces any SPDX provenance stub in LICENSES/ with exact license text and attribution.",
+    {
+      "id": "RUSTSEC-2026-0459",
+      "package": "libsqlite3-sys 0.30.1",
+      "class": "vulnerability",
+      "evidencePath": "deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2026-0009",
+      "package": "time 0.3.45",
+      "class": "vulnerability",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until upgraded or the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2026-0194",
+      "package": "quick-xml 0.38.4 via plist 1.8.0",
+      "class": "vulnerability",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until upgraded or the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2026-0195",
+      "package": "quick-xml 0.38.4 via plist 1.8.0",
+      "class": "vulnerability",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until upgraded or the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2024-0370",
+      "package": "proc-macro-error 1.0.4",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0075",
+      "package": "unic-char-range 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0080",
+      "package": "unic-common 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0081",
+      "package": "unic-char-property 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0098",
+      "package": "unic-ucd-version 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0100",
+      "package": "unic-ucd-ident 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    }
+  ],
+  "securityExceptions": [
+    {
+      "id": "RUSTSEC-2026-0459",
+      "package": "libsqlite3-sys 0.30.1",
+      "class": "vulnerability",
+      "evidencePath": "deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2026-0009",
+      "package": "time 0.3.45",
+      "class": "vulnerability",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until upgraded or the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2026-0194",
+      "package": "quick-xml 0.38.4 via plist 1.8.0",
+      "class": "vulnerability",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until upgraded or the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2026-0195",
+      "package": "quick-xml 0.38.4 via plist 1.8.0",
+      "class": "vulnerability",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until upgraded or the documented reachability decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2024-0370",
+      "package": "proc-macro-error 1.0.4",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0075",
+      "package": "unic-char-range 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0080",
+      "package": "unic-common 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0081",
+      "package": "unic-char-property 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0098",
+      "package": "unic-ucd-version 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    },
+    {
+      "id": "RUSTSEC-2025-0100",
+      "package": "unic-ucd-ident 0.9.0",
+      "class": "unmaintained",
+      "evidencePath": "src-tauri/deny.toml",
+      "disposition": "security exception; not a license exception",
+      "releaseImpact": "blocking until removed or the documented maintenance decision is accepted for the release"
+    }
+  ],
+  "allowedLicenses": {
+    "linked": [
+      "Apache-2.0",
+      "Apache-2.0 WITH LLVM-exception",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "ISC",
+      "MIT",
+      "Unicode-3.0",
+      "Zlib"
+    ],
+    "frontend": [
+      "0BSD",
+      "Apache-2.0",
+      "Apache-2.0 WITH LLVM-exception",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "BlueOak-1.0.0",
+      "CC0-1.0",
+      "ISC",
+      "MIT",
+      "Unicode-3.0",
+      "Unlicense",
+      "Zlib"
+    ],
+    "runtime": [
+      "0BSD",
+      "Apache-2.0",
+      "Apache-2.0 WITH LLVM-exception",
+      "BSD-2-Clause",
+      "BSD-3-Clause",
+      "BSL-1.0",
+      "BlueOak-1.0.0",
+      "CC-BY-SA-3.0",
+      "CC0-1.0",
+      "GPL-2.0-or-later",
+      "GPL-3.0-or-later",
+      "ISC",
+      "LGPL-2.1-or-later",
+      "LGPL-3.0",
+      "MIT",
+      "MPL-2.0",
+      "OFL-1.1",
+      "Unicode-3.0",
+      "Unlicense",
+      "Zlib"
+    ]
+  },
+  "components": [
+    {
+      "id": "bun:@biomejs/biome@2.6.9",
+      "version": "2.6.9",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/biomejs/biome.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@biomejs/biome/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@hookform/resolvers@5.9.2",
+      "version": "5.9.2",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/react-hook-form/resolvers.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@hookform/resolvers/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@playwright/test@1.65.1",
+      "version": "1.65.1",
+      "license": "Apache-2.0",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/microsoft/playwright.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@playwright/test/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@radix-ui/react-dialog@1.3.1",
+      "version": "1.3.1",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/radix-ui/primitives.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@radix-ui/react-dialog/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@radix-ui/react-dropdown-menu@2.2.1",
+      "version": "2.2.1",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/radix-ui/primitives.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@radix-ui/react-dropdown-menu/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@redocly/cli@2.83.0",
+      "version": "2.83.0",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/Redocly/redocly-cli.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@redocly/cli/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@tailwindcss/vite@4.3.5",
+      "version": "4.3.5",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/tailwindlabs/tailwindcss.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@tailwindcss/vite/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@tanstack/react-query@5.108.4",
+      "version": "5.108.4",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/TanStack/query.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@tanstack/react-query/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@tauri-apps/api@2.11.1",
+      "version": "2.11.1",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/tauri-apps/tauri.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@tauri-apps/api/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@testing-library/jest-dom@6.9.1",
+      "version": "6.9.1",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/testing-library/jest-dom",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@testing-library/jest-dom/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@testing-library/react@16.3.3",
+      "version": "16.3.3",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/testing-library/react-testing-library",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@testing-library/react/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@types/bun@1.4.5",
+      "version": "1.4.5",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@types/bun/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@types/node@22.20.5",
+      "version": "22.20.5",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@types/node/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@types/react-dom@19.3.0",
+      "version": "19.3.0",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@types/react-dom/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@types/react@19.3.0",
+      "version": "19.3.0",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@types/react/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:@vitejs/plugin-react@5.2.0",
+      "version": "5.2.0",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/vitejs/vite-plugin-react.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/@vitejs/plugin-react/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:ajv-formats@3.0.1",
+      "version": "3.0.1",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/ajv-validator/ajv-formats.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/ajv-formats/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:ajv@8.20.0",
+      "version": "8.20.0",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "ajv-validator/ajv",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/ajv/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:i18next@25.10.10",
+      "version": "25.10.10",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/i18next/i18next.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/i18next/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:jsdom@26.1.0",
+      "version": "26.1.0",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/jsdom/jsdom.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/jsdom/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:openapi-fetch@0.13.8",
+      "version": "0.13.8",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/openapi-ts/openapi-typescript",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/openapi-fetch/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:react-dom@19.3.1",
+      "version": "19.3.1",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/react/react.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/react-dom/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:react-hook-form@7.92.0",
+      "version": "7.92.0",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/react-hook-form/react-hook-form",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/react-hook-form/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:react-i18next@15.7.4",
+      "version": "15.7.4",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/i18next/react-i18next.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/react-i18next/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:react-router@7.18.6",
+      "version": "7.18.6",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/remix-run/react-router",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/react-router/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:react@19.3.1",
+      "version": "19.3.1",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/react/react.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/react/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:tailwindcss@4.3.5",
+      "version": "4.3.5",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/tailwindlabs/tailwindcss.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/tailwindcss/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:typescript@5.9.3",
+      "version": "5.9.3",
+      "license": "Apache-2.0",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "https://github.com/microsoft/TypeScript.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/typescript/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:vite@7.3.8",
+      "version": "7.3.8",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/vitejs/vite.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/vite/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:vitest@3.2.7",
+      "version": "3.2.7",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/vitest-dev/vitest.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/vitest/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:yaml@2.9.1",
+      "version": "2.9.1",
+      "license": "ISC",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "github:eemeli/yaml",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/yaml/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "bun:zod@4.6.7",
+      "version": "4.6.7",
+      "license": "MIT",
+      "distribution": "bundled-static-assets",
+      "obligations": "Retain the package license notice and source URL in the release license bundle; unknown expressions fail the PR gate.",
+      "sourceUrl": "git+https://github.com/colinhacks/zod.git",
+      "evidencePaths": [
+        "bun.lock",
+        "package.json",
+        "node_modules/zod/package.json"
+      ],
+      "policy": "frontend"
+    },
+    {
+      "id": "cargo:allocator-api2@0.2.21",
+      "version": "0.2.21",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/zakarumych/allocator-api2",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:anstream@1.0.0",
+      "version": "1.0.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-cli/anstyle.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:anstyle-parse@1.0.0",
+      "version": "1.0.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-cli/anstyle.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:anstyle-query@1.1.5",
+      "version": "1.1.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-cli/anstyle.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:anstyle-wincon@3.0.11",
+      "version": "3.0.11",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-cli/anstyle.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:anstyle@1.0.14",
+      "version": "1.0.14",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-cli/anstyle.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:anyhow@1.0.105",
+      "version": "1.0.105",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/anyhow",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:atoi@2.0.0",
+      "version": "2.0.0",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/pacman82/atoi-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:autocfg@1.5.1",
+      "version": "1.5.1",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/cuviper/autocfg",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:base64@0.22.1",
+      "version": "0.22.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/marshallpierce/rust-base64",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:base64ct@1.8.3",
+      "version": "1.8.3",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/formats",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:bitflags@2.13.2",
+      "version": "2.13.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/bitflags/bitflags",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:block-buffer@0.10.4",
+      "version": "0.10.4",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/utils",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:byteorder@1.5.0",
+      "version": "1.5.0",
+      "license": "Unlicense OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/BurntSushi/byteorder",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:bytes@1.12.2",
+      "version": "1.12.2",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/bytes",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:cc@1.11.3",
+      "version": "1.11.3",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/cc-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:cfg-if@1.0.5",
+      "version": "1.0.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/cfg-if",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:clap_builder@4.6.7",
+      "version": "4.6.7",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/clap-rs/clap",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:clap_derive@4.6.9",
+      "version": "4.6.9",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/clap-rs/clap",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:clap_lex@1.1.2",
+      "version": "1.1.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/clap-rs/clap",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:clap@4.6.9",
+      "version": "4.6.9",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/clap-rs/clap",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:colorchoice@1.0.5",
+      "version": "1.0.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-cli/anstyle.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:const-oid@0.9.6",
+      "version": "0.9.6",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/const-oid",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:cpufeatures@0.2.17",
+      "version": "0.2.17",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/utils",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:crc-catalog@2.5.0",
+      "version": "2.5.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/akhilles/crc-catalog.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:crc@3.4.0",
+      "version": "3.4.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/mrhooray/crc-rs.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:crossbeam-queue@0.3.14",
+      "version": "0.3.14",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/crossbeam-rs/crossbeam",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:crossbeam-utils@0.8.23",
+      "version": "0.8.23",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/crossbeam-rs/crossbeam",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:crypto-common@0.1.7",
+      "version": "0.1.7",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/traits",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:der@0.7.10",
+      "version": "0.7.10",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/der",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:digest@0.10.7",
+      "version": "0.10.7",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/traits",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:displaydoc@0.2.7",
+      "version": "0.2.7",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/yaahc/displaydoc",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:dotenvy@0.15.7",
+      "version": "0.15.7",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/allan2/dotenvy",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:either@1.19.0",
+      "version": "1.19.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rayon-rs/either",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:equivalent@1.0.3",
+      "version": "1.0.3",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/indexmap-rs/equivalent",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:etcetera@0.8.0",
+      "version": "0.8.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/lunacookies/etcetera",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:event-listener@5.4.2",
+      "version": "5.4.2",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/smol-rs/event-listener",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:find-msvc-tools@0.1.15",
+      "version": "0.1.15",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/cc-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:flume@0.11.1",
+      "version": "0.11.1",
+      "license": "Apache-2.0/MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/zesterer/flume",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:foldhash@0.1.5",
+      "version": "0.1.5",
+      "license": "Zlib",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/orlp/foldhash",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:form_urlencoded@1.2.3",
+      "version": "1.2.3",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/servo/rust-url",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-channel@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/futures-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-core@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/futures-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-executor@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/futures-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-intrusive@0.5.0",
+      "version": "0.5.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/Matthias247/futures-intrusive",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-io@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/futures-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-sink@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/futures-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-task@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/futures-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:futures-util@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/futures-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:generic-array@0.14.7",
+      "version": "0.14.7",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/fizyk20/generic-array.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:getrandom@0.2.17",
+      "version": "0.2.17",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-random/getrandom",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:hashbrown@0.15.5",
+      "version": "0.15.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/hashbrown",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:hashbrown@0.17.2",
+      "version": "0.17.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/hashbrown",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:hashlink@0.10.0",
+      "version": "0.10.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/kyren/hashlink",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:heck@0.5.0",
+      "version": "0.5.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/withoutboats/heck",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:hex@0.4.3",
+      "version": "0.4.3",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/KokaKiwi/rust-hex",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:hkdf@0.12.4",
+      "version": "0.12.4",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/KDFs/",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:hmac@0.12.1",
+      "version": "0.12.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/MACs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:home@0.5.11",
+      "version": "0.5.11",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/cargo",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:icu_collections@2.1.1",
+      "version": "2.1.1",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:icu_locale_core@2.1.1",
+      "version": "2.1.1",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:icu_normalizer_data@2.1.1",
+      "version": "2.1.1",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:icu_normalizer@2.1.1",
+      "version": "2.1.1",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:icu_properties_data@2.1.2",
+      "version": "2.1.2",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:icu_properties@2.1.2",
+      "version": "2.1.2",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:icu_provider@2.1.1",
+      "version": "2.1.1",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:idna_adapter@1.2.1",
+      "version": "1.2.1",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/hsivonen/idna_adapter",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:idna@1.1.0",
+      "version": "1.1.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/servo/rust-url/",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:indexmap@2.14.2",
+      "version": "2.14.2",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/indexmap-rs/indexmap",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:is_terminal_polyfill@1.70.2",
+      "version": "1.70.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/polyfill-rs/is_terminal_polyfill",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:itoa@1.0.19",
+      "version": "1.0.19",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/itoa",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:lazy_static@1.5.1",
+      "version": "1.5.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang-nursery/lazy-static.rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:libc@0.2.191",
+      "version": "0.2.191",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/libc",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:libm@0.2.16",
+      "version": "0.2.16",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/compiler-builtins",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:libredox@0.1.25",
+      "version": "0.1.25",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://gitlab.redox-os.org/redox-os/libredox.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:libsqlite3-sys@0.30.1",
+      "version": "0.30.1",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rusqlite/rusqlite",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:litemap@0.8.3",
+      "version": "0.8.3",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:lock_api@0.4.14",
+      "version": "0.4.14",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/Amanieu/parking_lot",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:log@0.4.35",
+      "version": "0.4.35",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/log",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:md-5@0.10.6",
+      "version": "0.10.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/hashes",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:memchr@2.8.3",
+      "version": "2.8.3",
+      "license": "Unlicense OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/BurntSushi/memchr",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:mien-core@0.0.0",
+      "version": "0.0.0",
+      "license": "Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://crates.io/crates/mien-core/0.0.0",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:mio@1.2.5",
+      "version": "1.2.5",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/mio",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:num-bigint-dig@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT/Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dignifiedquire/num-bigint",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:num-integer@0.1.47",
+      "version": "0.1.47",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-num/num-integer",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:num-iter@0.1.46",
+      "version": "0.1.46",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-num/num-iter",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:num-traits@0.2.19",
+      "version": "0.2.19",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-num/num-traits",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:once_cell_polyfill@1.70.2",
+      "version": "1.70.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/polyfill-rs/once_cell_polyfill",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:once_cell@1.21.4",
+      "version": "1.21.4",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/matklad/once_cell",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:parking_lot_core@0.9.12",
+      "version": "0.9.12",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/Amanieu/parking_lot",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:parking_lot@0.12.5",
+      "version": "0.12.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/Amanieu/parking_lot",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:parking@2.2.1",
+      "version": "2.2.1",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/smol-rs/parking",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:pem-rfc7468@0.7.0",
+      "version": "0.7.0",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/pem-rfc7468",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:percent-encoding@2.3.2",
+      "version": "2.3.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/servo/rust-url/",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:pin-project-lite@0.2.18",
+      "version": "0.2.18",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/taiki-e/pin-project-lite",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:pkcs1@0.7.5",
+      "version": "0.7.5",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/pkcs1",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:pkcs8@0.10.2",
+      "version": "0.10.2",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/pkcs8",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:pkg-config@0.3.34",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/pkg-config-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:plain@0.2.3",
+      "version": "0.2.3",
+      "license": "MIT/Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/randomites/plain",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:potential_utf@0.1.6",
+      "version": "0.1.6",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:ppv-lite86@0.2.21",
+      "version": "0.2.21",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/cryptocorrosion/cryptocorrosion",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:proc-macro2@1.0.107",
+      "version": "1.0.107",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/proc-macro2",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:quote@1.0.47",
+      "version": "1.0.47",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/quote",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:rand_chacha@0.3.1",
+      "version": "0.3.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-random/rand",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:rand_core@0.6.4",
+      "version": "0.6.4",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-random/rand",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:rand@0.8.8",
+      "version": "0.8.8",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-random/rand",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:redox_syscall@0.5.18",
+      "version": "0.5.18",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://gitlab.redox-os.org/redox-os/syscall",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:redox_syscall@0.9.5",
+      "version": "0.9.5",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://gitlab.redox-os.org/redox-os/kernel",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:rsa@0.9.10",
+      "version": "0.9.10",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/RSA",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:ryu@1.0.23",
+      "version": "1.0.23",
+      "license": "Apache-2.0 OR BSL-1.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/ryu",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:scopeguard@1.2.0",
+      "version": "1.2.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/bluss/scopeguard",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:serde_core@1.0.229",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/serde-rs/serde",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:serde_derive@1.0.229",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/serde-rs/serde",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:serde_json@1.0.154",
+      "version": "1.0.154",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/serde-rs/json",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:serde_spanned@0.6.9",
+      "version": "0.6.9",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/toml-rs/toml",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:serde_urlencoded@0.7.1",
+      "version": "0.7.1",
+      "license": "MIT/Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/nox/serde_urlencoded",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:serde@1.0.229",
+      "version": "1.0.229",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/serde-rs/serde",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sha1@0.10.7",
+      "version": "0.10.7",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/hashes",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sha2@0.10.9",
+      "version": "0.10.9",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/hashes",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:shlex@2.0.1",
+      "version": "2.0.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/comex/rust-shlex",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:signature@2.2.0",
+      "version": "2.2.0",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/traits/tree/master/signature",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:slab@0.4.12",
+      "version": "0.4.12",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/slab",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:smallvec@1.16.6",
+      "version": "1.16.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/smallvec/smallvec",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:socket2@0.6.5",
+      "version": "0.6.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rust-lang/socket2",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:spin@0.9.9",
+      "version": "0.9.9",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/mvdnes/spin-rs.git",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:spki@0.7.3",
+      "version": "0.7.3",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/formats/tree/master/spki",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sqlx-core@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/launchbadge/sqlx",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sqlx-macros-core@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/launchbadge/sqlx",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sqlx-macros@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/launchbadge/sqlx",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sqlx-mysql@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/launchbadge/sqlx",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sqlx-postgres@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/launchbadge/sqlx",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sqlx-sqlite@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/launchbadge/sqlx",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sqlx@0.8.6",
+      "version": "0.8.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/launchbadge/sqlx",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:stable_deref_trait@1.2.1",
+      "version": "1.2.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/storyyeller/stable_deref_trait",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:stringprep@0.1.5",
+      "version": "0.1.5",
+      "license": "MIT/Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/sfackler/rust-stringprep",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:strsim@0.11.1",
+      "version": "0.11.1",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/rapidfuzz/strsim-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:subtle@2.6.1",
+      "version": "2.6.1",
+      "license": "BSD-3-Clause",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dalek-cryptography/subtle",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:syn@2.0.119",
+      "version": "2.0.119",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/syn",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:syn@3.0.10",
+      "version": "3.0.10",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/syn",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:synstructure@0.14.0",
+      "version": "0.14.0",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/mystor/synstructure",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:thiserror-impl@2.0.21",
+      "version": "2.0.21",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/thiserror",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:thiserror@2.0.21",
+      "version": "2.0.21",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/thiserror",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tinystr@0.8.5",
+      "version": "0.8.5",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tinyvec@1.13.3",
+      "version": "1.13.3",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/Lokathor/tinyvec",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tokio-macros@2.7.2",
+      "version": "2.7.2",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tokio",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tokio-stream@0.1.19",
+      "version": "0.1.19",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tokio",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tokio@1.54.1",
+      "version": "1.54.1",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tokio",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:toml_datetime@0.6.3",
+      "version": "0.6.3",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/toml-rs/toml",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:toml_edit@0.20.2",
+      "version": "0.20.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/toml-rs/toml",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:toml@0.8.2",
+      "version": "0.8.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/toml-rs/toml",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tracing-attributes@0.1.31",
+      "version": "0.1.31",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tracing-core@0.1.36",
+      "version": "0.1.36",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tracing@0.1.44",
+      "version": "0.1.44",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:typenum@1.20.1",
+      "version": "1.20.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/paholg/typenum",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:unicode-bidi@0.3.18",
+      "version": "0.3.18",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/servo/unicode-bidi",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:unicode-ident@1.0.27",
+      "version": "1.0.27",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/unicode-ident",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:unicode-normalization@0.1.26",
+      "version": "0.1.26",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-rs/unicode-normalization",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:unicode-properties@0.1.5",
+      "version": "0.1.5",
+      "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-rs/unicode-properties",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:url@2.5.9",
+      "version": "2.5.9",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/servo/rust-url",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:utf_types@1.0.0",
+      "version": "1.0.0",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/hsivonen/utf_types",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:utf8_iter@1.1.0",
+      "version": "1.1.0",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/hsivonen/utf8_iter",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:utf8parse@0.2.2",
+      "version": "0.2.2",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/alacritty/vte",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:vcpkg@0.2.15",
+      "version": "0.2.15",
+      "license": "MIT/Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/mcgoo/vcpkg-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:version_check@0.9.5",
+      "version": "0.9.5",
+      "license": "MIT/Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/SergioBenitez/version_check",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:wasi@0.11.1+wasi-snapshot-preview1",
+      "version": "0.11.1+wasi-snapshot-preview1",
+      "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/bytecodealliance/wasi",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:wasite@0.1.0",
+      "version": "0.1.0",
+      "license": "Apache-2.0 OR BSL-1.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/ardaku/wasite",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:whoami@1.6.1",
+      "version": "1.6.1",
+      "license": "Apache-2.0 OR BSL-1.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/ardaku/whoami",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_aarch64_gnullvm@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_aarch64_gnullvm@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_aarch64_msvc@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_aarch64_msvc@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_i686_gnu@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_i686_gnu@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_i686_gnullvm@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_i686_msvc@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_i686_msvc@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_x86_64_gnu@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_x86_64_gnu@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_x86_64_gnullvm@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_x86_64_gnullvm@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_x86_64_msvc@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows_x86_64_msvc@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows-link@0.2.1",
+      "version": "0.2.1",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows-sys@0.48.0",
+      "version": "0.48.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows-sys@0.59.0",
+      "version": "0.59.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows-sys@0.61.2",
+      "version": "0.61.2",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows-targets@0.48.5",
+      "version": "0.48.5",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:windows-targets@0.52.6",
+      "version": "0.52.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/microsoft/windows-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:winnow@0.5.40",
+      "version": "0.5.40",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/winnow-rs/winnow",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:writeable@0.6.4",
+      "version": "0.6.4",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:xtask@0.0.0",
+      "version": "0.0.0",
+      "license": "Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://crates.io/crates/xtask/0.0.0",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:yoke-derive@0.8.4",
+      "version": "0.8.4",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:yoke@0.8.4",
+      "version": "0.8.4",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zerocopy-derive@0.8.64",
+      "version": "0.8.64",
+      "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/google/zerocopy",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zerocopy@0.8.64",
+      "version": "0.8.64",
+      "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/google/zerocopy",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zerofrom-derive@0.1.8",
+      "version": "0.1.8",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zerofrom@0.1.8",
+      "version": "0.1.8",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zeroize@1.9.2",
+      "version": "1.9.2",
+      "license": "Apache-2.0 OR MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/utils",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zerotrie@0.2.5",
+      "version": "0.2.5",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zerovec-derive@0.11.7",
+      "version": "0.11.7",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zerovec@0.11.9",
+      "version": "0.11.9",
+      "license": "Unicode-3.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/unicode-org/icu4x",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:zmij@1.0.23",
+      "version": "1.0.23",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/zmij",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "debian-bookworm-slim",
+      "version": "bookworm-slim (image digest required at build)",
+      "license": null,
+      "distribution": "container-base-image",
+      "obligations": "Generate an image SBOM and retain each installed package license and source URL; GPL/LGPL packages require Corresponding Source or a written offer.",
+      "sourceUrl": "https://www.debian.org/releases/bookworm/",
+      "evidencePaths": [
+        "docs/THIRD-PARTY.md",
+        "docs/TECH-STACK.md",
+        "deploy/docker/"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "fingerprint-chromium",
+      "version": "148.0.7778.215",
+      "license": "BSD-3-Clause",
+      "distribution": "independent-static-directory",
+      "obligations": "Retain copyright and license notices, provide the exact source URL, and do not imply upstream endorsement.",
+      "sourceUrl": "https://github.com/adryfish/fingerprint-chromium/tree/148.0.7778.215",
+      "evidencePaths": [
+        "docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-linux-x86_64.json",
+        "docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-macos-arm64.json",
+        "docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-windows-x64.json"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "moby-seccomp-profile",
+      "version": "a0fa70805f742f7da15b367770d802ea2a86c68b",
+      "license": "Apache-2.0",
+      "distribution": "independent-host-configuration",
+      "obligations": "Retain Apache notice and provenance; distribute the modified profile with its upstream source, commit, and modification record.",
+      "sourceUrl": "https://github.com/moby/profiles/blob/a0fa70805f742f7da15b367770d802ea2a86c68b/seccomp/default.json",
+      "evidencePaths": [
+        "deploy/docker/seccomp/PROVENANCE.json",
+        "deploy/docker/seccomp/chromium.json",
+        "deploy/docker/seccomp/artifacts/moby-profiles-a0fa7080-LICENSE.txt"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "noVNC",
+      "version": "container-locked version",
+      "license": [
+        "MPL-2.0",
+        "BSD-3-Clause",
+        "BSD-2-Clause",
+        "OFL-1.1",
+        "CC-BY-SA-3.0",
+        "MIT"
+      ],
+      "distribution": "independent-static-directory",
+      "obligations": "Retain MPL file headers and all bundled resource/font attributions; publish modified MPL files and preserve the BSD-style core/des.js notice.",
+      "sourceUrl": "https://github.com/novnc/noVNC",
+      "evidencePaths": [
+        "docs/THIRD-PARTY.md",
+        "docs/TECH-STACK.md",
+        "deploy/docker/"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "openbox",
+      "version": "container-locked version",
+      "license": "GPL-2.0-or-later",
+      "distribution": "independent-process",
+      "obligations": "Retain GPL-2.0-or-later text, exact package source record, and Corresponding Source or a written offer.",
+      "sourceUrl": "http://openbox.org/",
+      "evidencePaths": [
+        "docs/THIRD-PARTY.md",
+        "docs/TECH-STACK.md",
+        "deploy/docker/"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "tini",
+      "version": "container-locked version",
+      "license": "Apache-2.0",
+      "distribution": "independent-process",
+      "obligations": "Retain Apache-2.0 notice and source URL.",
+      "sourceUrl": "https://github.com/krallin/tini",
+      "evidencePaths": [
+        "docs/THIRD-PARTY.md",
+        "docs/TECH-STACK.md",
+        "deploy/docker/"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "websockify",
+      "version": "container-locked version",
+      "license": "LGPL-3.0",
+      "distribution": "independent-process",
+      "obligations": "Retain LGPL-3.0 text, provide Corresponding Source and a replacement path, and publish modified files.",
+      "sourceUrl": "https://github.com/novnc/websockify",
+      "evidencePaths": [
+        "docs/THIRD-PARTY.md",
+        "docs/TECH-STACK.md",
+        "deploy/docker/"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "x11vnc",
+      "version": "container-locked version",
+      "license": "GPL-2.0-or-later",
+      "distribution": "independent-process",
+      "obligations": "Retain GPL-2.0-or-later text, exact package source record, and Corresponding Source or a written offer.",
+      "sourceUrl": "https://github.com/LibVNC/x11vnc",
+      "evidencePaths": [
+        "docs/THIRD-PARTY.md",
+        "docs/TECH-STACK.md",
+        "deploy/docker/"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "xorg-server-xvfb",
+      "version": "container-locked version",
+      "license": "MIT",
+      "distribution": "independent-process",
+      "obligations": "Retain copyright and license text and the exact package source record.",
+      "sourceUrl": "https://gitlab.freedesktop.org/xorg/xserver",
+      "evidencePaths": [
+        "docs/THIRD-PARTY.md",
+        "docs/TECH-STACK.md",
+        "deploy/docker/"
+      ],
+      "policy": "runtime"
+    },
+    {
+      "id": "xray-core",
+      "version": "v26.11.9",
+      "license": "MPL-2.0",
+      "distribution": "independent-process",
+      "obligations": "Retain MPL-2.0 notices and source URL; provide Corresponding Source, and publish modified MPL-covered files if the distributed binary is modified.",
+      "sourceUrl": "https://github.com/XTLS/Xray-core/releases/tag/v26.11.9",
+      "evidencePaths": [
+        "docs/contracts/manifests/xray-core-v26.11.9-linux-x86_64.json",
+        "docs/contracts/manifests/xray-core-v26.11.9-macos-arm64.json"
+      ],
+      "policy": "runtime"
+    }
+  ],
+  "licenseIds": [
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC-BY-SA-3.0",
+    "GPL-2.0-or-later",
+    "ISC",
+    "LGPL-3.0",
+    "MIT",
+    "MPL-2.0",
+    "OFL-1.1",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib"
+  ]
+}

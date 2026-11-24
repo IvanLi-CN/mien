@@ -8,6 +8,7 @@ mod contracts;
 mod db;
 mod deny_exceptions;
 mod fixtures;
+mod licenses;
 mod migrate;
 
 use std::path::{Path, PathBuf};
@@ -36,6 +37,12 @@ enum Command {
     Contracts,
     /// 校验 deny.toml 中每个 advisory exception 的说明与本地 advisory database 记录。
     CheckDenyExceptions,
+    /// 生成或校验 NOTICE、LICENSES/ 和第三方许可报告。
+    Licenses {
+        /// 只校验已生成产物，不写文件。
+        #[arg(long)]
+        check: bool,
+    },
     /// 测试 fixture。
     Fixtures {
         #[command(subcommand)]
@@ -53,6 +60,7 @@ fn main() -> anyhow::Result<()> {
         Command::Migrate { database } => migrate::run(&root, database.as_deref()),
         Command::Contracts => contracts::run(&root),
         Command::CheckDenyExceptions => deny_exceptions::run(&root),
+        Command::Licenses { check } => licenses::run(&root, check),
         Command::Fixtures { command } => fixtures::run(&root, &command),
     }
 }

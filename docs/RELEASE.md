@@ -119,6 +119,7 @@ resolve-target 读取 draft 并解析 source_sha，reserve 复核绑定后通过
 - entitlements 文件与签名参数尚未在实际打包中验证。
 - Tauri 更新签名密钥尚未生成和配置。
 - 尚未完成正式法律评审与实际 SBOM/NOTICE 构建。
+- 许可闭合脚本已落地并会生成结构化报告；但容器镜像 digest、包级许可证证据、精确上游许可证文本及现有安全例外仍记录为发布阻断，详见 [`THIRD-PARTY.md`](THIRD-PARTY.md) §6.5。
 - M0 Xray、内核、Docker 与代理矩阵 spike 尚未执行。
 
 ## 8. 参考
