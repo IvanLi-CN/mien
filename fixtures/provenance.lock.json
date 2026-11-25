@@ -1,19 +1,313 @@
 {
   "configVersion": 2,
   "categories": {
-    "kernel": {"owner":"runtime","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none (metadata only)","size":2343,"notes":"Schema-backed Chromium capability metadata; release asset is not downloaded.","tree_sha256":"f8f9d3fec2976b1ed7c6e83a4b484e64f6ddc0d447db419d659d1cfdc58fef0d","fixtures":[{"path":"fixtures/kernel/manifest.json","origin":"authored","license":"Apache-2.0","content_sha256":"406ec4a97cb49d8ee7f6a7859b395de79a172c3172765970bd80025336690338","size":1535}]},
-    "fingerprint": {"owner":"fingerprint","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":2480,"notes":"Synthetic schema-backed fingerprint specs and deterministic argv expectations.","tree_sha256":"6207e1ae74162df5c559f576ebc4bdc1ce600800c7b56abce296398951c38d62","fixtures":[{"path":"fixtures/fingerprint/golden-argv/macos-headful-default.json","origin":"authored","license":"Apache-2.0","content_sha256":"41b6c9643b20c966dac88ddaa52a3cc2e269b928b6d97710b04d2fb58de4399b","size":919},{"path":"fixtures/fingerprint/golden-argv/linux-spoof-toggles.json","origin":"authored","license":"Apache-2.0","content_sha256":"735d344fc2949b6d8b8b6633a11036e713f9f48ccd497402191c8943b3eda623","size":1002}]},
-    "profile": {"owner":"profile","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":1392,"notes":"Synthetic redacted profile export payload.","tree_sha256":"d10c6722ccf4600fdc27d4b39fced0c91b914f1839779e57678a261d2817e873","fixtures":[{"path":"fixtures/profile/export.json","origin":"authored","license":"Apache-2.0","content_sha256":"4c18f592d2d9b1643daa87157ef71eea747111c383452e95ead4fc4e63dee0d9","size":799}]},
-    "proxy": {"owner":"proxy","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":605,"notes":"Documentation-only boundary; no endpoint or credentials.","tree_sha256":"ac0e63739cdd17eca2ec26e08c3786d61776fdca02a49092c117313b6663fe88","fixtures":[{"path":"fixtures/proxy/README.md","origin":"authored","license":"Apache-2.0","content_sha256":"cb60e5baa57f490021194555fcbb2c0cda83a5f828c80af109090cee672eb782","size":605}]},
-    "dns": {"owner":"network","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":606,"notes":"Documentation-only local resolver boundary.","tree_sha256":"57d80b1c92e1cf6a3f27b1ad2c715b43b2a86e6232b382ed4e64f7a6ca723dba","fixtures":[{"path":"fixtures/dns/README.md","origin":"authored","license":"Apache-2.0","content_sha256":"7dbcab216db9d73b85dc6515479a1e672717452271c76be57c2ded717a97e743","size":606}]},
-    "network": {"owner":"network","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":532,"notes":"Documentation-only controlled network scenarios.","tree_sha256":"27cb11f79c595c37dcf891a495bea9cc190cfc2f52458aab4e4d07ba025687c9","fixtures":[{"path":"fixtures/network/README.md","origin":"authored","license":"Apache-2.0","content_sha256":"6e417084839da9108d1d4672b8119f685188619a016f62cba21e8754f1fcf3b2","size":532}]},
-    "xray": {"owner":"proxy","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":589,"notes":"Documentation-only mapping boundary; no engine or credentials.","tree_sha256":"a0a58489514c31cdb8a2ab25b463008519bbef9c15012918373e11098da6684e","fixtures":[{"path":"fixtures/xray/README.md","origin":"authored","license":"Apache-2.0","content_sha256":"58ac94213d86641ebff94bdf0fdb1fba6617d4f7779b35e099c20c13787cfb61","size":589}]},
-    "engine": {"owner":"proxy","origin":"authored","fixture_version":"1","source_url":"https://github.com/XTLS/Xray-core/releases/tag/v26.11.9","upstream_version":"v26.11.9","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none (manifest only)","size":1771,"notes":"Release manifest metadata and asset digest only; binary is not downloaded.","tree_sha256":"476a3c636dc5d733699e418edce21d12b6666dd3751927b57474648118ab998f","fixtures":[{"path":"fixtures/engine/manifest.json","origin":"authored","license":"Apache-2.0","content_sha256":"099cf900436edc4644d1fbdfcb204e96600a5c0b130445bca2f75890af00449d","size":1213}]},
-    "runtime": {"owner":"runtime","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":514,"notes":"Documentation-only runtime state boundary.","tree_sha256":"70340194d32d809ded62ab06aca1c6807c5d46ec69e51281977370d265caa492","fixtures":[{"path":"fixtures/runtime/README.md","origin":"authored","license":"Apache-2.0","content_sha256":"5ce6881841c88af741e4f5a5e75fc23fe946833a5e073864321c34a8d826cea9","size":514}]},
-    "api": {"owner":"control-plane","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":763,"notes":"Synthetic API version request/response pair.","tree_sha256":"e5d19084b66416d8d4b365e66470c134c481b5ee65e66034ee9145b26547d4db","fixtures":[{"path":"fixtures/api/version.json","origin":"authored","license":"Apache-2.0","content_sha256":"366e20d397d7d3a35e554e036c5460c4382f5b6da293d7621c341274894fc2f3","size":259}]},
-    "events": {"owner":"control-plane","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":984,"notes":"Synthetic redacted runtime.running event.","tree_sha256":"392e5bc4bfcaf24d627e0e95aff65f6ecd0ee2b85b158aba15190ebf6cb84532","fixtures":[{"path":"fixtures/events/runtime-running.json","origin":"authored","license":"Apache-2.0","content_sha256":"59d54be9aaf55db20f3c681ae468e6656d2e305b3d2c0b08d4cd74ba75067519","size":485}]},
-    "db": {"owner":"storage","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"cargo run -q -p xtask -- migrate","size":848,"notes":"Synthetic empty SQLite migration expectation.","tree_sha256":"845d1c01c6ccf74ed8ff16d1bf9c2f44fc4f31fb046cf6f4f257fff078f56734","fixtures":[{"path":"fixtures/db/migrations/empty-database.json","origin":"authored","license":"Apache-2.0","content_sha256":"4ab1de3cde9047bd24b26a90644038c906be22f22c82dec7bb993e4c3c6beaa1","size":276}]},
-    "ui": {"owner":"ui","origin":"authored","fixture_version":"1","source_url":"https://github.com/IvanLi-CN/mien","commit":"39ccc7a119bad0f56efb022c79fb5bbfeac35ce3","license":"Apache-2.0","retrieved_at":"2026-11-25T00:00:00Z","fetch_command":"none","size":940,"notes":"Synthetic semantic snapshot for stopped and unknown isolation states.","tree_sha256":"74bffe41632c6adc8c61a6215f9eb26e23cbe74543f9b56dc0cee713f38747da","fixtures":[{"path":"fixtures/ui/profile-stopped-unknown.json","origin":"authored","license":"Apache-2.0","content_sha256":"00cbdebad63a52e0f53d412ba13942b086944d800fb8ae238c8053d7b99f2781","size":411}]}
+    "kernel": {
+      "owner": "runtime",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfe3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none (metadata only)",
+      "size": 2343,
+      "notes": "Schema-backed Chromium capability metadata; release asset is not downloaded.",
+      "tree_sha256": "de67dbbbd3eb5c17c0b06e6a018ef42d8e650152d24f0ec84638f90e81d853f1",
+      "fixtures": [
+        {
+          "path": "fixtures/kernel/README.md",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "37f2e59253591506a6fd2f61ee04fb57022c759aa209e7a565a4efd8a7af8ac7",
+          "size": 808
+        }
+      ]
+    },
+    "fingerprint": {
+      "owner": "fingerprint",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5fe3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 3204,
+      "notes": "Synthetic schema-backed fingerprint specs, deterministic argv expectations, and rejected capability cases.",
+      "tree_sha256": "7290260fdff1dd40f408304cd49d82648dfd4b3d42565119cba8ec08547762b6",
+      "fixtures": [
+        {
+          "path": "fixtures/fingerprint/golden-argv/macos-headful-default.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "4e808e1ab30c2cf9d629ceb45a029cd3057226b2c04fca21197f204918525b95",
+          "size": 1074
+        },
+        {
+          "path": "fixtures/fingerprint/golden-argv/linux-spoof-toggles.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "90f88bc62b3431f7fafeb4a594effd3a63aa9a1171c7f84482af2dcbdce4b7d1",
+          "size": 1178
+        },
+        {
+          "path": "fixtures/fingerprint/negative-capabilities.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "6ad91b8859158b9049caa56fe3a3e6d4492f2f55953f0cd476ec0c0cd7c3f41b",
+          "size": 952
+        },
+        {
+          "path": "fixtures/fingerprint/README.md",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "f29416296e1b5e79eb6f3642800b21466be04b2154327cd7d34158505a0bc052",
+          "size": 673
+        }
+      ]
+    },
+    "profile": {
+      "owner": "profile",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 1392,
+      "notes": "Synthetic redacted profile export payload.",
+      "tree_sha256": "d10c6722ccf4600fdc27d4b39fced0c91b914f1839779e57678a261d2817e873",
+      "fixtures": [
+        {
+          "path": "fixtures/profile/export.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "4c18f592d2d9b1643daa87157ef71eea747111c383452e95ead4fc4e63dee0d9",
+          "size": 799
+        }
+      ]
+    },
+    "proxy": {
+      "owner": "proxy",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 605,
+      "notes": "Documentation-only boundary; no endpoint or credentials.",
+      "tree_sha256": "ac0e63739cdd17eca2ec26e08c3786d61776fdca02a49092c117313b6663fe88",
+      "fixtures": [
+        {
+          "path": "fixtures/proxy/README.md",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "cb60e5baa57f490021194555fcbb2c0cda83a5f828c80af109090cee672eb782",
+          "size": 605
+        }
+      ]
+    },
+    "dns": {
+      "owner": "network",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 606,
+      "notes": "Documentation-only local resolver boundary.",
+      "tree_sha256": "57d80b1c92e1cf6a3f27b1ad2c715b43b2a86e6232b382ed4e64f7a6ca723dba",
+      "fixtures": [
+        {
+          "path": "fixtures/dns/README.md",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "7dbcab216db9d73b85dc6515479a1e672717452271c76be57c2ded717a97e743",
+          "size": 606
+        }
+      ]
+    },
+    "network": {
+      "owner": "network",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 532,
+      "notes": "Documentation-only controlled network scenarios.",
+      "tree_sha256": "27cb11f79c595c37dcf891a495bea9cc190cfc2f52458aab4e4d07ba025687c9",
+      "fixtures": [
+        {
+          "path": "fixtures/network/README.md",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "6e417084839da9108d1d4672b8119f685188619a016f62cba21e8754f1fcf3b2",
+          "size": 532
+        }
+      ]
+    },
+    "xray": {
+      "owner": "proxy",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 589,
+      "notes": "Documentation-only mapping boundary; no engine or credentials.",
+      "tree_sha256": "a0a58489514c31cdb8a2ab25b463008519bbef9c15012918373e11098da6684e",
+      "fixtures": [
+        {
+          "path": "fixtures/xray/README.md",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "58ac94213d86641ebff94bdf0fdb1fba6617d4f7779b35e099c20c13787cfb61",
+          "size": 589
+        }
+      ]
+    },
+    "engine": {
+      "owner": "proxy",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/XTLS/Xray-core/releases/tag/v26.11.9",
+      "upstream_version": "v26.11.9",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none (manifest only)",
+      "size": 1771,
+      "notes": "Release manifest metadata and asset digest only; binary is not downloaded.",
+      "tree_sha256": "476a3c636dc5d733699e418edce21d12b6666dd3751927b57474648118ab998f",
+      "fixtures": [
+        {
+          "path": "fixtures/engine/manifest.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "099cf900436edc4644d1fbdfcb204e96600a5c0b130445bca2f75890af00449d",
+          "size": 1213
+        }
+      ]
+    },
+    "runtime": {
+      "owner": "runtime",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 514,
+      "notes": "Documentation-only runtime state boundary.",
+      "tree_sha256": "70340194d32d809ded62ab06aca1c6807c5d46ec69e51281977370d265caa492",
+      "fixtures": [
+        {
+          "path": "fixtures/runtime/README.md",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "5ce6881841c88af741e4f5a5e75fc23fe946833a5e073864321c34a8d826cea9",
+          "size": 514
+        }
+      ]
+    },
+    "api": {
+      "owner": "control-plane",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 763,
+      "notes": "Synthetic API version request/response pair.",
+      "tree_sha256": "e5d19084b66416d8d4b365e66470c134c481b5ee65e66034ee9145b26547d4db",
+      "fixtures": [
+        {
+          "path": "fixtures/api/version.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "366e20d397d7d3a35e554e036c5460c4382f5b6da293d7621c341274894fc2f3",
+          "size": 259
+        }
+      ]
+    },
+    "events": {
+      "owner": "control-plane",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 984,
+      "notes": "Synthetic redacted runtime.running event.",
+      "tree_sha256": "392e5bc4bfcaf24d627e0e95aff65f6ecd0ee2b85b158aba15190ebf6cb84532",
+      "fixtures": [
+        {
+          "path": "fixtures/events/runtime-running.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "59d54be9aaf55db20f3c681ae468e6656d2e305b3d2c0b08d4cd74ba75067519",
+          "size": 485
+        }
+      ]
+    },
+    "db": {
+      "owner": "storage",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "cargo run -q -p xtask -- migrate",
+      "size": 848,
+      "notes": "Synthetic empty SQLite migration expectation.",
+      "tree_sha256": "845d1c01c6ccf74ed8ff16d1bf9c2f44fc4f31fb046cf6f4f257fff078f56734",
+      "fixtures": [
+        {
+          "path": "fixtures/db/migrations/empty-database.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "4ab1de3cde9047bd24b26a90644038c906be22f22c82dec7bb993e4c3c6beaa1",
+          "size": 276
+        }
+      ]
+    },
+    "ui": {
+      "owner": "ui",
+      "origin": "authored",
+      "fixture_version": "1",
+      "source_url": "https://github.com/IvanLi-CN/mien",
+      "commit": "39ccc7a119bad0f56efb022c79fb5bbfeac35ce3",
+      "license": "Apache-2.0",
+      "retrieved_at": "2026-11-25T00:00:00Z",
+      "fetch_command": "none",
+      "size": 940,
+      "notes": "Synthetic semantic snapshot for stopped and unknown isolation states.",
+      "tree_sha256": "74bffe41632c6adc8c61a6215f9eb26e23cbe74543f9b56dc0cee713f38747da",
+      "fixtures": [
+        {
+          "path": "fixtures/ui/profile-stopped-unknown.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "00cbdebad63a52e0f53d412ba13942b086944d800fb8ae238c8053d7b99f2781",
+          "size": 411
+        }
+      ]
+    }
   },
   "files": {}
 }

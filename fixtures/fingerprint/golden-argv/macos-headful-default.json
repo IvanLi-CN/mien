@@ -1,14 +1,14 @@
 {
   "schema_ref": "../../docs/contracts/fingerprint-spec.schema.json",
-  "case": "macos-headful-default",
+  "case": "macos-verified-edge",
   "spec": {
     "schema_version": 1,
     "seed": 148001,
     "platform": "macos",
     "platform_version": "14.5",
-    "brand": "Chrome",
-    "brand_version": "148.0.7778.215",
-    "hardware_concurrency": 8,
+    "brand": "Edge",
+    "brand_version": "148.0.0.0",
+    "hardware_concurrency": 12,
     "languages": ["en-US", "en"],
     "timezone": "America/Los_Angeles",
     "window": {"width": 1280, "height": 720},
@@ -16,17 +16,21 @@
     "network": {"doh_mode": "disabled", "ipv6_mode": "block"}
   },
   "expected_argv": [
-    "--fingerprint-seed=148001",
-    "--platform=macos",
-    "--platform-version=14.5",
-    "--brand=Chrome",
-    "--brand-version=148.0.7778.215",
-    "--hardware-concurrency=8",
-    "--lang=en-US,en",
+    "--user-data-dir=/synthetic/profile",
+    "--fingerprint=148001",
+    "--fingerprint-platform=macos",
+    "--fingerprint-platform-version=14.5",
+    "--fingerprint-brand=Edge",
+    "--fingerprint-brand-version=148.0.0.0",
+    "--fingerprint-hardware-concurrency=12",
+    "--lang=en-US",
+    "--accept-lang=en-US,en",
     "--timezone=America/Los_Angeles",
-    "--window-size=1280,720",
-    "--disable-non-proxied-udp",
-    "--disable-doh",
-    "--block-ipv6"
-  ]
+    "--window-size=1280,720"
+  ],
+  "expected_network": {
+    "doh_mode": "disabled",
+    "ipv6_mode": "block",
+    "disable_non_proxied_udp": true
+  }
 }

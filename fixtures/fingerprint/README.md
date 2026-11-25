@@ -1,8 +1,8 @@
 # Fingerprint fixtures
 
 - **Owner:** Fingerprint engine maintainers.
-- **Purpose:** Cover fingerprint-spec validation and deterministic spec-to-argv behavior.
-- **Commit:** Authored specs and expected argument arrays only; no browser profile, host fingerprint, or runtime data.
-- **Generate/fetch:** Create cases from `docs/contracts/fingerprint-spec.schema.json` and compare expected arguments with the installed kernel manifest; no external assets are fetched.
+- **Purpose:** Cover fingerprint-spec validation, deterministic argv construction, and explicitly rejected capabilities.
+- **Commit:** Authored synthetic specs and expected arguments only; no browser profile, host fingerprint, credentials, or runtime data.
+- **Generate/fetch:** Golden cases are checked against the canonical installed-kernel manifest and repeated deterministically; no external assets are fetched.
 
-Each golden file refers directly to the fingerprint contract schema and uses synthetic values.
+Golden `expected_argv` arrays are exact process argument arrays. Runtime network controls are asserted separately with an enforcement status; they are never inferred from Chromium flags.
