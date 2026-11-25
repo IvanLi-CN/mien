@@ -12,11 +12,3 @@ pub enum EngineState {
     Rebuilding,
     Failed,
 }
-
-/// 获取协议出站引用；相同 outbound key 复用出站与连接池。
-///
-/// # Errors
-/// 引擎不可用或配置非法。
-pub fn acquire_outbound(_key: &str) -> Result<(), CoreError> {
-    todo!("T9-C：出站引用计数")
-}
