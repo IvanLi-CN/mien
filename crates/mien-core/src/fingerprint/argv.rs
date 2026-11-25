@@ -23,6 +23,10 @@ pub struct NetworkControl<T> {
 }
 
 /// Evidence level available to the launch/runtime consumer.
+///
+/// `Declared` is verified by the capability manifest. `Unverified` requires
+/// runtime fail-closed behavior and disclosure. `Unsupported` means execution
+/// cannot be guaranteed and must be rejected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Enforcement {
     Declared,
