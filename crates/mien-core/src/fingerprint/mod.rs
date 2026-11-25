@@ -1,5 +1,22 @@
-//! 指纹规格校验与内核 argv 构建。
+//! Fingerprint specification admission and launch planning.
 //!
-//! 占位归属：T9-B（`validate_spec`、`build_launch_argv`、golden fixture）。
+//! Fingerprint flags are the kernel contract. Network controls are a separate
+//! runtime/proxy contract and remain explicit in [`LaunchPlan`] rather than
+//! becoming guessed Chromium argv entries. Enforcement status is three-valued:
+//! `Declared` means verified by the manifest, `Unverified` means the required
+//! runtime control must fail closed and be disclosed, and `Unsupported` means
+//! it cannot be performed and the launch is rejected.
 
+pub mod argv;
+pub mod capability;
+#[cfg(test)]
+mod golden_tests;
+pub mod json;
 pub mod spec;
+#[cfg(test)]
+mod tests;
+
+pub use argv::{Enforcement, LaunchPlan, NetworkControl, NetworkControls, build_launch_argv};
+pub use capability::{CapabilityManifest, load_pinned_manifest};
+pub use json::parse_spec_json;
+pub use spec::{FingerprintSpec, validate_spec, validate_spec_with_manifest};
