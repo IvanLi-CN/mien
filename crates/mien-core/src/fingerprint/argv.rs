@@ -47,7 +47,9 @@ pub struct LaunchPlan {
 /// The array order is profile directory, seed, platform fields, brand fields,
 /// hardware, locale, timezone, window, then merged spoof toggles. Network
 /// controls and credentials are excluded from argv; the caller passes the array
-/// directly to a process API without shell interpretation.
+/// directly to a process API without shell interpretation. `window` describes
+/// browser window geometry only; it makes no `screen.*` claim. Pseudo-headful
+/// mode likewise is not a headful-equivalence claim.
 pub fn build_launch_argv(
     spec: &FingerprintSpec,
     manifest: &CapabilityManifest,
