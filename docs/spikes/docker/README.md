@@ -36,7 +36,7 @@ sh docs/spikes/docker/run.sh
 
 ## Remaining blockers
 
-- The `mien-chromium` AppArmor profile itself has not been loaded on any host yet; this run used the documented `unconfined` fallback with recorded risk. A host that supports profile loading is still required for the hardened path.
+- The `mien-chromium` AppArmor profile itself has not been loaded on any host yet. Attempts on both Agent VM hosts fail before parsing: `mount -t securityfs securityfs /sys/kernel/security` returns `EPERM` even in the `Ubuntu 24.04 Rust privileged` image with `CAP_SYS_ADMIN` and `unconfined`, so `apparmor_parser` has no policy filesystem. Loading requires the host (or a host where `securityfs` is mountable); this run used the documented `unconfined` fallback with recorded risk.
 - `chrome://sandbox` is not a usable probe in this build (returns the New Tab page). The process-level `/proc` probe is the evidence of record; a product probe still has to be implemented before startup can be gated on it.
 - Hysteria2 requires a test endpoint and credentials; no end-to-end UDP result.
 - noVNC one-use token consumption and replay rejection are not implemented or tested.
