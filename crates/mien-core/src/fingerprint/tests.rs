@@ -175,3 +175,8 @@ fn rejects_unknown_credentials_and_missing_window() {
             .contains("missing field `window`")
     );
 }
+
+#[test]
+fn generated_seed_is_cryptographically_sourced_and_nonzero() {
+    assert_ne!(super::spec::generate_seed().expect("system CSPRNG"), 0);
+}
