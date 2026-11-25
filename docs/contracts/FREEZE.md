@@ -40,7 +40,7 @@ The `contracts:check` job computes SHA-256 digests for the frozen source files a
 - T3 Xray confirmed the HandlerService/RoutingService CRUD primitives, loopback binding, block-first failure-closed bootstrap, shared VLESS outbound, and bounded kill/rebuild behavior. Xray native CRUD is not idempotent: gateway reconciliation must map duplicate add and unknown remove to idempotent success; mux concurrency is normalized by v26.11.9 to `128`; Hysteria2 requires `protocol: hysteria`, `version: 2`, `streamSettings.network: hysteria`, and `hysteriaSettings`.
 - T3 accepted the Hysteria2 configuration schema only; no controlled UDP/TLS peer was available, so Hysteria2 is not frozen as end-to-end connectivity. TUIC is rejected as `unknown config id: tuic` and remains outside v1.
 - T4 verified fingerprint/platform/language/timezone/window/CPU, Edge and Opera brand samples, and audio/canvas/GPU spoof effects on the pinned macOS arm64 build. `clientrects`, `font`, proxy-server, non-proxied UDP, Chrome/Vivaldi brand behavior, independent platform-version behavior, and sandbox/Seatbelt effectiveness remain unverified; pseudo-headful changes UA only.
-- T5 Docker conclusions are a known block: nested Agent VM could not load the AppArmor profile, headed X connection failed, and `chrome://sandbox` did not provide a determinable enforced result. Container sandbox must not be described as enforced before evidence exists; noVNC one-time tokens are not implemented; Hysteria2 UDP is not end-to-end verified. These do not block the macOS headed M1 path.
+- Docker display and namespace sandbox are verified on a real amd64 host (`docs/spikes/docker/`): headful window geometry, renderer user/pid namespaces, and `Seccomp=2`. The `mien-chromium` AppArmor profile is authored but unloaded; both available test hosts are unprivileged containers, so the run used the documented `apparmor=unconfined` fallback. noVNC one-time tokens and Hysteria2 UDP remain unverified. These do not block the macOS headed M1 path.
 
 ## Change process after freeze
 
@@ -54,7 +54,7 @@ Any contract change must update the owning SPEC, implementation VER record, exec
 
 ## Known blocks
 
-- Docker sandbox enforcement is unconfirmed; M3 Docker release material must not claim an enforced sandbox.
+- Docker display and namespace sandbox are verified on a real amd64 host (`docs/spikes/docker/`), but the `mien-chromium` AppArmor profile has not been loaded on any available host (both test hosts are unprivileged containers); the run used the documented `apparmor=unconfined` fallback. M3 Docker release material must not claim the hardened AppArmor path until a host load succeeds.
 - noVNC one-time viewer tokens are not implemented.
 - Hysteria2 UDP connectivity was not tested end to end.
 - `--disable-spoofing=clientrects|font` had no observed target effect in T4 and is not a verified capability; pseudo-headful changes UA only and retains other Headless characteristics.

@@ -473,6 +473,9 @@ impl RuntimeSupervisor {
                 "shared proxy engine is not ready",
             ));
         }
+        #[cfg(target_os = "linux")]
+        let isolation = Isolation::Unknown;
+        #[cfg(not(target_os = "linux"))]
         let isolation = probe::probe_macos_sandbox(&options.manifest_sandbox_kind)?;
         probe::verify_kernel(&options.binary, &options.binary_sha256)?;
         std::fs::create_dir_all(options.data_dir.join("chrome"))
@@ -531,6 +534,16 @@ impl RuntimeSupervisor {
             tokio::time::sleep(START_GRACE).await;
             if !process_alive(pid) {
                 return Err(spawn_failed("kernel process could not be created"));
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            match probe::require_linux_isolation(pid).await {
+                Ok(isolation) => record.set_isolation(isolation),
+                Err(error) => {
+                    let _ = record.stop_process(Duration::from_secs(2)).await;
+                    return Err(error);
+                }
             }
         }
         Ok(())

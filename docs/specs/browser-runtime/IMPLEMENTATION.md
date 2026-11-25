@@ -57,7 +57,7 @@ Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 p
 - Delivered: `RuntimeSupervisor` state machine (`starting/running/stopping/stopped/crashed/failed`), process groups, SIGTERM/SIGKILL shutdown, CDP probe, bounded logs, restart reconciliation, and `StartProfile` wiring profile → launch plan → proxy → supervisor.
 - Commands: `cargo test -p mien-core` with `MIEN_KERNEL_BIN` pointing at the pinned macOS kernel; `tests/runtime_integration.rs` and `tests/slice_e2e.rs`.
 - Measured: start/stop sequence emits each event once, no residual process group, CDP reachable while running and closed after stop, SIGKILL yields `crashed`, 20 cycles without orphans.
-- Not delivered yet: headless/pseudo-headful, Xvfb/Docker display, noVNC. Docker sandbox enforcement remains an unconfirmed known block.
+- Not delivered yet: headless/pseudo-headful and noVNC. Docker display and namespace sandbox are verified in `docs/spikes/docker/`; the product-level Linux probe (`probe_linux_isolation`) now fails closed unless a sandboxed descendant is observed. The AppArmor profile is authored but not yet loaded on a capable host.
 
 ## Related Changes
 

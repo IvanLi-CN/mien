@@ -757,6 +757,26 @@ function seccompCheck() {
   );
 }
 
+function apparmorCheck() {
+  const profilePath = "deploy/docker/apparmor/mien-chromium";
+  const readmePath = "deploy/docker/apparmor/README.md";
+  const profile = read(profilePath);
+  if (!/^profile\s+mien-chromium\b/m.test(profile))
+    throw new Error("apparmor profile does not declare `profile mien-chromium`");
+  for (const rule of ["mount,", "umount,", "pivot_root,", "chroot,"])
+    if (!profile.includes(rule))
+      throw new Error(`apparmor profile is missing the ${rule.trim()} rule`);
+  const digest = sha256(profilePath);
+  const readme = read(readmePath);
+  if (!readme.includes(digest))
+    throw new Error("apparmor README does not record the profile SHA-256");
+  const directory = rel("deploy/docker/apparmor");
+  const files = walkFiles(directory)
+    .map((filename) => path.relative(directory, filename).split(path.sep).join("/"))
+    .sort();
+  compare("apparmor tracked structure", ["README.md", "mien-chromium"], files);
+}
+
 function runCheck(name, fn) {
   run(name, fn);
 }
@@ -770,6 +790,7 @@ runCheck("OpenAPI generated client snapshot", generatedClientCheck);
 runCheck("SQLite DDL / foreign_key_check / integrity_check", databaseCheck);
 runCheck("spec_contract_check", specCheck);
 runCheck("seccomp structure and provenance SHA-256", seccompCheck);
+runCheck("apparmor profile structure and SHA-256", apparmorCheck);
 console.log(
   `contracts: ${errors.length === 0 ? "all checks passed" : `${errors.length} check(s) failed`}`,
 );
