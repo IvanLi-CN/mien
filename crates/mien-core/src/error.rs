@@ -1,146 +1,104 @@
 //! Domain errors with stable machine-readable error codes.
 
 /// Stable machine-readable error codes from `docs/ERROR-CODES.md`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ErrorCode {
-    AuthRequired,
-    AuthInvalid,
-    AuthRateLimited,
-    AuthCsrfInvalid,
-    AuthOriginInvalid,
-    ForbiddenScope,
-    AuthPasswordChangeRequired,
-    EventTicketInvalid,
-    EventReplayWindowExpired,
-    ProfileNotFound,
-    ProfileDeleted,
-    ProfileNotDeleted,
-    ProfilePurgeFailed,
-    ProxyNotFound,
-    RuntimeNotFound,
-    TokenNotFound,
-    ProfileArchived,
-    RuntimeConflict,
-    IdempotencyConflict,
-    ResourceInUse,
-    GroupNameConflict,
-    TagNameConflict,
-    ProfileImportConflict,
-    ProfileImportCleanupFailed,
-    ProfileRestoreUnavailable,
-    ViewerNotAvailable,
-    GroupNotFound,
-    TagNotFound,
-    ValidationFailed,
-    FingerprintInvalid,
-    ProxyConfigInvalid,
-    ShareLinkInvalid,
-    RuntimeModeUnsupported,
-    KernelUnsupported,
-    UnsupportedProtocol,
-    TuicNotSupported,
-    QuotaExceeded,
-    InsufficientResources,
-    KernelNotFound,
-    KernelChecksumMismatch,
-    KernelVersionNotFound,
-    ProxyEngineNotFound,
-    ProxyEngineChecksumMismatch,
-    ProxyEngineVersionNotFound,
-    ProxyEngineNotReady,
-    ProxyEngineApiUnavailable,
-    ProxyEngineStartFailed,
-    ProxyEngineCrashed,
-    ProxyInboundConflict,
-    ProxyOutboundRefcountMismatch,
-    ProxyConnectionRefused,
-    ProxyAuthFailed,
-    ProxyTlsFailed,
-    ProxyTimeout,
-    ProxyConnectionFailed,
-    ProxyDnsFailed,
-    RuntimeSpawnFailed,
-    RuntimeCdpTimeout,
-    SandboxUnavailable,
-    DirectEgressDisabled,
-    DisplayUnavailable,
-    StorageBusy,
-    StorageMigrationFailed,
-    StorageIntegrityFailed,
-    InternalUnexpected,
+///
+/// The catalog is the contract; every variant appears here exactly once and a
+/// test asserts bidirectional equality with the documented code set.
+macro_rules! error_codes {
+    ($($variant:ident => $code:literal,)*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum ErrorCode {
+            $($variant,)*
+        }
+
+        impl ErrorCode {
+            /// Every catalogued code, in documentation order.
+            pub const ALL: &'static [Self] = &[$(Self::$variant,)*];
+
+            /// Stable machine-readable string; hosts branch only on this value.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $code,)*
+                }
+            }
+
+            /// Parse a stable code string; unknown values are rejected.
+            pub fn parse(value: &str) -> Option<Self> {
+                match value {
+                    $($code => Some(Self::$variant),)*
+                    _ => None,
+                }
+            }
+        }
+    };
 }
 
-impl ErrorCode {
-    /// Stable machine-readable string; hosts branch only on this value.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::AuthRequired => "AUTH_REQUIRED",
-            Self::AuthInvalid => "AUTH_INVALID",
-            Self::AuthRateLimited => "AUTH_RATE_LIMITED",
-            Self::AuthCsrfInvalid => "AUTH_CSRF_INVALID",
-            Self::AuthOriginInvalid => "AUTH_ORIGIN_INVALID",
-            Self::ForbiddenScope => "FORBIDDEN_SCOPE",
-            Self::AuthPasswordChangeRequired => "AUTH_PASSWORD_CHANGE_REQUIRED",
-            Self::EventTicketInvalid => "EVENT_TICKET_INVALID",
-            Self::EventReplayWindowExpired => "EVENT_REPLAY_WINDOW_EXPIRED",
-            Self::ProfileNotFound => "PROFILE_NOT_FOUND",
-            Self::ProfileDeleted => "PROFILE_DELETED",
-            Self::ProfileNotDeleted => "PROFILE_NOT_DELETED",
-            Self::ProfilePurgeFailed => "PROFILE_PURGE_FAILED",
-            Self::ProxyNotFound => "PROXY_NOT_FOUND",
-            Self::RuntimeNotFound => "RUNTIME_NOT_FOUND",
-            Self::TokenNotFound => "TOKEN_NOT_FOUND",
-            Self::ProfileArchived => "PROFILE_ARCHIVED",
-            Self::RuntimeConflict => "RUNTIME_CONFLICT",
-            Self::IdempotencyConflict => "IDEMPOTENCY_CONFLICT",
-            Self::ResourceInUse => "RESOURCE_IN_USE",
-            Self::GroupNameConflict => "GROUP_NAME_CONFLICT",
-            Self::TagNameConflict => "TAG_NAME_CONFLICT",
-            Self::ProfileImportConflict => "PROFILE_IMPORT_CONFLICT",
-            Self::ProfileImportCleanupFailed => "PROFILE_IMPORT_CLEANUP_FAILED",
-            Self::ProfileRestoreUnavailable => "PROFILE_RESTORE_UNAVAILABLE",
-            Self::ViewerNotAvailable => "VIEWER_NOT_AVAILABLE",
-            Self::GroupNotFound => "GROUP_NOT_FOUND",
-            Self::TagNotFound => "TAG_NOT_FOUND",
-            Self::ValidationFailed => "VALIDATION_FAILED",
-            Self::FingerprintInvalid => "FINGERPRINT_INVALID",
-            Self::ProxyConfigInvalid => "PROXY_CONFIG_INVALID",
-            Self::ShareLinkInvalid => "SHARE_LINK_INVALID",
-            Self::RuntimeModeUnsupported => "RUNTIME_MODE_UNSUPPORTED",
-            Self::KernelUnsupported => "KERNEL_UNSUPPORTED",
-            Self::UnsupportedProtocol => "UNSUPPORTED_PROTOCOL",
-            Self::TuicNotSupported => "TUIC_NOT_SUPPORTED",
-            Self::QuotaExceeded => "QUOTA_EXCEEDED",
-            Self::InsufficientResources => "INSUFFICIENT_RESOURCES",
-            Self::KernelNotFound => "KERNEL_NOT_FOUND",
-            Self::KernelChecksumMismatch => "KERNEL_CHECKSUM_MISMATCH",
-            Self::KernelVersionNotFound => "KERNEL_VERSION_NOT_FOUND",
-            Self::ProxyEngineNotFound => "PROXY_ENGINE_NOT_FOUND",
-            Self::ProxyEngineChecksumMismatch => "PROXY_ENGINE_CHECKSUM_MISMATCH",
-            Self::ProxyEngineVersionNotFound => "PROXY_ENGINE_VERSION_NOT_FOUND",
-            Self::ProxyEngineNotReady => "PROXY_ENGINE_NOT_READY",
-            Self::ProxyEngineApiUnavailable => "PROXY_ENGINE_API_UNAVAILABLE",
-            Self::ProxyEngineStartFailed => "PROXY_ENGINE_START_FAILED",
-            Self::ProxyEngineCrashed => "PROXY_ENGINE_CRASHED",
-            Self::ProxyInboundConflict => "PROXY_INBOUND_CONFLICT",
-            Self::ProxyOutboundRefcountMismatch => "PROXY_OUTBOUND_REFCOUNT_MISMATCH",
-            Self::ProxyConnectionRefused => "PROXY_CONNECTION_REFUSED",
-            Self::ProxyAuthFailed => "PROXY_AUTH_FAILED",
-            Self::ProxyTlsFailed => "PROXY_TLS_FAILED",
-            Self::ProxyTimeout => "PROXY_TIMEOUT",
-            Self::ProxyConnectionFailed => "PROXY_CONNECTION_FAILED",
-            Self::ProxyDnsFailed => "PROXY_DNS_FAILED",
-            Self::RuntimeSpawnFailed => "RUNTIME_SPAWN_FAILED",
-            Self::RuntimeCdpTimeout => "RUNTIME_CDP_TIMEOUT",
-            Self::SandboxUnavailable => "SANDBOX_UNAVAILABLE",
-            Self::DirectEgressDisabled => "DIRECT_EGRESS_DISABLED",
-            Self::DisplayUnavailable => "DISPLAY_UNAVAILABLE",
-            Self::StorageBusy => "STORAGE_BUSY",
-            Self::StorageMigrationFailed => "STORAGE_MIGRATION_FAILED",
-            Self::StorageIntegrityFailed => "STORAGE_INTEGRITY_FAILED",
-            Self::InternalUnexpected => "INTERNAL_UNEXPECTED",
-        }
-    }
+error_codes! {
+    AuthRequired => "AUTH_REQUIRED",
+    AuthInvalid => "AUTH_INVALID",
+    AuthRateLimited => "AUTH_RATE_LIMITED",
+    AuthCsrfInvalid => "AUTH_CSRF_INVALID",
+    AuthOriginInvalid => "AUTH_ORIGIN_INVALID",
+    ForbiddenScope => "FORBIDDEN_SCOPE",
+    AuthPasswordChangeRequired => "AUTH_PASSWORD_CHANGE_REQUIRED",
+    EventTicketInvalid => "EVENT_TICKET_INVALID",
+    EventReplayWindowExpired => "EVENT_REPLAY_WINDOW_EXPIRED",
+    ProfileNotFound => "PROFILE_NOT_FOUND",
+    ProfileDeleted => "PROFILE_DELETED",
+    ProfileNotDeleted => "PROFILE_NOT_DELETED",
+    ProfilePurgeFailed => "PROFILE_PURGE_FAILED",
+    ProxyNotFound => "PROXY_NOT_FOUND",
+    RuntimeNotFound => "RUNTIME_NOT_FOUND",
+    TokenNotFound => "TOKEN_NOT_FOUND",
+    ProfileArchived => "PROFILE_ARCHIVED",
+    RuntimeConflict => "RUNTIME_CONFLICT",
+    IdempotencyConflict => "IDEMPOTENCY_CONFLICT",
+    ResourceInUse => "RESOURCE_IN_USE",
+    GroupNameConflict => "GROUP_NAME_CONFLICT",
+    TagNameConflict => "TAG_NAME_CONFLICT",
+    ProfileImportConflict => "PROFILE_IMPORT_CONFLICT",
+    ProfileImportCleanupFailed => "PROFILE_IMPORT_CLEANUP_FAILED",
+    ProfileRestoreUnavailable => "PROFILE_RESTORE_UNAVAILABLE",
+    ViewerNotAvailable => "VIEWER_NOT_AVAILABLE",
+    GroupNotFound => "GROUP_NOT_FOUND",
+    TagNotFound => "TAG_NOT_FOUND",
+    ValidationFailed => "VALIDATION_FAILED",
+    FingerprintInvalid => "FINGERPRINT_INVALID",
+    ProxyConfigInvalid => "PROXY_CONFIG_INVALID",
+    ShareLinkInvalid => "SHARE_LINK_INVALID",
+    RuntimeModeUnsupported => "RUNTIME_MODE_UNSUPPORTED",
+    KernelUnsupported => "KERNEL_UNSUPPORTED",
+    UnsupportedProtocol => "UNSUPPORTED_PROTOCOL",
+    TuicNotSupported => "TUIC_NOT_SUPPORTED",
+    QuotaExceeded => "QUOTA_EXCEEDED",
+    InsufficientResources => "INSUFFICIENT_RESOURCES",
+    KernelNotFound => "KERNEL_NOT_FOUND",
+    KernelChecksumMismatch => "KERNEL_CHECKSUM_MISMATCH",
+    KernelVersionNotFound => "KERNEL_VERSION_NOT_FOUND",
+    ProxyEngineNotFound => "PROXY_ENGINE_NOT_FOUND",
+    ProxyEngineChecksumMismatch => "PROXY_ENGINE_CHECKSUM_MISMATCH",
+    ProxyEngineVersionNotFound => "PROXY_ENGINE_VERSION_NOT_FOUND",
+    ProxyEngineNotReady => "PROXY_ENGINE_NOT_READY",
+    ProxyEngineApiUnavailable => "PROXY_ENGINE_API_UNAVAILABLE",
+    ProxyEngineStartFailed => "PROXY_ENGINE_START_FAILED",
+    ProxyEngineCrashed => "PROXY_ENGINE_CRASHED",
+    ProxyInboundConflict => "PROXY_INBOUND_CONFLICT",
+    ProxyOutboundRefcountMismatch => "PROXY_OUTBOUND_REFCOUNT_MISMATCH",
+    ProxyConnectionRefused => "PROXY_CONNECTION_REFUSED",
+    ProxyAuthFailed => "PROXY_AUTH_FAILED",
+    ProxyTlsFailed => "PROXY_TLS_FAILED",
+    ProxyTimeout => "PROXY_TIMEOUT",
+    ProxyConnectionFailed => "PROXY_CONNECTION_FAILED",
+    ProxyDnsFailed => "PROXY_DNS_FAILED",
+    RuntimeSpawnFailed => "RUNTIME_SPAWN_FAILED",
+    RuntimeCdpTimeout => "RUNTIME_CDP_TIMEOUT",
+    SandboxUnavailable => "SANDBOX_UNAVAILABLE",
+    DirectEgressDisabled => "DIRECT_EGRESS_DISABLED",
+    DisplayUnavailable => "DISPLAY_UNAVAILABLE",
+    StorageBusy => "STORAGE_BUSY",
+    StorageMigrationFailed => "STORAGE_MIGRATION_FAILED",
+    StorageIntegrityFailed => "STORAGE_INTEGRITY_FAILED",
+    InternalUnexpected => "INTERNAL_UNEXPECTED",
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -235,3 +193,49 @@ impl std::fmt::Display for CoreError {
 }
 
 impl std::error::Error for CoreError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `docs/ERROR-CODES.md` is the contract: the enum and the document must
+    /// list exactly the same codes, with no additions and no omissions.
+    #[test]
+    fn enum_matches_the_documented_catalog_bidirectionally() {
+        let document = include_str!("../../../docs/ERROR-CODES.md");
+        let mut documented: Vec<&str> = document
+            .lines()
+            .filter_map(|line| {
+                let rest = line.strip_prefix("| `")?;
+                let (code, _) = rest.split_once('`')?;
+                Some(code)
+            })
+            .collect();
+        documented.sort_unstable();
+        documented.dedup();
+
+        let mut implemented: Vec<&str> = ErrorCode::ALL.iter().map(|code| code.as_str()).collect();
+        implemented.sort_unstable();
+        implemented.dedup();
+
+        assert_eq!(implemented, documented);
+        assert_eq!(ErrorCode::ALL.len(), implemented.len());
+    }
+
+    #[test]
+    fn every_code_round_trips_and_display_is_the_code() {
+        for code in ErrorCode::ALL {
+            assert_eq!(ErrorCode::parse(code.as_str()), Some(*code));
+            assert_eq!(code.to_string(), code.as_str());
+        }
+        assert_eq!(ErrorCode::parse("NOT_A_CATALOGUED_CODE"), None);
+    }
+
+    #[test]
+    fn validation_keeps_a_stable_code_and_a_human_message() {
+        let error = CoreError::validation(ErrorCode::RuntimeCdpTimeout, "no CDP after 10s");
+        assert_eq!(error.code(), ErrorCode::RuntimeCdpTimeout);
+        assert_eq!(error.code_str(), "RUNTIME_CDP_TIMEOUT");
+        assert_eq!(error.to_string(), "no CDP after 10s");
+    }
+}
