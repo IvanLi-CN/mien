@@ -48,16 +48,18 @@ impl SqliteProfileRepository {
     async fn insert_row(&self, profile: &Profile) -> Result<(), CoreError> {
         let fingerprint =
             serde_json::to_string(&profile.fingerprint).map_err(|_| CoreError::Storage)?;
-        sqlx::query("INSERT INTO profiles (id,name,notes,fingerprint_json,fingerprint_schema,kernel_version,mode,status,start_url,automation_api,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'active',?8,?9,?10,?10)")
+        sqlx::query("INSERT INTO profiles (id,name,notes,fingerprint_json,fingerprint_schema,kernel_version,mode,status,start_url,automation_api,proxy_id,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'active',?8,?9,?10,?11,?11)")
             .bind(&profile.id.0).bind(&profile.name).bind(&profile.notes).bind(fingerprint).bind(1i64)
             .bind(&profile.kernel_version).bind(profile.mode.as_str()).bind(&profile.start_url)
-            .bind(profile.automation_api as i64).bind(&profile.created_at)
-            .execute(&self.pool).await.map_err(map_sqlx_error)?;
+            .bind(profile.automation_api as i64).bind(&profile.proxy_id).bind(&profile.created_at)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| map_profile_insert_error(error, profile.proxy_id.is_some()))?;
         Ok(())
     }
 
     async fn fetch(&self, id: &ProfileId) -> Result<Profile, CoreError> {
-        let row = sqlx::query("SELECT id,name,status,fingerprint_json,start_url,notes,kernel_version,mode,automation_api,created_at,updated_at,archived_at,deleted_at,deletion_error FROM profiles WHERE id=?1")
+        let row = sqlx::query("SELECT id,name,status,fingerprint_json,start_url,notes,kernel_version,mode,automation_api,proxy_id,created_at,updated_at,archived_at,deleted_at,deletion_error FROM profiles WHERE id=?1")
             .bind(&id.0).fetch_optional(&self.pool).await.map_err(map_sqlx_error)?.ok_or(CoreError::NotFound)?;
         profile_from_row(&row)
     }
@@ -227,7 +229,7 @@ impl ProfileRepository for SqliteProfileRepository {
     async fn list(&self, query: ProfileQuery) -> Result<ProfilePage, CoreError> {
         let limit = query.limit.unwrap_or(50).clamp(1, 100) as i64;
         let pattern = query.search.map(|v| format!("%{v}%"));
-        let rows = sqlx::query("SELECT id,name,status,fingerprint_json,start_url,notes,kernel_version,mode,automation_api,created_at,updated_at,archived_at,deleted_at,deletion_error FROM profiles WHERE (?1 IS NULL OR name LIKE ?1) AND (?2 IS NULL OR id > ?2) ORDER BY id LIMIT ?3")
+        let rows = sqlx::query("SELECT id,name,status,fingerprint_json,start_url,notes,kernel_version,mode,automation_api,proxy_id,created_at,updated_at,archived_at,deleted_at,deletion_error FROM profiles WHERE (?1 IS NULL OR name LIKE ?1) AND (?2 IS NULL OR id > ?2) ORDER BY id LIMIT ?3")
             .bind(pattern).bind(query.cursor).bind(limit + 1).fetch_all(&self.pool).await.map_err(map_sqlx_error)?;
         let mut items = rows
             .into_iter()
@@ -269,6 +271,11 @@ impl ProfileRepository for SqliteProfileRepository {
             name: source.name,
             fingerprint,
             start_url: source.start_url,
+            proxy_id: if options.copy_proxy {
+                source.proxy_id.clone()
+            } else {
+                None
+            },
             notes: source.notes,
             kernel_version: source.kernel_version,
             mode: source.mode,
@@ -343,6 +350,16 @@ fn map_sqlx_error(error: sqlx::Error) -> CoreError {
         _ => CoreError::Storage,
     }
 }
+fn map_profile_insert_error(error: sqlx::Error, has_proxy: bool) -> CoreError {
+    if has_proxy {
+        if let sqlx::Error::Database(db) = &error {
+            if db.code().as_deref() == Some("787") || db.message().contains("FOREIGN KEY") {
+                return CoreError::validation(ErrorCode::ProxyNotFound, "proxy binding not found");
+            }
+        }
+    }
+    map_sqlx_error(error)
+}
 fn profile_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Profile, CoreError> {
     let status = match row.get::<String, _>("status").as_str() {
         "active" => ProfileStatus::Active,
@@ -375,6 +392,7 @@ fn profile_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Profile, CoreError>
         kernel_version: row.get("kernel_version"),
         mode,
         automation_api: row.get::<i64, _>("automation_api") != 0,
+        proxy_id: row.get("proxy_id"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         archived_at: row.get("archived_at"),
@@ -440,6 +458,7 @@ mod tests {
             name: name.into(),
             fingerprint: FingerprintSpec::fresh(Platform::Macos).expect("fresh fingerprint spec"),
             start_url: None,
+            proxy_id: None,
             notes: None,
             kernel_version: "148".into(),
             mode: ProfileMode::Headful,

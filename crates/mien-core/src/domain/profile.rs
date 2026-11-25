@@ -83,6 +83,8 @@ pub struct Profile {
     pub kernel_version: String,
     pub mode: ProfileMode,
     pub automation_api: bool,
+    /// Optional proxy binding; `None` means the profile runs in direct mode.
+    pub proxy_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -147,6 +149,9 @@ pub struct CreateProfile {
     pub name: String,
     pub fingerprint: FingerprintSpec,
     pub start_url: Option<String>,
+    /// Optional proxy binding for the profile.
+    #[serde(default)]
+    pub proxy_id: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
     #[serde(default = "default_kernel_version")]
@@ -206,6 +211,7 @@ pub fn create(input: CreateProfile) -> Result<Profile, CoreError> {
         kernel_version: input.kernel_version,
         mode: input.mode,
         automation_api: input.automation_api,
+        proxy_id: input.proxy_id,
         created_at: now.clone(),
         updated_at: now,
         archived_at: None,
