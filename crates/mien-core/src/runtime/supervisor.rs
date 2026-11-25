@@ -194,7 +194,13 @@ impl RuntimeRecord {
         detail: Option<String>,
     ) -> Result<(), CoreError> {
         let mut state = self.state.lock().expect("runtime state lock");
-        if state.state != target && !state::valid_transition(state.state, target) {
+        // Re-entering the same state is a no-op: `stop` and the crash monitor
+        // both observe terminal transitions, and the state machine must emit
+        // each lifecycle event exactly once.
+        if state.state == target {
+            return Ok(());
+        }
+        if !state::valid_transition(state.state, target) {
             return Err(CoreError::InvalidTransition);
         }
         state.state = target;
