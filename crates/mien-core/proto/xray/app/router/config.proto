@@ -1,0 +1,12 @@
+syntax = "proto3";
+package xray.app.router;
+import "common/serial/typed_message.proto";
+message RoutingRule {
+  oneof target_tag { string tag = 1; string balancing_tag = 12; }
+  string rule_tag = 19;
+  repeated string inbound_tag = 8;
+  repeated string protocol = 9;
+  map<string,string> attributes = 15;
+}
+message RuleConfig { repeated RoutingRule rules = 1; }
+message Config { enum DomainStrategy { AsIs = 0; IpIfNonMatch = 2; IpOnDemand = 3; } DomainStrategy domain_strategy = 1; repeated RoutingRule rule = 2; repeated xray.common.serial.TypedMessage balancing_rule = 3; string script = 4; }

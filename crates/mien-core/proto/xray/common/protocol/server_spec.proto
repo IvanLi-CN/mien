@@ -1,0 +1,5 @@
+syntax = "proto3";
+package xray.common.protocol;
+import "common/net/address.proto";
+import "common/protocol/user.proto";
+message ServerEndpoint { xray.common.net.IPOrDomain address = 1; uint32 port = 2; xray.common.protocol.User user = 3; }

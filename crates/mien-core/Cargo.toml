@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+build = "build.rs"
 
 [dependencies]
 serde.workspace = true
@@ -13,3 +14,15 @@ sqlx.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+libc.workspace = true
+
+[build-dependencies]
+tonic-prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[dev-dependencies]
+sha2 = "0.10"
