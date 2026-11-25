@@ -4,6 +4,7 @@ use super::spec::{
     FingerprintSpec, Network, Platform, Spoof, Webrtc, Window, derive_traits,
     validate_spec_with_manifest,
 };
+use crate::error::ErrorCode;
 
 fn valid_spec() -> FingerprintSpec {
     FingerprintSpec {
@@ -47,11 +48,7 @@ fn rejects_schema_version_with_stable_code() {
     let mut spec = valid_spec();
     spec.schema_version = 2;
     let error = validate_spec_with_manifest(&spec, &manifest()).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .starts_with("validation failed: FINGERPRINT_SCHEMA_VERSION:")
-    );
+    assert_eq!(error.code(), ErrorCode::FingerprintInvalid);
 }
 
 #[test]
@@ -70,22 +67,18 @@ fn rejects_unverified_manifest_values() {
             }
         }
         let error = validate_spec_with_manifest(&spec, &manifest()).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .starts_with("validation failed: KERNEL_UNSUPPORTED:")
-        );
+        assert_eq!(error.code(), ErrorCode::KernelUnsupported);
     }
     let mut spec = valid_spec();
     spec.spoof = Some(Spoof {
         clientrects: Some(false),
         ..Spoof::default()
     });
-    assert!(
+    assert_eq!(
         validate_spec_with_manifest(&spec, &manifest())
             .unwrap_err()
-            .to_string()
-            .starts_with("validation failed: KERNEL_UNSUPPORTED:")
+            .code(),
+        ErrorCode::KernelUnsupported
     );
 }
 
@@ -93,27 +86,27 @@ fn rejects_unverified_manifest_values() {
 fn rejects_unsafe_network_settings_with_stable_codes() {
     let mut spec = valid_spec();
     spec.network.doh_mode = "auto".to_owned();
-    assert!(
+    assert_eq!(
         validate_spec_with_manifest(&spec, &manifest())
             .unwrap_err()
-            .to_string()
-            .starts_with("validation failed: FINGERPRINT_INVALID:")
+            .code(),
+        ErrorCode::FingerprintInvalid
     );
     let mut spec = valid_spec();
     spec.network.ipv6_mode = "allow".to_owned();
-    assert!(
+    assert_eq!(
         validate_spec_with_manifest(&spec, &manifest())
             .unwrap_err()
-            .to_string()
-            .starts_with("validation failed: FINGERPRINT_INVALID:")
+            .code(),
+        ErrorCode::FingerprintInvalid
     );
     let mut spec = valid_spec();
     spec.webrtc.disable_non_proxied_udp = false;
-    assert!(
+    assert_eq!(
         validate_spec_with_manifest(&spec, &manifest())
             .unwrap_err()
-            .to_string()
-            .starts_with("validation failed: FINGERPRINT_NETWORK_UNSAFE:")
+            .code(),
+        ErrorCode::FingerprintInvalid
     );
 }
 

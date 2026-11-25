@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 use crate::fingerprint::spec::FingerprintSpec;
 
 /// 档案生命周期状态；`deleted` 不得启动。
@@ -189,7 +189,10 @@ pub struct CopyOptions {
 /// 名称冲突、规格校验失败或存储繁忙。
 pub fn create(input: CreateProfile) -> Result<Profile, CoreError> {
     if input.name.trim().is_empty() || input.name.chars().count() > 120 {
-        return Err(CoreError::Validation("name".to_owned()));
+        return Err(CoreError::validation(
+            ErrorCode::ValidationFailed,
+            "name must be 1-120 characters",
+        ));
     }
     let id = ProfileId::new();
     let now = crate::storage::now_utc();

@@ -1,4 +1,5 @@
 //! Real Xray v26.11.9 gRPC integration: shared outbound, dynamic route/inbound, CRUD idempotency, crash/rebuild and TUIC rejection.
+use mien_core::error::ErrorCode;
 use mien_core::proxy::{
     api::{self, XrayApi},
     engine::{EngineController, EngineProcess, EngineState, RuntimeBinding},
@@ -101,8 +102,8 @@ async fn live_xray_gateway_and_refcounts() {
         ..cfg(1)
     };
     assert_eq!(
-        build_outbound(&tuic, b"key").unwrap_err().to_string(),
-        "validation failed: TUIC_NOT_SUPPORTED"
+        build_outbound(&tuic, b"key").unwrap_err().code(),
+        ErrorCode::TuicNotSupported
     );
     engine.stop(Duration::from_secs(1)).await.unwrap()
 }

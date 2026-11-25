@@ -32,7 +32,7 @@ use super::xray::{
         vless::{Account as VlessAccount, outbound::Config as VlessConfig},
     },
 };
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -651,16 +651,29 @@ pub fn remove_rule(a: &dyn XrayApi, t: &str) -> Result<(), CoreError> {
     }
 }
 fn api_error(e: ApiError) -> CoreError {
-    let c = match e.code {
-        ApiErrorCode::Unavailable => "PROXY_ENGINE_API_UNAVAILABLE",
-        ApiErrorCode::AlreadyExists | ApiErrorCode::NotFound => "PROXY_ENGINE_API_RECONCILE_FAILED",
-        ApiErrorCode::Invalid => "PROXY_CONFIG_INVALID",
+    // Every branch must use a catalogued code; `docs/ERROR-CODES.md` has no
+    // dedicated reconcile code, so unexpected API state is reported as an
+    // unavailable API (retryable) rather than inventing a new code.
+    let (code, fallback) = match e.code {
+        ApiErrorCode::Unavailable => (
+            ErrorCode::ProxyEngineApiUnavailable,
+            "proxy engine API is unavailable",
+        ),
+        ApiErrorCode::AlreadyExists | ApiErrorCode::NotFound => (
+            ErrorCode::ProxyEngineApiUnavailable,
+            "proxy engine API state could not be reconciled",
+        ),
+        ApiErrorCode::Invalid => (
+            ErrorCode::ProxyConfigInvalid,
+            "proxy engine rejected the configuration as invalid",
+        ),
     };
-    if e.message.is_empty() {
-        CoreError::Validation(c.into())
+    let message = if e.message.is_empty() {
+        fallback.to_owned()
     } else {
-        CoreError::Validation(format!("{c}: {}", e.message))
-    }
+        format!("{fallback}: {}", e.message)
+    };
+    CoreError::validation(code, message)
 }
 #[cfg(test)]
 mod tests {

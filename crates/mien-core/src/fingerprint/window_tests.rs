@@ -2,6 +2,7 @@ use super::capability::CapabilityManifest;
 use super::spec::{
     FingerprintSpec, Network, Platform, Webrtc, Window, validate_spec_with_manifest,
 };
+use crate::error::ErrorCode;
 
 #[test]
 fn rejects_window_dimensions_outside_manifest_candidates() {
@@ -30,9 +31,5 @@ fn rejects_window_dimensions_outside_manifest_candidates() {
     };
     let manifest = CapabilityManifest::pinned().expect("pinned manifest");
     let error = validate_spec_with_manifest(&spec, &manifest).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .starts_with("validation failed: KERNEL_UNSUPPORTED:")
-    );
+    assert_eq!(error.code(), ErrorCode::KernelUnsupported);
 }

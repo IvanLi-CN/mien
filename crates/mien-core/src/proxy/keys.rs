@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fmt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 
 /// Protocols handled by Xray. TUIC remains representable so it can be rejected explicitly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -137,7 +137,10 @@ impl ProxyConfig {
             return Err(config_error("server and port are required"));
         }
         if self.protocol == ProxyProtocol::Tuic {
-            return Err(CoreError::Validation("TUIC_NOT_SUPPORTED".into()));
+            return Err(CoreError::validation(
+                ErrorCode::TuicNotSupported,
+                "TUIC is not supported",
+            ));
         }
         if self.protocol == ProxyProtocol::Hysteria2 {
             if self.transport != Transport::Hysteria {
@@ -291,7 +294,12 @@ pub fn build_outbound(config: &ProxyConfig, master_key: &[u8]) -> Result<Outboun
         ProxyProtocol::Wireguard => ("wireguard", basic_settings(config)),
         ProxyProtocol::Http | ProxyProtocol::Https => ("http", basic_settings(config)),
         ProxyProtocol::Socks5 => ("socks", basic_settings(config)),
-        ProxyProtocol::Tuic => return Err(CoreError::Validation("TUIC_NOT_SUPPORTED".into())),
+        ProxyProtocol::Tuic => {
+            return Err(CoreError::validation(
+                ErrorCode::TuicNotSupported,
+                "TUIC is not supported",
+            ));
+        }
     };
     let stream_settings = build_stream_settings(config);
     Ok(OutboundSpec {
@@ -388,7 +396,7 @@ fn optional_value(value: &Option<String>) -> Value {
 }
 
 fn config_error(message: &str) -> CoreError {
-    CoreError::Validation(format!("PROXY_CONFIG_INVALID:{message}"))
+    CoreError::validation(ErrorCode::ProxyConfigInvalid, message)
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -576,7 +584,7 @@ mod tests {
             b"master",
         )
         .unwrap_err();
-        assert_eq!(error.to_string(), "validation failed: TUIC_NOT_SUPPORTED");
+        assert_eq!(error.code(), ErrorCode::TuicNotSupported);
     }
 
     #[test]

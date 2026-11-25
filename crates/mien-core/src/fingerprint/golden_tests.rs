@@ -3,6 +3,7 @@ use super::argv::build_launch_argv;
 use super::capability::CapabilityManifest;
 use super::json::parse_spec_json;
 use super::spec::{FingerprintSpec, Spoof, derive_traits, validate_spec_with_manifest};
+use crate::error::ErrorCode;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -107,36 +108,37 @@ fn rejects_each_negative_capability_case_with_stable_error_code() {
     cases.push(("clientrects", spec));
     for (name, spec) in cases {
         let error = validate_spec_with_manifest(&spec, &manifest()).unwrap_err();
-        assert!(
-            error.to_string().contains("KERNEL_UNSUPPORTED"),
+        assert_eq!(
+            error.code(),
+            ErrorCode::KernelUnsupported,
             "{name}: {error}"
         );
     }
     let error = manifest().flag("proxy-server").unwrap_err();
-    assert!(error.to_string().contains("KERNEL_UNSUPPORTED"));
+    assert_eq!(error.code(), ErrorCode::KernelUnsupported);
     let mut spec = base.clone();
     spec.network.doh_mode = "auto".to_owned();
-    assert!(
+    assert_eq!(
         validate_spec_with_manifest(&spec, &manifest())
             .unwrap_err()
-            .to_string()
-            .contains("FINGERPRINT_INVALID")
+            .code(),
+        ErrorCode::FingerprintInvalid
     );
     let mut spec = base.clone();
     spec.network.ipv6_mode = "allow".to_owned();
-    assert!(
+    assert_eq!(
         validate_spec_with_manifest(&spec, &manifest())
             .unwrap_err()
-            .to_string()
-            .contains("FINGERPRINT_INVALID")
+            .code(),
+        ErrorCode::FingerprintInvalid
     );
     let mut spec = base;
     spec.webrtc.disable_non_proxied_udp = false;
-    assert!(
+    assert_eq!(
         validate_spec_with_manifest(&spec, &manifest())
             .unwrap_err()
-            .to_string()
-            .contains("FINGERPRINT_NETWORK_UNSAFE")
+            .code(),
+        ErrorCode::FingerprintInvalid
     );
 }
 
@@ -149,19 +151,11 @@ fn missing_required_json_fields_and_unknown_credentials_have_stable_codes() {
     let mut spec = missing["spec"].clone();
     spec.as_object_mut().unwrap().remove("window");
     let error = parse_spec_json(&spec.to_string()).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .starts_with("validation failed: FINGERPRINT_REQUIRED_FIELD:")
-    );
+    assert_eq!(error.code(), ErrorCode::FingerprintInvalid);
     let mut spec = missing["spec"].clone();
     spec["proxy_password"] = serde_json::json!("secret");
     let error = parse_spec_json(&spec.to_string()).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .starts_with("validation failed: FINGERPRINT_INVALID:")
-    );
+    assert_eq!(error.code(), ErrorCode::FingerprintInvalid);
 }
 
 #[test]
@@ -179,5 +173,5 @@ fn manifest_without_runtime_network_controls_is_rejected() {
     .expect("manifest json");
     json.as_object_mut().unwrap().remove("network_controls");
     let error = CapabilityManifest::from_json_str(&json.to_string()).unwrap_err();
-    assert!(error.to_string().contains("KERNEL_MANIFEST_INVALID"));
+    assert_eq!(error.code(), ErrorCode::KernelUnsupported);
 }

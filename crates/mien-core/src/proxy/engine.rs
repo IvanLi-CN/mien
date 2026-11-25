@@ -3,7 +3,7 @@ use super::{
     api::{self, GrpcXrayApi},
     keys::{OutboundKey, OutboundSpec},
 };
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 use serde_json::Value;
 use std::{
     collections::BTreeMap,
@@ -61,20 +61,45 @@ impl EngineProcess {
         super::gateway::verify_binary_sha256(bin, digest)?;
         Self::start_with_api_port(
             bin,
-            reserve_port().map_err(|_| err("PROXY_ENGINE_START_FAILED"))?,
+            reserve_port().map_err(|_| {
+                err(
+                    ErrorCode::ProxyEngineStartFailed,
+                    "proxy engine failed to start",
+                )
+            })?,
         )
         .await
     }
     pub async fn start_with_api_port(bin: &Path, port: u16) -> Result<Self, CoreError> {
-        let dir = private_dir().map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        let dir = private_dir().map_err(|_| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })?;
         let cfg = super::gateway::config_with_api_port(port)?;
         let path = dir.join("bootstrap.json");
         std::fs::write(
             &path,
-            serde_json::to_vec(&cfg).map_err(|_| err("PROXY_ENGINE_START_FAILED"))?,
+            serde_json::to_vec(&cfg).map_err(|_| {
+                err(
+                    ErrorCode::ProxyEngineStartFailed,
+                    "proxy engine failed to start",
+                )
+            })?,
         )
-        .map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
-        mode_file(&path).map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        .map_err(|_| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })?;
+        mode_file(&path).map_err(|_| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })?;
         let mut cmd = Command::new(bin);
         cmd.arg("run")
             .arg(format!("-config={}", path.display()))
@@ -83,17 +108,31 @@ impl EngineProcess {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         isolate(&mut cmd);
-        let mut child = cmd.spawn().map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
-        let pid = child.id().ok_or_else(|| err("PROXY_ENGINE_START_FAILED"))? as i32;
+        let mut child = cmd.spawn().map_err(|_| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })?;
+        let pid = child.id().ok_or_else(|| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })? as i32;
         let (tx, mut rx) = mpsc::channel::<String>(128);
-        let o = child
-            .stdout
-            .take()
-            .ok_or_else(|| err("PROXY_ENGINE_START_FAILED"))?;
-        let e = child
-            .stderr
-            .take()
-            .ok_or_else(|| err("PROXY_ENGINE_START_FAILED"))?;
+        let o = child.stdout.take().ok_or_else(|| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })?;
+        let e = child.stderr.take().ok_or_else(|| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })?;
         let tx2 = tx.clone();
         let a = tokio::spawn(async move { pump(o, tx2).await });
         let b = tokio::spawn(async move { pump(e, tx).await });
@@ -105,16 +144,22 @@ impl EngineProcess {
             if tokio::time::Instant::now() >= deadline {
                 stop_child(&mut child, pid, Duration::from_secs(1)).await;
                 let _ = std::fs::remove_dir_all(&dir);
-                return Err(err("PROXY_ENGINE_NOT_READY"));
+                return Err(err(
+                    ErrorCode::ProxyEngineNotReady,
+                    "proxy engine is not ready",
+                ));
             }
-            if let Some(status) = child
-                .try_wait()
-                .map_err(|_| err("PROXY_ENGINE_API_UNAVAILABLE"))?
-            {
+            if let Some(status) = child.try_wait().map_err(|_| {
+                err(
+                    ErrorCode::ProxyEngineApiUnavailable,
+                    "proxy engine API is unavailable",
+                )
+            })? {
                 let _ = std::fs::remove_dir_all(&dir);
-                return Err(CoreError::Validation(format!(
-                    "PROXY_ENGINE_START_FAILED: exited with {status}"
-                )));
+                return Err(CoreError::validation(
+                    ErrorCode::ProxyEngineStartFailed,
+                    format!("engine exited during startup with {status}"),
+                ));
             }
             let _ = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await;
             if tokio::net::TcpStream::connect(("127.0.0.1", port))
@@ -152,16 +197,23 @@ impl EngineProcess {
     pub async fn stop(&mut self, d: Duration) -> Result<(), CoreError> {
         stop_child(&mut self.child, self.group, d).await;
         self.logs.abort();
-        std::fs::remove_dir_all(&self.dir).map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        std::fs::remove_dir_all(&self.dir).map_err(|_| {
+            err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            )
+        })?;
         Ok(())
     }
     pub async fn force_kill(&mut self) -> Result<(), CoreError> {
         if self.child.id().is_some() {
             signal(self.group, true);
-            self.child
-                .wait()
-                .await
-                .map_err(|_| err("PROXY_ENGINE_API_UNAVAILABLE"))?;
+            self.child.wait().await.map_err(|_| {
+                err(
+                    ErrorCode::ProxyEngineApiUnavailable,
+                    "proxy engine API is unavailable",
+                )
+            })?;
         }
         self.logs.abort();
         Ok(())
@@ -253,8 +305,8 @@ async fn stop_child(c: &mut Child, g: i32, d: Duration) {
         let _ = c.wait().await;
     }
 }
-fn err(s: &str) -> CoreError {
-    CoreError::Validation(s.into())
+fn err(code: ErrorCode, message: &str) -> CoreError {
+    CoreError::validation(code, message)
 }
 pub struct EngineController<A: api::XrayApi> {
     api: Arc<A>,
@@ -281,13 +333,19 @@ impl<A: api::XrayApi> EngineController<A> {
             || r.get("script").is_some()
             || r.get("balancers").is_some()
         {
-            return Err(err("PROXY_ENGINE_START_FAILED"));
+            return Err(err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            ));
         }
         Ok(())
     }
     pub fn acquire(&self, b: RuntimeBinding, s: &OutboundSpec) -> Result<(), CoreError> {
         if self.state() != EngineState::Running {
-            return Err(err("PROXY_ENGINE_NOT_READY"));
+            return Err(err(
+                ErrorCode::ProxyEngineNotReady,
+                "proxy engine is not ready",
+            ));
         }
         let mut st = self.state.lock().expect("state lock");
         if st.bindings.contains_key(&b.runtime_id) {
@@ -377,12 +435,17 @@ impl<A: api::XrayApi> EngineController<A> {
     }
     fn dec(&self, s: &mut State, k: &OutboundKey) -> Result<bool, CoreError> {
         let Some(r) = s.outbounds.get_mut(k) else {
-            return Err(err("PROXY_OUTBOUND_REFCOUNT_MISMATCH"));
+            return Err(err(
+                ErrorCode::ProxyOutboundRefcountMismatch,
+                "shared outbound refcount mismatch",
+            ));
         };
-        r.ref_count = r
-            .ref_count
-            .checked_sub(1)
-            .ok_or_else(|| err("PROXY_OUTBOUND_REFCOUNT_MISMATCH"))?;
+        r.ref_count = r.ref_count.checked_sub(1).ok_or_else(|| {
+            err(
+                ErrorCode::ProxyOutboundRefcountMismatch,
+                "shared outbound refcount mismatch",
+            )
+        })?;
         if r.ref_count > 0 {
             return Ok(false);
         }
