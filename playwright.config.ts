@@ -5,5 +5,11 @@ export default defineConfig({
   testDir: "e2e",
   testMatch: "**/*.spec.ts",
   reporter: "list",
-  use: { trace: "retain-on-failure" },
+  use: { trace: "retain-on-failure", baseURL: "http://127.0.0.1:4317" },
+  webServer: {
+    command: "bun run dev -- --host 127.0.0.1 --port 4317 --strictPort",
+    url: "http://127.0.0.1:4317",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
 });
