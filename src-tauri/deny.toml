@@ -43,6 +43,10 @@ ignore = [
   # reach: Tauri urlpattern dependency tree; compile-time URL pattern support only；owner: T6
   # 解除条件: no patched version; no MSRV impact; T6 to remove the upstream unic path when Tauri updates
   "RUSTSEC-2025-0100",
+  # id: RUSTSEC-2026-0459 | package: libsqlite3-sys 0.30.1 | class: vulnerability
+  # reach: 只影响打开攻击者构造的 db + 同页大小的 -wal 对；Mien 只打开自身 data root 下由自己创建的库，导入走 JSON 不导入 SQLite 文件；owner: T6
+  # 解除条件: sqlx 升到带 libsqlite3-sys >= 0.39 的版本（需 MSRV 1.88+，sqlx 0.9 更需 1.94）；或改为链接系统 SQLite（放弃 bundled 可复现性）。发布阻断项。
+  "RUSTSEC-2026-0459",
 ]
 
 [licenses]
