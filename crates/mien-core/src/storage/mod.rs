@@ -4,6 +4,7 @@
 
 pub mod migrations;
 pub mod sqlite;
+pub use migrations::{current_version, open_and_migrate};
 
 pub fn now_utc() -> String {
     let duration = std::time::SystemTime::now()
