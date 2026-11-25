@@ -34,5 +34,5 @@ impl Default for AppState {
 /// 数据库不可读或迁移记录损坏。
 #[allow(dead_code, reason = "T9-A 起由 app_info 返回")]
 pub fn migration_version(database_url: &str) -> Result<migrations::SchemaVersion, CoreError> {
-    migrations::current_version(database_url)
+    migrations::current_version_for_url(database_url)
 }
