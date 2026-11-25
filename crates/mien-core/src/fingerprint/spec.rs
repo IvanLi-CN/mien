@@ -78,6 +78,41 @@ pub struct FingerprintSpec {
     pub network: Network,
 }
 
+impl FingerprintSpec {
+    pub fn fresh(platform: Platform) -> Result<Self, CoreError> {
+        let spec = Self {
+            schema_version: SCHEMA_VERSION,
+            seed: generate_seed()?,
+            platform,
+            platform_version: match platform {
+                Platform::Windows => "10.0.0",
+                Platform::Macos => "14.5",
+                Platform::Linux => "6.8.0",
+            }
+            .to_owned(),
+            brand: "Edge".to_owned(),
+            brand_version: "148.0.0.0".to_owned(),
+            hardware_concurrency: 12,
+            languages: vec!["en-US".to_owned(), "en".to_owned()],
+            timezone: "America/Los_Angeles".to_owned(),
+            window: Window {
+                width: 1280,
+                height: 720,
+            },
+            spoof: None,
+            webrtc: Webrtc {
+                disable_non_proxied_udp: true,
+            },
+            network: Network {
+                doh_mode: "disabled".to_owned(),
+                ipv6_mode: "block".to_owned(),
+            },
+        };
+        validate_spec(&spec)?;
+        Ok(spec)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivedTraits {
     pub canvas: u64,

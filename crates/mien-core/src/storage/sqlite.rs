@@ -7,6 +7,7 @@ use crate::domain::profile::{
     ProfilePatch, ProfileQuery, ProfileStatus,
 };
 use crate::error::CoreError;
+use crate::fingerprint::spec::{FingerprintSpec, generate_seed};
 use crate::ports::repository::ProfileRepository;
 
 /// SQLite-backed profile repository and owner of profile data directories.
@@ -256,9 +257,11 @@ impl ProfileRepository for SqliteProfileRepository {
         let mut fingerprint = if options.copy_fingerprint {
             source.fingerprint.clone()
         } else {
-            Default::default()
+            FingerprintSpec::fresh(source.fingerprint.platform)?
         };
-        fingerprint.seed = Some(ProfileId::new().0);
+        while fingerprint.seed == source.fingerprint.seed {
+            fingerprint.seed = generate_seed()?;
+        }
         self.create(CreateProfile {
             name: source.name,
             fingerprint,
@@ -379,6 +382,7 @@ pub fn validate_relative_path(root: &Path, relative: &Path) -> Result<PathBuf, C
 mod tests {
     use super::*;
     use crate::domain::profile::CreateProfile;
+    use crate::fingerprint::{spec::Platform, validate_spec};
 
     fn setup() -> (tokio::runtime::Runtime, SqliteProfileRepository, PathBuf) {
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
@@ -424,7 +428,7 @@ mod tests {
     fn input(name: &str) -> CreateProfile {
         CreateProfile {
             name: name.into(),
-            fingerprint: Default::default(),
+            fingerprint: FingerprintSpec::fresh(Platform::Macos).expect("fresh fingerprint spec"),
             start_url: None,
             notes: None,
             kernel_version: "148".into(),
@@ -465,6 +469,50 @@ mod tests {
                     .join("downloads")
                     .is_dir()
             );
+        });
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn copying_fingerprint_preserves_platform_and_generates_a_new_seed() {
+        let (runtime, repository, path) = setup();
+        runtime.block_on(async {
+            let source = repository.create(input("source")).await.expect("create");
+            let copy = repository
+                .copy(
+                    &source.id,
+                    CopyOptions {
+                        copy_fingerprint: true,
+                        copy_proxy: false,
+                    },
+                )
+                .await
+                .expect("copy");
+
+            assert_ne!(source.fingerprint.seed, copy.fingerprint.seed);
+            assert_eq!(source.fingerprint.platform, copy.fingerprint.platform);
+        });
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn copying_without_fingerprint_creates_a_valid_spec_with_a_new_seed() {
+        let (runtime, repository, path) = setup();
+        runtime.block_on(async {
+            let source = repository.create(input("source")).await.expect("create");
+            let copy = repository
+                .copy(
+                    &source.id,
+                    CopyOptions {
+                        copy_fingerprint: false,
+                        copy_proxy: false,
+                    },
+                )
+                .await
+                .expect("copy");
+
+            assert_ne!(source.fingerprint.seed, copy.fingerprint.seed);
+            validate_spec(&copy.fingerprint).expect("valid fresh fingerprint spec");
         });
         let _ = std::fs::remove_dir_all(path);
     }
