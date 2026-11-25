@@ -12,6 +12,7 @@ use mien_core::domain::profile::{CreateProfile, ProfileMode, ProfileStatus};
 use mien_core::fingerprint::load_pinned_manifest;
 use mien_core::fingerprint::spec::{FingerprintSpec, Platform};
 use mien_core::ports::repository::ProfileRepository;
+use mien_core::proxy::api::XrayApi;
 use mien_core::proxy::gateway::proxy_server_arg;
 use mien_core::runtime::{
     ProxyAttach, ProxyAttachment, RuntimeSnapshot, RuntimeState, RuntimeSupervisor, StartProfile,
@@ -45,8 +46,11 @@ impl ProxyAttach for StubProxy {
         })
     }
 
-    fn detach(&self, key: &str) -> Result<(), mien_core::CoreError> {
-        self.detached.lock().expect("lock").push(key.to_owned());
+    fn detach(&self, runtime_id: &str) -> Result<(), mien_core::CoreError> {
+        self.detached
+            .lock()
+            .expect("lock")
+            .push(runtime_id.to_owned());
         Ok(())
     }
 }
@@ -294,4 +298,114 @@ fn inactive_profiles_are_refused() {
         .block_on(request.start(&supervisor, "rt-archived"))
         .expect_err("must refuse");
     assert_eq!(error.code(), ErrorCode::ValidationFailed);
+}
+
+#[test]
+fn slice_attaches_the_real_shared_engine() {
+    let Some(binary) = kernel() else {
+        return;
+    };
+    let Some(xray) = std::env::var_os("MIEN_XRAY_BIN").map(PathBuf::from) else {
+        println!("skipped: MIEN_XRAY_BIN not set");
+        return;
+    };
+    let digest = sha256(&binary);
+    let xray_digest = sha256(&xray);
+    let runtime = tokio::runtime::Runtime::new().expect("runtime");
+    let dir = tempfile::tempdir().expect("tempdir");
+    let database = dir.path().join("mien.db");
+    let root = dir.path().join("data");
+    let pool = open_and_migrate(&database).expect("migrate");
+    let repository = SqliteProfileRepository::new(pool, &root).expect("repository");
+
+    seed_proxy(repository.pool(), "proxy-1");
+    let stored = runtime
+        .block_on(repository.create(profile("slice-engine", Some("proxy-1"))))
+        .expect("create");
+
+    let (mut engine, controller) = runtime.block_on(async {
+        let engine = mien_core::proxy::engine::EngineProcess::start(&xray, &xray_digest)
+            .await
+            .expect("xray start");
+        let controller = Arc::new(mien_core::proxy::engine::EngineController::new(
+            engine.api(),
+        ));
+        controller.set_state(mien_core::proxy::engine::EngineState::Running);
+        (engine, controller)
+    });
+
+    let config = mien_core::proxy::keys::ProxyConfig {
+        protocol: mien_core::proxy::keys::ProxyProtocol::Vless,
+        server: "127.0.0.1".into(),
+        port: 1,
+        transport: mien_core::proxy::keys::Transport::Tcp,
+        tls: mien_core::proxy::keys::TlsSettings::default(),
+        mux: mien_core::proxy::keys::MuxSettings::default(),
+        options: std::collections::BTreeMap::new(),
+        credentials: mien_core::proxy::keys::Credentials {
+            values: [(
+                "id".to_owned(),
+                "00000000-0000-4000-8000-000000000001".to_owned(),
+            )]
+            .into_iter()
+            .collect(),
+        },
+    };
+    let spec = mien_core::proxy::keys::build_outbound(&config, b"slice-master").expect("spec");
+    let attach = mien_core::proxy::attach::GatewayAttach::new(controller.clone(), spec.clone());
+
+    let supervisor = RuntimeSupervisor::new(&root);
+    let manifest = load_pinned_manifest().expect("pinned manifest");
+    let runtime_id = format!("rt-{}", stored.id.0);
+    let request = StartProfile {
+        profile: &stored,
+        binary: binary.clone(),
+        binary_sha256: digest.clone(),
+        manifest: &manifest,
+        data_root: root.clone(),
+        sandbox_kind: "seatbelt".into(),
+        proxy: Some(&attach),
+        stop_timeout: Duration::from_secs(5),
+    };
+    let started = runtime
+        .block_on(async { request.start(&supervisor, &runtime_id).await })
+        .expect("start");
+    let _guard = StopOnDrop {
+        supervisor: &supervisor,
+        runtime_id: runtime_id.clone(),
+    };
+    assert_eq!(started.snapshot.state, RuntimeState::Running);
+    let port = started.proxy.as_ref().expect("attachment").port;
+    assert_eq!(started.snapshot.proxy_port, Some(port));
+    let inbounds = engine.api().list_inbounds().expect("inbounds");
+    assert!(
+        inbounds
+            .iter()
+            .any(|inbound| inbound.tag == format!("rt:{runtime_id}:in"))
+    );
+    assert_eq!(
+        controller.ref_count(attach.outbound_key()),
+        1,
+        "shared outbound must be referenced once"
+    );
+
+    runtime
+        .block_on(async { request.stop(&supervisor, &runtime_id).await })
+        .expect("stop");
+    assert_eq!(
+        controller.ref_count(attach.outbound_key()),
+        0,
+        "outbound must be released after stop"
+    );
+    assert!(
+        !engine
+            .api()
+            .list_inbounds()
+            .expect("inbounds")
+            .iter()
+            .any(|inbound| inbound.tag == format!("rt:{runtime_id}:in"))
+    );
+    runtime
+        .block_on(engine.stop(Duration::from_secs(1)))
+        .expect("xray stop");
 }

@@ -37,7 +37,7 @@ impl std::fmt::Debug for ProxyAttachment {
 /// Engine side of the start path.
 pub trait ProxyAttach {
     fn attach(&self, runtime_id: &str) -> Result<ProxyAttachment, CoreError>;
-    fn detach(&self, key: &str) -> Result<(), CoreError>;
+    fn detach(&self, runtime_id: &str) -> Result<(), CoreError>;
 }
 
 /// One start request. `proxy` is required when the profile has a proxy binding.
@@ -167,8 +167,8 @@ impl StartProfile<'_> {
                 disclosures,
             }),
             Err(error) => {
-                if let (Some(engine), Some(attachment)) = (self.proxy, &proxy) {
-                    let _ = engine.detach(&attachment.outbound_key);
+                if let (Some(engine), Some(_)) = (self.proxy, &proxy) {
+                    let _ = engine.detach(runtime_id);
                 }
                 Err(error)
             }
