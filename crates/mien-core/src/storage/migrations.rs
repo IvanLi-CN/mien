@@ -4,15 +4,6 @@ use serde::Serialize;
 
 use crate::error::CoreError;
 
-/// 已提交迁移的最大版本号；空库为 0。
-///
-/// # Errors
-/// 数据库不可读或迁移记录损坏。
-pub fn current_version(database_url: &str) -> Result<SchemaVersion, CoreError> {
-    let runtime = tokio::runtime::Runtime::new().map_err(|_| CoreError::Storage)?;
-    runtime.block_on(current_version_async(database_url))
-}
-
 /// Run migration files in order, each in a transaction, and verify SQLite integrity.
 pub async fn apply_all(
     pool: &sqlx::SqlitePool,
@@ -71,11 +62,51 @@ pub async fn connect(database_url: &str) -> Result<sqlx::SqlitePool, CoreError> 
         .map_err(map_sqlx_error)
 }
 
+/// Open a database and apply its ordered embedded migrations.
+pub fn open_and_migrate(path: &std::path::Path) -> Result<sqlx::SqlitePool, CoreError> {
+    let database_url = format!("sqlite://{}", path.display());
+    let runtime = tokio::runtime::Runtime::new().map_err(|_| CoreError::Storage)?;
+    let pool = runtime.block_on(connect(&database_url))?;
+    const FILES: &[(u32, &str, &str)] = &[
+        (
+            1,
+            "init",
+            include_str!("../../../../migrations/0001_init.sql"),
+        ),
+        (
+            2,
+            "profile_base",
+            include_str!("../../../../migrations/0002_profile_base.sql"),
+        ),
+        (
+            3,
+            "profile_relations",
+            include_str!("../../../../migrations/0003_profile_relations.sql"),
+        ),
+    ];
+    runtime.block_on(apply_all(&pool, FILES))?;
+    Ok(pool)
+}
+
+/// Read current applied migration version from an already open database.
+pub fn current_version(pool: &sqlx::SqlitePool) -> Result<u32, CoreError> {
+    let runtime = tokio::runtime::Runtime::new().map_err(|_| CoreError::Storage)?;
+    runtime
+        .block_on(current_version_async(pool))
+        .map(|version| version.0)
+}
+
+/// Read-only compatibility query for existing callers that supply a database URL.
+pub fn current_version_for_url(database_url: &str) -> Result<SchemaVersion, CoreError> {
+    let runtime = tokio::runtime::Runtime::new().map_err(|_| CoreError::Storage)?;
+    let pool = runtime.block_on(connect(database_url))?;
+    runtime.block_on(current_version_async(&pool))
+}
+
 /// Read the highest committed migration version.
-pub async fn current_version_async(database_url: &str) -> Result<SchemaVersion, CoreError> {
-    let pool = connect(database_url).await?;
+pub async fn current_version_async(pool: &sqlx::SqlitePool) -> Result<SchemaVersion, CoreError> {
     let value = sqlx::query_scalar::<_, Option<i64>>("SELECT max(version) FROM schema_migrations")
-        .fetch_one(&pool)
+        .fetch_one(pool)
         .await
         .map_err(map_sqlx_error)?
         .unwrap_or(0);
@@ -95,6 +126,20 @@ pub(crate) async fn current_version_async_pool(
     Ok(SchemaVersion(
         value.try_into().map_err(|_| CoreError::Storage)?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn current_version_rejects_an_empty_database() {
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        let pool = runtime
+            .block_on(connect("sqlite::memory:"))
+            .expect("empty database");
+        assert!(matches!(current_version(&pool), Err(CoreError::Storage)));
+    }
 }
 
 fn map_sqlx_error(error: sqlx::Error) -> CoreError {

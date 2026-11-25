@@ -3,7 +3,8 @@
 #[path = "../src/state.rs"]
 mod state;
 
-use state::{AppState, migration_version};
+use state::AppState;
+use tempfile::tempdir;
 
 #[test]
 fn app_state_starts_without_data_root() {
@@ -11,7 +12,18 @@ fn app_state_starts_without_data_root() {
 }
 
 #[test]
-fn migration_version_reaches_core_placeholder() {
-    let error = migration_version("sqlite::memory:").expect_err("T9-A 前未实现");
-    assert!(matches!(error, mien_core::CoreError::NotImplemented));
+fn migrations_run_to_current_version() {
+    let directory = tempdir().expect("temporary directory");
+    let database = directory.path().join("mien.sqlite");
+    let pool = mien_core::storage::open_and_migrate(&database).expect("first migration run");
+    assert_eq!(
+        mien_core::storage::current_version(&pool).expect("current version"),
+        3
+    );
+    drop(pool);
+    let pool = mien_core::storage::open_and_migrate(&database).expect("idempotent migration run");
+    assert_eq!(
+        mien_core::storage::current_version(&pool).expect("current version"),
+        3
+    );
 }
