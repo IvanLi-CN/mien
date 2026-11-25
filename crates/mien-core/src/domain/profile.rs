@@ -92,9 +92,10 @@ pub struct Profile {
     pub deletion_error: Option<DeletionError>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileMode {
+    #[default]
     Headful,
     Headless,
     PseudoHeadful,
@@ -165,12 +166,6 @@ pub struct CreateProfile {
 fn default_kernel_version() -> String {
     "default".to_owned()
 }
-impl Default for ProfileMode {
-    fn default() -> Self {
-        Self::Headful
-    }
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProfilePatch {
     pub name: Option<String>,

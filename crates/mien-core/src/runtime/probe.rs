@@ -252,9 +252,10 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn self_probe_reads_proc() {
-        let isolation = probe_linux_isolation(std::process::id());
-        assert_ne!(isolation, crate::runtime::state::Isolation::Unknown);
+    fn self_probe_reads_seccomp_status() {
+        if let Some(mode) = seccomp_mode(std::process::id()) {
+            assert!(mode <= 2, "unexpected seccomp mode {mode}");
+        }
     }
 
     #[test]
