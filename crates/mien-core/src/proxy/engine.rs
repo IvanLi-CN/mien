@@ -1,0 +1,494 @@
+//! Shared Xray process supervision and refcounting.
+use super::{
+    api::{self, GrpcXrayApi},
+    keys::{OutboundKey, OutboundSpec},
+};
+use crate::error::CoreError;
+use serde_json::Value;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+    sync::mpsc,
+};
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineState {
+    Stopped,
+    Starting,
+    Running,
+    Rebuilding,
+    Failed,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeBinding {
+    pub runtime_id: String,
+    pub outbound_key: OutboundKey,
+    pub inbound_tag: String,
+    pub rule_tag: String,
+    pub proxy_port: u16,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboundRef {
+    pub key: OutboundKey,
+    pub tag: String,
+    pub ref_count: usize,
+    pub orphaned: bool,
+}
+#[derive(Debug, Default)]
+struct State {
+    outbounds: BTreeMap<OutboundKey, OutboundRef>,
+    bindings: BTreeMap<String, RuntimeBinding>,
+}
+pub struct EngineProcess {
+    child: Child,
+    group: i32,
+    api: Arc<GrpcXrayApi>,
+    api_port: u16,
+    dir: PathBuf,
+    logs: tokio::task::JoinHandle<()>,
+}
+impl EngineProcess {
+    pub async fn start(bin: &Path, digest: &str) -> Result<Self, CoreError> {
+        super::gateway::verify_binary_sha256(bin, digest)?;
+        Self::start_with_api_port(
+            bin,
+            reserve_port().map_err(|_| err("PROXY_ENGINE_START_FAILED"))?,
+        )
+        .await
+    }
+    pub async fn start_with_api_port(bin: &Path, port: u16) -> Result<Self, CoreError> {
+        let dir = private_dir().map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        let cfg = super::gateway::config_with_api_port(port)?;
+        let path = dir.join("bootstrap.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&cfg).map_err(|_| err("PROXY_ENGINE_START_FAILED"))?,
+        )
+        .map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        mode_file(&path).map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        let mut cmd = Command::new(bin);
+        cmd.arg("run")
+            .arg(format!("-config={}", path.display()))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        isolate(&mut cmd);
+        let mut child = cmd.spawn().map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        let pid = child.id().ok_or_else(|| err("PROXY_ENGINE_START_FAILED"))? as i32;
+        let (tx, mut rx) = mpsc::channel::<String>(128);
+        let o = child
+            .stdout
+            .take()
+            .ok_or_else(|| err("PROXY_ENGINE_START_FAILED"))?;
+        let e = child
+            .stderr
+            .take()
+            .ok_or_else(|| err("PROXY_ENGINE_START_FAILED"))?;
+        let tx2 = tx.clone();
+        let a = tokio::spawn(async move { pump(o, tx2).await });
+        let b = tokio::spawn(async move { pump(e, tx).await });
+        let logs = tokio::spawn(async move {
+            let _ = tokio::join!(a, b);
+        });
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        let client = loop {
+            if tokio::time::Instant::now() >= deadline {
+                stop_child(&mut child, pid, Duration::from_secs(1)).await;
+                let _ = std::fs::remove_dir_all(&dir);
+                return Err(err("PROXY_ENGINE_NOT_READY"));
+            }
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|_| err("PROXY_ENGINE_API_UNAVAILABLE"))?
+            {
+                let _ = std::fs::remove_dir_all(&dir);
+                return Err(CoreError::Validation(format!(
+                    "PROXY_ENGINE_START_FAILED: exited with {status}"
+                )));
+            }
+            let _ = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await;
+            if tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .is_ok()
+            {
+                if let Ok(api) = GrpcXrayApi::connect(([127, 0, 0, 1], port).into()).await {
+                    if tokio::time::timeout(Duration::from_millis(500), api.probe())
+                        .await
+                        .is_ok_and(|x| x.is_ok())
+                    {
+                        break api;
+                    }
+                }
+            }
+        };
+        Ok(Self {
+            child,
+            group: pid,
+            api: Arc::new(client),
+            api_port: port,
+            dir,
+            logs,
+        })
+    }
+    pub fn api(&self) -> Arc<GrpcXrayApi> {
+        self.api.clone()
+    }
+    pub fn api_port(&self) -> u16 {
+        self.api_port
+    }
+    pub fn pid(&self) -> Option<u32> {
+        self.child.id()
+    }
+    pub async fn stop(&mut self, d: Duration) -> Result<(), CoreError> {
+        stop_child(&mut self.child, self.group, d).await;
+        self.logs.abort();
+        std::fs::remove_dir_all(&self.dir).map_err(|_| err("PROXY_ENGINE_START_FAILED"))?;
+        Ok(())
+    }
+    pub async fn force_kill(&mut self) -> Result<(), CoreError> {
+        if self.child.id().is_some() {
+            signal(self.group, true);
+            self.child
+                .wait()
+                .await
+                .map_err(|_| err("PROXY_ENGINE_API_UNAVAILABLE"))?;
+        }
+        self.logs.abort();
+        Ok(())
+    }
+}
+impl Drop for EngineProcess {
+    fn drop(&mut self) {
+        if self.child.id().is_some() {
+            signal(self.group, true);
+        }
+        self.logs.abort();
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+fn reserve_port() -> std::io::Result<u16> {
+    let l = std::net::TcpListener::bind("127.0.0.1:0")?;
+    Ok(l.local_addr()?.port())
+}
+async fn pump<R: tokio::io::AsyncRead + Unpin>(r: R, t: mpsc::Sender<String>) {
+    let mut lines = BufReader::new(r).lines();
+    while let Ok(Some(s)) = lines.next_line().await {
+        if t.send(s).await.is_err() {
+            break;
+        }
+    }
+}
+fn private_dir() -> std::io::Result<PathBuf> {
+    static N: AtomicU64 = AtomicU64::new(0);
+    for _ in 0..16 {
+        let p = std::env::temp_dir().join(format!(
+            "mien-xray-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        match std::fs::create_dir(&p) {
+            Ok(()) => {
+                mode_dir(&p)?;
+                return Ok(p);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "private directory unavailable",
+    ))
+}
+#[cfg(unix)]
+fn mode_dir(p: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700))
+}
+#[cfg(not(unix))]
+fn mode_dir(_: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+#[cfg(unix)]
+fn mode_file(p: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600))
+}
+#[cfg(not(unix))]
+fn mode_file(_: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+#[cfg(unix)]
+fn isolate(c: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    c.as_std_mut().process_group(0);
+}
+#[cfg(not(unix))]
+fn isolate(_: &mut Command) {}
+#[cfg(unix)]
+fn signal(g: i32, k: bool) {
+    unsafe {
+        libc::kill(-g, if k { libc::SIGKILL } else { libc::SIGTERM });
+    }
+}
+#[cfg(not(unix))]
+fn signal(_: i32, _: bool) {}
+async fn stop_child(c: &mut Child, g: i32, d: Duration) {
+    if c.id().is_none() {
+        return;
+    }
+    signal(g, false);
+    if tokio::time::timeout(d, c.wait()).await.is_err() {
+        signal(g, true);
+        let _ = c.wait().await;
+    }
+}
+fn err(s: &str) -> CoreError {
+    CoreError::Validation(s.into())
+}
+pub struct EngineController<A: api::XrayApi> {
+    api: Arc<A>,
+    state: Mutex<State>,
+    life: Mutex<EngineState>,
+}
+impl<A: api::XrayApi> EngineController<A> {
+    pub fn new(api: Arc<A>) -> Self {
+        Self {
+            api,
+            state: Mutex::new(State::default()),
+            life: Mutex::new(EngineState::Stopped),
+        }
+    }
+    pub fn state(&self) -> EngineState {
+        *self.life.lock().expect("life lock")
+    }
+    pub fn set_state(&self, x: EngineState) {
+        *self.life.lock().expect("life lock") = x
+    }
+    pub fn assert_bootstrap(&self, t: &[String], r: &Value) -> Result<(), CoreError> {
+        if t.first().map(String::as_str) != Some("block")
+            || r.get("final").is_some()
+            || r.get("script").is_some()
+            || r.get("balancers").is_some()
+        {
+            return Err(err("PROXY_ENGINE_START_FAILED"));
+        }
+        Ok(())
+    }
+    pub fn acquire(&self, b: RuntimeBinding, s: &OutboundSpec) -> Result<(), CoreError> {
+        if self.state() != EngineState::Running {
+            return Err(err("PROXY_ENGINE_NOT_READY"));
+        }
+        let mut st = self.state.lock().expect("state lock");
+        if st.bindings.contains_key(&b.runtime_id) {
+            return Ok(());
+        }
+        if let Some(r) = st.outbounds.get_mut(&b.outbound_key) {
+            r.ref_count += 1
+        } else {
+            api::ensure_outbound(
+                &*self.api,
+                api::Outbound {
+                    tag: s.tag.clone(),
+                    protocol: s.protocol.clone(),
+                    mux: s.mux,
+                    transport: super::keys::Transport::Tcp,
+                    settings: s.settings.clone(),
+                    stream_settings: s.stream_settings.clone(),
+                },
+            )?;
+            st.outbounds.insert(
+                b.outbound_key.clone(),
+                OutboundRef {
+                    key: b.outbound_key.clone(),
+                    tag: s.tag.clone(),
+                    ref_count: 1,
+                    orphaned: false,
+                },
+            );
+        }
+        let i = api::Inbound {
+            tag: b.inbound_tag.clone(),
+            listen: "127.0.0.1".into(),
+            port: b.proxy_port,
+            protocol: "http".into(),
+            settings: serde_json::json!({}),
+        };
+        if let Err(e) = api::ensure_inbound(&*self.api, i) {
+            self.dec(&mut st, &b.outbound_key)?;
+            return Err(e);
+        }
+        let r = api::Rule {
+            tag: b.rule_tag.clone(),
+            inbound_tag: b.inbound_tag.clone(),
+            outbound_tag: b.outbound_key.to_string(),
+        };
+        if let Err(e) = api::ensure_rule(&*self.api, r) {
+            let _ = api::remove_inbound(&*self.api, &b.inbound_tag);
+            self.dec(&mut st, &b.outbound_key)?;
+            return Err(e);
+        }
+        st.bindings.insert(b.runtime_id.clone(), b);
+        Ok(())
+    }
+    pub fn release(&self, id: &str) -> Result<bool, CoreError> {
+        let mut st = self.state.lock().expect("state lock");
+        let Some(b) = st.bindings.remove(id) else {
+            return Ok(false);
+        };
+        api::remove_rule(&*self.api, &b.rule_tag)?;
+        api::remove_inbound(&*self.api, &b.inbound_tag)?;
+        self.dec(&mut st, &b.outbound_key)
+    }
+    pub fn ref_count(&self, k: &OutboundKey) -> usize {
+        self.state
+            .lock()
+            .expect("state lock")
+            .outbounds
+            .get(k)
+            .map_or(0, |x| x.ref_count)
+    }
+    pub fn binding(&self, id: &str) -> Option<RuntimeBinding> {
+        self.state
+            .lock()
+            .expect("state lock")
+            .bindings
+            .get(id)
+            .cloned()
+    }
+    pub fn outbounds(&self) -> Vec<OutboundRef> {
+        self.state
+            .lock()
+            .expect("state lock")
+            .outbounds
+            .values()
+            .cloned()
+            .collect()
+    }
+    fn dec(&self, s: &mut State, k: &OutboundKey) -> Result<bool, CoreError> {
+        let Some(r) = s.outbounds.get_mut(k) else {
+            return Err(err("PROXY_OUTBOUND_REFCOUNT_MISMATCH"));
+        };
+        r.ref_count = r
+            .ref_count
+            .checked_sub(1)
+            .ok_or_else(|| err("PROXY_OUTBOUND_REFCOUNT_MISMATCH"))?;
+        if r.ref_count > 0 {
+            return Ok(false);
+        }
+        let tag = r.tag.clone();
+        match api::remove_outbound(&*self.api, &tag) {
+            Ok(()) => {
+                s.outbounds.remove(k);
+                Ok(true)
+            }
+            Err(e) => {
+                r.orphaned = true;
+                Err(e)
+            }
+        }
+    }
+    pub fn fail_closed(&self) {
+        self.set_state(EngineState::Failed)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use std::sync::Mutex;
+    #[derive(Default)]
+    struct Fake {
+        ins: Mutex<Vec<api::Inbound>>,
+        outs: Mutex<Vec<api::Outbound>>,
+        rules: Mutex<Vec<api::Rule>>,
+    }
+    impl api::XrayApi for Fake {
+        fn list_inbounds(&self) -> Result<Vec<api::Inbound>, api::ApiError> {
+            Ok(self.ins.lock().unwrap().clone())
+        }
+        fn list_outbounds(&self) -> Result<Vec<api::Outbound>, api::ApiError> {
+            Ok(self.outs.lock().unwrap().clone())
+        }
+        fn list_rules(&self) -> Result<Vec<api::Rule>, api::ApiError> {
+            Ok(self.rules.lock().unwrap().clone())
+        }
+        fn add_inbound(&self, x: api::Inbound) -> Result<(), api::ApiError> {
+            self.ins.lock().unwrap().push(x);
+            Ok(())
+        }
+        fn remove_inbound(&self, t: &str) -> Result<(), api::ApiError> {
+            self.ins.lock().unwrap().retain(|x| x.tag != t);
+            Ok(())
+        }
+        fn add_outbound(&self, x: api::Outbound) -> Result<(), api::ApiError> {
+            self.outs.lock().unwrap().push(x);
+            Ok(())
+        }
+        fn remove_outbound(&self, t: &str) -> Result<(), api::ApiError> {
+            self.outs.lock().unwrap().retain(|x| x.tag != t);
+            Ok(())
+        }
+        fn add_rule(&self, x: api::Rule, _: bool) -> Result<(), api::ApiError> {
+            self.rules.lock().unwrap().push(x);
+            Ok(())
+        }
+        fn remove_rule(&self, t: &str) -> Result<(), api::ApiError> {
+            self.rules.lock().unwrap().retain(|x| x.tag != t);
+            Ok(())
+        }
+    }
+    fn setup() -> (Arc<Fake>, EngineController<Fake>, OutboundSpec) {
+        let a = Arc::new(Fake::default());
+        let c = EngineController::new(a.clone());
+        c.set_state(EngineState::Running);
+        let k = OutboundKey::new(format!("out:{}", "a".repeat(64))).unwrap();
+        let s = OutboundSpec {
+            key: k.clone(),
+            tag: k.to_string(),
+            protocol: "vless".into(),
+            settings: Value::Null,
+            stream_settings: Value::Null,
+            mux: Default::default(),
+        };
+        (a, c, s)
+    }
+    fn b(id: &str, k: OutboundKey) -> RuntimeBinding {
+        RuntimeBinding {
+            runtime_id: id.into(),
+            outbound_key: k,
+            inbound_tag: format!("rt:{id}:in"),
+            rule_tag: format!("rt:{id}:rule"),
+            proxy_port: 40000,
+        }
+    }
+    #[test]
+    fn refcounts_share_and_remove_last() {
+        let (a, c, s) = setup();
+        c.acquire(b("a", s.key.clone()), &s).unwrap();
+        c.acquire(b("b", s.key.clone()), &s).unwrap();
+        assert_eq!(c.ref_count(&s.key), 2);
+        c.release("a").unwrap();
+        assert_eq!(c.ref_count(&s.key), 1);
+        assert_eq!(a.outs.lock().unwrap().len(), 1);
+        c.release("b").unwrap();
+        assert!(a.outs.lock().unwrap().is_empty())
+    }
+    #[test]
+    fn release_idempotent() {
+        let (_, c, s) = setup();
+        c.acquire(b("a", s.key.clone()), &s).unwrap();
+        assert!(c.release("a").unwrap());
+        assert!(!c.release("a").unwrap())
+    }
+}
