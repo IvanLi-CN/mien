@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
+import ts from "typescript";
 import { parse } from "yaml";
 
 const workspaceRoot = process.cwd();
@@ -490,6 +491,76 @@ function uiRouteCheck() {
   if (!enumBlock) throw new Error("src/ui/routes.tsx: UI_SURFACE_ROUTES static enum is missing");
   const frontend = [...enumBlock[1].matchAll(/"(\/[^"]+)"/g)].map((match) => match[1]);
   compare("UI documented routes and frontend enum", documented, frontend);
+  const sourceFile = ts.createSourceFile(
+    rel("src/ui/routes.tsx"),
+    routeText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const routeDeclaration = sourceFile.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((statement) => statement.declarationList.declarations)
+    .find((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "routes");
+  const routeCall = routeDeclaration?.initializer;
+  if (
+    !routeCall ||
+    !ts.isCallExpression(routeCall) ||
+    !ts.isIdentifier(routeCall.expression) ||
+    routeCall.expression.text !== "createBrowserRouter" ||
+    !routeCall.arguments[0] ||
+    !ts.isArrayLiteralExpression(routeCall.arguments[0])
+  )
+    throw new Error("src/ui/routes.tsx: routes must be a static createBrowserRouter array");
+
+  const actualRoutes = [];
+  const collectRoutes = (node, parentPath = "") => {
+    if (!ts.isObjectLiteralExpression(node)) return;
+    const pathProperty = node.properties.find(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        ts.isIdentifier(property.name) &&
+        property.name.text === "path",
+    );
+    let currentPath = parentPath;
+    if (pathProperty) {
+      if (!ts.isPropertyAssignment(pathProperty) || !ts.isStringLiteral(pathProperty.initializer))
+        throw new Error("src/ui/routes.tsx: route paths must be static string literals");
+      const segment = pathProperty.initializer.text;
+      currentPath = segment.startsWith("/")
+        ? segment
+        : `${parentPath.replace(/\/$/, "")}/${segment}`;
+      if (segment !== "/" && segment !== "*") actualRoutes.push(currentPath);
+    }
+    const children = node.properties.find(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        ts.isIdentifier(property.name) &&
+        property.name.text === "children",
+    );
+    if (
+      children &&
+      ts.isPropertyAssignment(children) &&
+      ts.isArrayLiteralExpression(children.initializer)
+    )
+      for (const child of children.initializer.elements) collectRoutes(child, currentPath);
+  };
+  for (const route of routeCall.arguments[0].elements) collectRoutes(route);
+  compare("React Router tree and UI_SURFACE_ROUTES", frontend, actualRoutes);
+
+  const pageExtensions = [".tsx", ".ts", ".jsx", ".js"];
+  for (const statement of sourceFile.statements.filter(ts.isImportDeclaration)) {
+    const moduleName = statement.moduleSpecifier;
+    if (!ts.isStringLiteral(moduleName) || !moduleName.text.startsWith("./pages/")) continue;
+    const base = path.resolve(path.dirname(rel("src/ui/routes.tsx")), moduleName.text);
+    const candidates = [
+      base,
+      ...pageExtensions.map((extension) => `${base}${extension}`),
+      ...pageExtensions.map((extension) => path.join(base, `index${extension}`)),
+    ];
+    if (!candidates.some((candidate) => statSync(candidate, { throwIfNoEntry: false })?.isFile()))
+      throw new Error(`src/ui/routes.tsx: missing page module ${moduleName.text}`);
+  }
   const apiBlock = routeText.match(
     /export const UI_SURFACE_API_PREFIXES = \{((?:.|\n)*?)\} as const;/,
   );
