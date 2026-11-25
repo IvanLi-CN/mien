@@ -52,6 +52,13 @@ Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 p
 | `VER-RUNTIME-018` | `pending` | 生命周期集成测试、强杀对账测试、Docker 端到端测试、沙箱探针；fixture 根 `fixtures/runtime/` |
 | `VER-RUNTIME-019` | `pending` | 生命周期集成测试、强杀对账测试、Docker 端到端测试、沙箱探针；fixture 根 `fixtures/runtime/` |
 
+## M1 slice evidence
+
+- Delivered: `RuntimeSupervisor` state machine (`starting/running/stopping/stopped/crashed/failed`), process groups, SIGTERM/SIGKILL shutdown, CDP probe, bounded logs, restart reconciliation, and `StartProfile` wiring profile → launch plan → proxy → supervisor.
+- Commands: `cargo test -p mien-core` with `MIEN_KERNEL_BIN` pointing at the pinned macOS kernel; `tests/runtime_integration.rs` and `tests/slice_e2e.rs`.
+- Measured: start/stop sequence emits each event once, no residual process group, CDP reachable while running and closed after stop, SIGKILL yields `crashed`, 20 cycles without orphans.
+- Not delivered yet: headless/pseudo-headful, Xvfb/Docker display, noVNC. Docker sandbox enforcement remains an unconfirmed known block.
+
 ## Related Changes
 
 - None

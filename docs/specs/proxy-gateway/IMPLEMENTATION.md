@@ -55,6 +55,12 @@ Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 p
 | `VER-PROXY-024` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
 | `VER-PROXY-025` | `pending` | 受控节点集成测试、DNS canary、引擎故障注入、分享链接 fixture；fixture 根 `fixtures/proxy/` |
 
+## M1 slice evidence
+
+- Delivered: Xray process supervision with binary digest verification, gRPC `HandlerService`/`RoutingService` client, block-first loopback bootstrap, gateway-level idempotent reconciliation, shared outbound refcounting, `outbound_key` normalization (effective mux concurrency 128), Hysteria2 transport/TLS requirements, and TUIC rejection. `GatewayAttach` binds a runtime to a loopback inbound and releases by runtime id.
+- Commands: `cargo test -p mien-core --test xray_integration` and `tests/slice_e2e.rs` with `MIEN_XRAY_BIN` set to Xray v26.11.9.
+- Not delivered yet: Tier A protocol matrix beyond VLESS (VMess/Shadowsocks/Trojan), share-link import, remote DNS canary, Hysteria2/WireGuard end-to-end. Their VER rows stay `pending`.
+
 ## Related Changes
 
 - None

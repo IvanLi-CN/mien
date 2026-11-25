@@ -51,6 +51,12 @@ Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 p
 | `VER-FP-019` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
 | `VER-FP-020` | `pending` | 规格校验单测、golden argv 测试、指纹探针测试；fixture 根 `fixtures/fingerprint/` |
 
+## M1 slice evidence
+
+- Delivered: manifest-driven `validate_spec`, canonical seed generation, `FingerprintSpec::fresh`, deterministic `build_launch_argv`, and `LaunchPlan { argv, window, network }` with `Declared/Unverified/Unsupported` enforcement states.
+- Commands: `cargo test -p mien-core` (golden argv, window, negative capability cases), `bun run contracts:check`.
+- Not delivered yet: cross-platform profile alignment presets and the full probe matrix; those VER rows stay `pending`.
+
 ## Related Changes
 
 - None

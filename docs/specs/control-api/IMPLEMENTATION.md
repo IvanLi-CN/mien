@@ -53,6 +53,10 @@ Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 p
 | `VER-API-020` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
 | `VER-API-021` | `pending` | OpenAPI 契约测试、HTTP 集成测试、CSRF/Origin 测试、事件回放测试；fixture 根 `fixtures/api/` |
 
+## M1 slice evidence
+
+- Nothing delivered yet; the M1 slice is library-level only. REST/WS, sessions, tokens, CSRF and audit remain pending.
+
 ## Related Changes
 
 - None

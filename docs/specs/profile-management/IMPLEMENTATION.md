@@ -48,6 +48,12 @@ Verification Status 使用 `pending|pass|fail|blocked`；当前未实现项为 p
 | `VER-PROFILE-014` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
 | `VER-PROFILE-015` | `pending` | 核心单元测试、SQLite 迁移测试、导入导出 fixture；fixture 根 `fixtures/profile/` |
 
+## M1 slice evidence
+
+- Delivered: `profiles` migrations (0002/0003), `SqliteProfileRepository` (create/get/list/update/archive/restore/soft delete/purge/copy), isolated `profiles/<id>` and `trash/<id>` directories, path-traversal/absolute-path/symlink rejection, and `proxy_id` binding (`PROXY_NOT_FOUND` on a missing proxy row).
+- Commands: `cargo test -p mien-core` (storage and slice tests), `cargo run -q -p xtask -- check`.
+- Not delivered yet: import/export endpoints and payload schema wiring, groups/tags API surface, download-directory UI binding. Their VER rows stay `pending`.
+
 ## Related Changes
 
 - None
