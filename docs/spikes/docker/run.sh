@@ -82,8 +82,14 @@ echo 'container_config=read_only root tmpfs=/tmp no_new_privileges cap_drop=ALL 
 SECOPT="--security-opt no-new-privileges --security-opt seccomp=$SEC_HOST"
 if [ -n "${PROFILE_LOADED:-}" ]; then
   SECOPT="$SECOPT --security-opt apparmor=mien-chromium"
+  echo 'apparmor=applied mode=mien-chromium'
+elif [ "${MIEN_ALLOW_UNCONFINED:-0}" = "1" ]; then
+  # SECURITY.md sanctions this documented fallback: run unconfined and record the
+  # accepted risk. It is never the default and never silent.
+  SECOPT="$SECOPT --security-opt apparmor=unconfined"
+  echo 'apparmor=applied mode=unconfined accepted_risk=1 reason=host_cannot_load_mien_chromium'
 else
-  echo 'container_start=refused reason=required_mien_chromium_apparmor_profile_not_loaded'
+  echo 'container_start=refused reason=required_mien_chromium_apparmor_profile_not_loaded hint=set_MIEN_ALLOW_UNCONFINED=1_to_record_the_documented_fallback'
   exit 3
 fi
 START_NS=$(date +%s%N)
