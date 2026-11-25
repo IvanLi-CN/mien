@@ -5,7 +5,7 @@ use std::io::Read;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 
 use super::capability::{self, CapabilityManifest, NetworkDohMode, NetworkIpv6Mode};
 
@@ -124,13 +124,20 @@ pub struct DerivedTraits {
 
 #[cfg(unix)]
 pub fn generate_seed() -> Result<u32, CoreError> {
-    let mut source = File::open("/dev/urandom")
-        .map_err(|error| CoreError::Validation(format!("FINGERPRINT_SEED_RANDOM: {error}")))?;
+    let mut source = File::open("/dev/urandom").map_err(|error| {
+        CoreError::validation(
+            ErrorCode::FingerprintInvalid,
+            format!("unable to read OS randomness: {error}"),
+        )
+    })?;
     loop {
         let mut bytes = [0_u8; 4];
-        source
-            .read_exact(&mut bytes)
-            .map_err(|error| CoreError::Validation(format!("FINGERPRINT_SEED_RANDOM: {error}")))?;
+        source.read_exact(&mut bytes).map_err(|error| {
+            CoreError::validation(
+                ErrorCode::FingerprintInvalid,
+                format!("unable to read OS randomness: {error}"),
+            )
+        })?;
         let seed = u32::from_ne_bytes(bytes);
         if seed != 0 {
             return Ok(seed);
@@ -140,8 +147,9 @@ pub fn generate_seed() -> Result<u32, CoreError> {
 
 #[cfg(not(unix))]
 pub fn generate_seed() -> Result<u32, CoreError> {
-    Err(CoreError::Validation(
-        "FINGERPRINT_SEED_RANDOM: operating-system CSPRNG unavailable".to_owned(),
+    Err(CoreError::validation(
+        ErrorCode::FingerprintInvalid,
+        "operating-system CSPRNG unavailable",
     ))
 }
 

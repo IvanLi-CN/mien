@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 
 use super::spec::FingerprintSpec;
 
@@ -38,32 +38,35 @@ const ALLOWED_FIELDS: &[&str] = &[
 
 /// Parse a stored/exported fingerprint JSON object without silently dropping fields.
 ///
-/// Missing required properties map to `FINGERPRINT_REQUIRED_FIELD`; malformed
-/// values and unknown properties map to `FINGERPRINT_INVALID`. Secret values
+/// Missing required properties and malformed values map to
+/// `FINGERPRINT_INVALID`; the message names the offending field. Secret values
 /// are not included in diagnostics.
 pub fn parse_spec_json(text: &str) -> Result<FingerprintSpec, CoreError> {
     let value: Value = serde_json::from_str(text)
-        .map_err(|_| CoreError::Validation("FINGERPRINT_INVALID: invalid JSON".to_owned()))?;
+        .map_err(|_| CoreError::validation(ErrorCode::FingerprintInvalid, "invalid JSON"))?;
     let object = value.as_object().ok_or_else(|| {
-        CoreError::Validation("FINGERPRINT_INVALID: spec must be a JSON object".to_owned())
+        CoreError::validation(ErrorCode::FingerprintInvalid, "spec must be a JSON object")
     })?;
     for field in REQUIRED_FIELDS {
         if !object.contains_key(*field) {
-            return Err(CoreError::Validation(format!(
-                "FINGERPRINT_REQUIRED_FIELD: {field}"
-            )));
+            return Err(CoreError::validation(
+                ErrorCode::FingerprintInvalid,
+                format!("required field is missing: {field}"),
+            ));
         }
     }
     for field in object.keys() {
         if !ALLOWED_FIELDS.contains(&field.as_str()) {
-            return Err(CoreError::Validation(format!(
-                "FINGERPRINT_INVALID: unknown field `{field}`"
-            )));
+            return Err(CoreError::validation(
+                ErrorCode::FingerprintInvalid,
+                format!("unknown field `{field}`"),
+            ));
         }
     }
     serde_json::from_value(value).map_err(|_| {
-        CoreError::Validation(
-            "FINGERPRINT_INVALID: field type or nested value is invalid".to_owned(),
+        CoreError::validation(
+            ErrorCode::FingerprintInvalid,
+            "field type or nested value is invalid",
         )
     })
 }

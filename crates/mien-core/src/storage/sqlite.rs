@@ -6,7 +6,7 @@ use crate::domain::profile::{
     CopyOptions, CreateProfile, DeletionError, Profile, ProfileId, ProfileMode, ProfilePage,
     ProfilePatch, ProfileQuery, ProfileStatus,
 };
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 use crate::fingerprint::spec::{FingerprintSpec, generate_seed};
 use crate::ports::repository::ProfileRepository;
 
@@ -64,14 +64,14 @@ impl SqliteProfileRepository {
 
     fn profile_dir(&self, id: &ProfileId) -> Result<PathBuf, CoreError> {
         if !id.is_valid() {
-            return Err(CoreError::Validation("profile_id".into()));
+            return Err(invalid_profile_id());
         }
         safe_child(&self.data_root, Path::new("profiles").join(&id.0))
     }
 
     fn trash_dir(&self, id: &ProfileId) -> Result<PathBuf, CoreError> {
         if !id.is_valid() {
-            return Err(CoreError::Validation("profile_id".into()));
+            return Err(invalid_profile_id());
         }
         safe_child(&self.data_root, Path::new("trash").join(&id.0))
     }
@@ -87,7 +87,10 @@ impl SqliteProfileRepository {
         }
         if let Some(name) = &patch.name {
             if name.trim().is_empty() || name.chars().count() > 120 {
-                return Err(CoreError::Validation("name".into()));
+                return Err(CoreError::validation(
+                    ErrorCode::ValidationFailed,
+                    "name must be 1-120 characters",
+                ));
             }
         }
         let fingerprint = patch
@@ -325,6 +328,13 @@ fn safe_child(root: &Path, relative: PathBuf) -> Result<PathBuf, CoreError> {
     }
     Ok(candidate)
 }
+fn invalid_profile_id() -> CoreError {
+    CoreError::validation(
+        ErrorCode::ValidationFailed,
+        "profile_id must be a valid ULID",
+    )
+}
+
 fn map_sqlx_error(error: sqlx::Error) -> CoreError {
     match &error {
         sqlx::Error::Database(db) if matches!(db.code().as_deref(), Some("5") | Some("6")) => {

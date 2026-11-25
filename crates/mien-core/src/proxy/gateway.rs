@@ -1,6 +1,6 @@
 //! Xray bootstrap configuration and stable resource tags.
 use super::{api::XrayApi, engine::EngineController};
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 use serde_json::{Value, json};
 
 /// Build the minimum engine config. Port 0 is a request to allocate a loopback
@@ -15,8 +15,9 @@ pub fn bootstrap_config(api_port: u16) -> Result<Value, CoreError> {
 }
 pub fn config_with_api_port(api_port: u16) -> Result<Value, CoreError> {
     if api_port == 0 {
-        return Err(CoreError::Validation(
-            "PROXY_CONFIG_INVALID:api_port".into(),
+        return Err(CoreError::validation(
+            ErrorCode::ProxyConfigInvalid,
+            "api_port must be non-zero",
         ));
     }
     let mut c = bootstrap_config(0)?;
@@ -42,7 +43,10 @@ pub fn verify_bootstrap_config(c: &Value) -> Result<(), CoreError> {
         || c["routing"].get("script").is_some()
         || c["routing"].get("balancers").is_some()
     {
-        return Err(CoreError::Validation("PROXY_ENGINE_START_FAILED".into()));
+        return Err(CoreError::validation(
+            ErrorCode::ProxyEngineStartFailed,
+            "bootstrap config violates the engine startup invariants",
+        ));
     }
     Ok(())
 }
@@ -57,17 +61,25 @@ pub fn proxy_server_arg(port: u16) -> String {
 }
 pub fn verify_binary_sha256(path: &std::path::Path, expected: &str) -> Result<(), CoreError> {
     if !path.is_file() {
-        return Err(CoreError::Validation("PROXY_ENGINE_NOT_FOUND".into()));
+        return Err(CoreError::validation(
+            ErrorCode::ProxyEngineNotFound,
+            "proxy engine binary is missing",
+        ));
     }
-    let bytes =
-        std::fs::read(path).map_err(|_| CoreError::Validation("PROXY_ENGINE_NOT_FOUND".into()))?;
+    let bytes = std::fs::read(path).map_err(|_| {
+        CoreError::validation(
+            ErrorCode::ProxyEngineNotFound,
+            "proxy engine binary is unreadable",
+        )
+    })?;
     let actual = super::keys::sha256(&bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
     if actual != expected {
-        return Err(CoreError::Validation(
-            "PROXY_ENGINE_CHECKSUM_MISMATCH".into(),
+        return Err(CoreError::validation(
+            ErrorCode::ProxyEngineChecksumMismatch,
+            "proxy engine binary digest does not match the install record",
         ));
     }
     Ok(())

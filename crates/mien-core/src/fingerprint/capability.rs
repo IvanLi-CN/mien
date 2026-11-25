@@ -11,7 +11,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorCode};
 
 use super::spec::{Platform, Window};
 
@@ -75,16 +75,16 @@ pub struct CapabilityManifest {
 impl CapabilityManifest {
     /// Parse and validate a JSON capability manifest.
     pub fn from_json_str(text: &str) -> Result<Self, CoreError> {
-        let manifest: Self = serde_json::from_str(text)
-            .map_err(|error| CoreError::Validation(format!("KERNEL_MANIFEST_INVALID: {error}")))?;
+        let manifest: Self =
+            serde_json::from_str(text).map_err(|error| manifest_error(error.to_string()))?;
         manifest.validate()?;
         Ok(manifest)
     }
 
     /// Read and validate a JSON capability manifest from disk.
     pub fn from_path(path: &Path) -> Result<Self, CoreError> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|error| CoreError::Validation(format!("KERNEL_MANIFEST_INVALID: {error}")))?;
+        let text =
+            std::fs::read_to_string(path).map_err(|error| manifest_error(error.to_string()))?;
         Self::from_json_str(&text)
     }
 
@@ -227,25 +227,37 @@ pub fn load_pinned_manifest() -> Result<CapabilityManifest, CoreError> {
 }
 
 fn manifest_error(detail: impl Into<String>) -> CoreError {
-    CoreError::Validation(format!("KERNEL_MANIFEST_INVALID: {}", detail.into()))
+    CoreError::validation(
+        ErrorCode::KernelUnsupported,
+        format!("kernel capability manifest is invalid: {}", detail.into()),
+    )
 }
 
 pub(crate) fn unsupported(detail: impl Into<String>) -> CoreError {
-    CoreError::Validation(format!("KERNEL_UNSUPPORTED: {}", detail.into()))
+    CoreError::validation(ErrorCode::KernelUnsupported, detail)
 }
 
 pub(crate) fn invalid(detail: impl Into<String>) -> CoreError {
-    CoreError::Validation(format!("FINGERPRINT_INVALID: {}", detail.into()))
+    CoreError::validation(ErrorCode::FingerprintInvalid, detail)
 }
 
 pub(crate) fn required(detail: impl Into<String>) -> CoreError {
-    CoreError::Validation(format!("FINGERPRINT_REQUIRED_FIELD: {}", detail.into()))
+    CoreError::validation(
+        ErrorCode::FingerprintInvalid,
+        format!("required field is missing: {}", detail.into()),
+    )
 }
 
 pub(crate) fn schema(detail: impl Into<String>) -> CoreError {
-    CoreError::Validation(format!("FINGERPRINT_SCHEMA_VERSION: {}", detail.into()))
+    CoreError::validation(
+        ErrorCode::FingerprintInvalid,
+        format!("unsupported fingerprint schema version: {}", detail.into()),
+    )
 }
 
 pub(crate) fn unsafe_network(detail: impl Into<String>) -> CoreError {
-    CoreError::Validation(format!("FINGERPRINT_NETWORK_UNSAFE: {}", detail.into()))
+    CoreError::validation(
+        ErrorCode::FingerprintInvalid,
+        format!("unsafe network configuration: {}", detail.into()),
+    )
 }
