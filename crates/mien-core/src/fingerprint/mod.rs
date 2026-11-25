@@ -15,6 +15,8 @@ pub mod json;
 pub mod spec;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod window_tests;
 
 pub use argv::{Enforcement, LaunchPlan, NetworkControl, NetworkControls, build_launch_argv};
 pub use capability::{CapabilityManifest, load_pinned_manifest};
