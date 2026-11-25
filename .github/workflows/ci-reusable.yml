@@ -31,7 +31,7 @@ jobs:
           if [[ -f Cargo.toml ]]; then cargo fmt --check; else echo 'SKIP cargo fmt --check: Cargo.toml not present (T2 scaffold pending)'; fi
       - name: Install Rust CI tools
         if: hashFiles('Cargo.toml') != ''
-        run: cargo install cargo-deny@0.16.1 --locked && cargo install cargo-audit@0.22.0 --locked
+        run: cargo install cargo-deny@0.21.0 --locked && cargo install cargo-audit@0.22.0 --locked
       - name: Rust Clippy
         shell: bash
         run: |
