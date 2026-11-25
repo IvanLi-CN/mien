@@ -26,7 +26,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// 串行执行 fmt、clippy、test、deny、migrate、contracts 和 Web 检查。
-    Check,
+    Check {
+        /// Skip the macOS-only desktop host (src-tauri) build and checks.
+        #[arg(long)]
+        skip_host: bool,
+    },
     /// 对临时库执行全部迁移。
     Migrate {
         /// 目标库；省略则新建临时库并在结束后删除。
@@ -56,7 +60,7 @@ fn main() -> anyhow::Result<()> {
         .map(Ok)
         .unwrap_or_else(repo_root)?;
     match Cli::parse().command {
-        Command::Check => check::run(&root),
+        Command::Check { skip_host } => check::run(&root, skip_host),
         Command::Migrate { database } => migrate::run(&root, database.as_deref()),
         Command::Contracts => contracts::run(&root),
         Command::CheckDenyExceptions => deny_exceptions::run(&root),

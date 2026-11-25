@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::run_step;
 
-pub fn run(root: &Path) -> anyhow::Result<()> {
+pub fn run(root: &Path, skip_host: bool) -> anyhow::Result<()> {
     run_step(root, "cargo", &["fmt", "--all", "--check"])?;
     run_step(
         root,
@@ -21,70 +21,73 @@ pub fn run(root: &Path) -> anyhow::Result<()> {
         ],
     )?;
     run_step(root, "cargo", &["test", "--workspace"])?;
-    run_step(
-        root,
-        "cargo",
-        &[
-            "fmt",
-            "--manifest-path",
-            "src-tauri/Cargo.toml",
-            "--all",
-            "--",
-            "--check",
-        ],
-    )?;
-    run_step(
-        root,
-        "cargo",
-        &[
-            "build",
-            "--manifest-path",
-            "src-tauri/Cargo.toml",
-            "--locked",
-        ],
-    )?;
-    run_step(
-        root,
-        "cargo",
-        &[
-            "clippy",
-            "--manifest-path",
-            "src-tauri/Cargo.toml",
-            "--all-targets",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )?;
-    run_step(
-        root,
-        "cargo",
-        &[
-            "test",
-            "--manifest-path",
-            "src-tauri/Cargo.toml",
-            "--locked",
-        ],
-    )?;
-    run_step(
-        root,
-        "cargo",
-        &["run", "-q", "-p", "xtask", "--", "check-deny-exceptions"],
-    )?;
+    if !skip_host {
+        // The desktop host is macOS-only; Linux CI skips its Tauri build.
+        run_step(
+            root,
+            "cargo",
+            &[
+                "fmt",
+                "--manifest-path",
+                "src-tauri/Cargo.toml",
+                "--all",
+                "--",
+                "--check",
+            ],
+        )?;
+        run_step(
+            root,
+            "cargo",
+            &[
+                "build",
+                "--manifest-path",
+                "src-tauri/Cargo.toml",
+                "--locked",
+            ],
+        )?;
+        run_step(
+            root,
+            "cargo",
+            &[
+                "clippy",
+                "--manifest-path",
+                "src-tauri/Cargo.toml",
+                "--all-targets",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ],
+        )?;
+        run_step(
+            root,
+            "cargo",
+            &[
+                "test",
+                "--manifest-path",
+                "src-tauri/Cargo.toml",
+                "--locked",
+            ],
+        )?;
+        run_step(
+            root,
+            "cargo",
+            &["run", "-q", "-p", "xtask", "--", "check-deny-exceptions"],
+        )?;
+        run_step(
+            root,
+            "cargo",
+            &[
+                "deny",
+                "--config",
+                "src-tauri/deny.toml",
+                "--manifest-path",
+                "src-tauri/Cargo.toml",
+                "check",
+            ],
+        )?;
+    }
     run_step(root, "cargo", &["deny", "check"])?;
-    run_step(
-        root,
-        "cargo",
-        &[
-            "deny",
-            "--config",
-            "src-tauri/deny.toml",
-            "--manifest-path",
-            "src-tauri/Cargo.toml",
-            "check",
-        ],
-    )?;
     run_step(
         root,
         "cargo",

@@ -120,7 +120,7 @@ jobs:
         run: |
           if [[ -f Cargo.toml ]]; then
             bun install --frozen-lockfile
-            cargo run -q -p xtask -- check
+            cargo run -q -p xtask -- check --skip-host
           else
             echo 'blocked: Cargo.toml missing'; exit 1
           fi
