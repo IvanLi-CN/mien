@@ -46,6 +46,12 @@ The `contracts:check` job computes SHA-256 digests for the frozen source files a
 
 Any contract change must update the owning SPEC, implementation VER record, executable test or fixture, and affected user-facing documentation in one change. The `contracts` job must pass on the same commit; generated client output, error-code mappings, UI route parity, DDL/migration checks, and seccomp provenance are blocking checks. Do not edit a generated or derived file alone; update its source and regenerate the snapshot.
 
+## Check boundaries
+
+- `x-required-scope` is checked only for membership in `TokenScope`; changing an operation from `profiles.read` to another valid scope passes the structural check, so authorization meaning still requires review.
+- SQLite execution and migration parity currently cover the `schema_migrations` ledger DDL only; full business-table DDL-to-migration parity will be added with the T9a business-table migrations.
+- The generated-client snapshot covers `openapi.yaml` only; `events.schema.json` is validated independently and is not represented in that client snapshot.
+
 ## Known blocks
 
 - Docker sandbox enforcement is unconfirmed; M3 Docker release material must not claim an enforced sandbox.
