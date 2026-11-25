@@ -13,4 +13,4 @@ pub mod proxy;
 pub mod runtime;
 pub mod storage;
 
-pub use error::CoreError;
+pub use error::{CoreError, ErrorCode};
