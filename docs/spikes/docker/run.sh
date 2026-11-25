@@ -21,7 +21,9 @@ cleanup() {
   set +e
   docker rm -f "$NAME" >/dev/null 2>&1 || true
   docker rm -f "${NAME}-default-shm" >/dev/null 2>&1 || true
-  docker image rm "$IMAGE" >/dev/null 2>&1 || true
+  if [ "${MIEN_SPIKE_KEEP_IMAGE:-0}" != "1" ]; then
+    docker image rm "$IMAGE" >/dev/null 2>&1 || true
+  fi
   echo "preserved_volume=$VOLUME"
   sed -E -e "s#${ROOT}#<repo>#g" -e "s#${WORK}#<work>#g" -e 's#sha256:[[:xdigit:]]{64}#sha256:<digest>#g' "$RAW" > "$EVIDENCE/run.log"
   rm -rf "$WORK"
@@ -47,8 +49,21 @@ grep -q "$CHROMIUM_SHA" "$ROOT/docs/contracts/manifests/fingerprint-chromium-148
 grep -q "$XRAY_SHA" "$ROOT/docs/contracts/manifests/xray-core-v26.11.9-linux-x86_64.json"
 cp "$ROOT/deploy/docker/seccomp/chromium.json" "$SEC_HOST"
 echo "manifest_asset_sha256 chromium=$CHROMIUM_SHA xray=$XRAY_SHA"
-curl -fsSL --retry 3 -o "$WORK/chromium.tar.xz" "$CHROMIUM_URL"
-curl -fsSL --retry 3 -o "$WORK/xray.zip" "$XRAY_URL"
+CACHE=${MIEN_ASSET_CACHE:-}
+if [ -n "$CACHE" ] && [ -f "$CACHE/chromium.tar.xz" ]; then
+  cp "$CACHE/chromium.tar.xz" "$WORK/chromium.tar.xz"
+  echo "chromium_source=cache path=$CACHE/chromium.tar.xz"
+else
+  curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 2 -o "$WORK/chromium.tar.xz" "$CHROMIUM_URL"
+  echo "chromium_source=download"
+fi
+if [ -n "$CACHE" ] && [ -f "$CACHE/xray.zip" ]; then
+  cp "$CACHE/xray.zip" "$WORK/xray.zip"
+  echo "xray_source=cache path=$CACHE/xray.zip"
+else
+  curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 2 -o "$WORK/xray.zip" "$XRAY_URL"
+  echo "xray_source=download"
+fi
 echo "downloaded_sha256 chromium=$(sha256sum "$WORK/chromium.tar.xz" | awk '{print $1}') xray=$(sha256sum "$WORK/xray.zip" | awk '{print $1}')"
 test "$(sha256sum "$WORK/chromium.tar.xz" | awk '{print $1}')" = "$CHROMIUM_SHA"
 test "$(sha256sum "$WORK/xray.zip" | awk '{print $1}')" = "$XRAY_SHA"
@@ -76,7 +91,11 @@ cp "$ROOT/deploy/docker/entrypoint.sh" "$WORK/context/entrypoint.sh"
 cp "$SEC_HOST" "$WORK/context/seccomp/chromium.json"
 cp "$WORK/chromium.tar.xz" "$WORK/context/chromium.tar.xz"
 cp "$WORK/xray.zip" "$WORK/context/xray.zip"
-docker build --pull=false -t "$IMAGE" "$WORK/context"
+if [ "${MIEN_SPIKE_SKIP_BUILD:-0}" = "1" ] && docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo 'image=reused tag='"$IMAGE"
+else
+  docker build --pull=false -t "$IMAGE" "$WORK/context"
+fi
 
 echo 'container_config=read_only root tmpfs=/tmp no_new_privileges cap_drop=ALL user=10001:10001 pids=512 memory=4g cpus=2 nofile=4096'
 SECOPT="--security-opt no-new-privileges --security-opt seccomp=$SEC_HOST"
@@ -97,8 +116,9 @@ docker run -d --name "$NAME" --read-only --tmpfs /tmp:rw,noexec,nosuid,size=1g -
 END_NS=$(date +%s%N)
 echo "cold_start_ms=$(( (END_NS - START_NS) / 1000000 ))"
 echo "container_id=$(docker inspect --format '{{.Id}}' "$NAME")"
+XENV="-e XAUTHORITY=/tmp/mien-Xauthority"
 docker inspect --format 'readonly={{.HostConfig.ReadonlyRootfs}} user={{.Config.User}} shm={{.HostConfig.ShmSize}} seccomp={{.HostConfig.SecurityOpt}}' "$NAME"
-docker exec "$NAME" sh -lc 'id; df -h /dev/shm /tmp /data; test -w /data && echo data_writable=yes; test -w /etc && echo etc_writable=yes || echo etc_writable=no; xdpyinfo -display "$DISPLAY" 2>&1 || true'
+docker exec $XENV "$NAME" sh -lc 'id; df -h /dev/shm /tmp /data; test -w /data && echo data_writable=yes; test -w /etc && echo etc_writable=yes || echo etc_writable=no; xdpyinfo -display "$DISPLAY" 2>&1 || true'
 
 # The explicit 1 GiB shm policy is the baseline. Also exercise Docker's 64 MiB default in a disposable probe.
 docker exec "$NAME" sh -lc 'df -B1 /dev/shm | tail -1' | awk '{print "shm_bytes=" $2}'
@@ -115,16 +135,16 @@ fi
 docker rm -f "$DEFAULT_NAME" >/dev/null 2>&1 || true
 
 # Start one normal headful instance; no --no-sandbox fallback is ever accepted.
-docker exec "$NAME" sh -lc 'mkdir -p /data/profile-1; nohup /opt/mien/chromium/chrome --user-data-dir=/data/profile-1 --no-first-run --no-default-browser-check --disable-background-networking --window-size=1280,720 --remote-debugging-port=9222 about:blank >/data/evidence/chrome-1.log 2>&1 & echo $! >/data/evidence/chrome-1.pid'
-sleep 4
+docker exec $XENV "$NAME" sh -lc 'mkdir -p /data/profile-1; nohup /opt/mien/chromium/chrome --user-data-dir=/data/profile-1 --no-first-run --no-default-browser-check --disable-background-networking --window-size=1280,720 --remote-debugging-port=9222 about:blank >/data/evidence/chrome-1.log 2>&1 & echo $! >/data/evidence/chrome-1.pid'
+sleep 8
 echo 'chrome_processes:'
 docker exec "$NAME" sh -lc "ps -eo pid,user,args | grep '[c]hrome' | sed -E 's#--remote-debugging-port=[0-9]+#--remote-debugging-port=<port>#g'"
 echo 'display_geometry:'
-docker exec "$NAME" sh -lc 'xdpyinfo -display "$DISPLAY" | grep -E "dimensions|depth of root"; xwininfo -root -tree 2>&1 | grep -i -m3 -E "chrome|chromium" || true'
+docker exec $XENV "$NAME" sh -lc 'xdpyinfo -display "$DISPLAY" | grep -E "dimensions|depth of root"; xwininfo -root -tree 2>&1 | grep -i -m3 -E "chrome|chromium" || true'
 echo 'screen_attributes=screen.width_and_height_are_display_bound; window_size_requested=1280x720'
 
 # Sandbox page/output and refusal indicators are retained as evidence; unknown is not promoted to pass.
-if docker exec "$NAME" sh -lc 'mkdir -p /data/sandbox-probe; timeout 30 /opt/mien/chromium/chrome --user-data-dir=/data/sandbox-probe --no-first-run --no-default-browser-check --headless --dump-dom chrome://sandbox' > "$WORK/sandbox.html" 2>"$WORK/sandbox.err"; then
+if docker exec $XENV "$NAME" sh -lc 'mkdir -p /data/sandbox-probe; timeout 30 /opt/mien/chromium/chrome --user-data-dir=/data/sandbox-probe --no-first-run --no-default-browser-check --headless --dump-dom chrome://sandbox' > "$WORK/sandbox.html" 2>"$WORK/sandbox.err"; then
   echo 'sandbox_probe=completed mode=headless_probe'
 else
   echo 'sandbox_probe=failed'
@@ -132,9 +152,11 @@ fi
 sed -n '1,120p' "$WORK/sandbox.html" | sed -E 's/[[:space:]]+/ /g' | cut -c1-1000
 grep -iE 'sandbox|namespace|seccomp|setuid|without' "$WORK/sandbox.err" | head -40 || true
 if docker exec "$NAME" sh -lc 'tr "\\0" " " </proc/$(cat /data/evidence/chrome-1.pid)/cmdline' | grep -q -- '--no-sandbox'; then echo 'sandbox_refusal=invalid_no_sandbox_flag'; else echo 'sandbox_refusal=no_no_sandbox_flag'; fi
+docker exec $XENV "$NAME" sh -lc 'p=$(cat /data/evidence/chrome-1.pid); echo "sandbox_proc seccomp=$(sed -n "s/^Seccomp:\\s*//p" /proc/$p/status) nonewprivs=$(sed -n "s/^NoNewPrivs:\\s*//p" /proc/$p/status) userns=$(readlink /proc/$p/ns/user) init_userns=$(readlink /proc/1/ns/user) pidns=$(readlink /proc/$p/ns/pid) init_pidns=$(readlink /proc/1/ns/pid)"' || true
+docker exec $XENV "$NAME" sh -lc 'ps -eo pid,args | grep -e "--type=zygote" -e "--type=renderer" | grep -v grep | head -4 | while read p rest; do echo "child pid=$p type=$(echo $rest | grep -o -e "--type=[a-z]*") seccomp=$(sed -n "s/^Seccomp:[[:space:]]*//p" /proc/$p/status) nonewprivs=$(sed -n "s/^NoNewPrivs:[[:space:]]*//p" /proc/$p/status) ns_user=$(readlink /proc/$p/ns/user) ns_pid=$(readlink /proc/$p/ns/pid)"; done; echo "init_ns ns_user=$(readlink /proc/1/ns/user) ns_pid=$(readlink /proc/1/ns/pid)"' || true
 
 # Two additional headful instances under the explicit 1 GiB policy.
-for n in 2 3; do docker exec "$NAME" sh -lc "mkdir -p /data/profile-$n; nohup /opt/mien/chromium/chrome --user-data-dir=/data/profile-$n --no-first-run --no-default-browser-check --disable-background-networking --window-size=1280,720 --remote-debugging-port=$((9220+n)) about:blank >/data/evidence/chrome-$n.log 2>&1 & echo \$! >/data/evidence/chrome-$n.pid"; done
+for n in 2 3; do docker exec $XENV "$NAME" sh -lc "mkdir -p /data/profile-$n; nohup /opt/mien/chromium/chrome --user-data-dir=/data/profile-$n --no-first-run --no-default-browser-check --disable-background-networking --window-size=1280,720 --remote-debugging-port=$((9220+n)) about:blank >/data/evidence/chrome-$n.log 2>&1 & echo \$! >/data/evidence/chrome-$n.pid"; done
 sleep 5
 docker stats --no-stream --format 'stats name={{.Name}} cpu={{.CPUPerc}} mem={{.MemUsage}} mem_pct={{.MemPerc}} pids={{.PIDs}}' "$NAME"
 docker exec "$NAME" sh -lc 'ps -eo pid,user,args | grep "[c]hrome" | wc -l | awk "{print \"chrome_process_count=\" \$1}"'
