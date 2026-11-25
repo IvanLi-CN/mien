@@ -12,16 +12,16 @@
 
 pub mod argv;
 pub mod capability;
-pub mod json;
-pub mod spec;
 #[cfg(test)]
 mod golden_tests;
+pub mod json;
+pub mod spec;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod window_tests;
 
-pub use argv::{build_launch_argv, Enforcement, LaunchPlan, NetworkControl, NetworkControls};
-pub use capability::{load_pinned_manifest, CapabilityManifest};
+pub use argv::{Enforcement, LaunchPlan, NetworkControl, NetworkControls, build_launch_argv};
+pub use capability::{CapabilityManifest, load_pinned_manifest};
 pub use json::parse_spec_json;
-pub use spec::{validate_spec, validate_spec_with_manifest, FingerprintSpec};
+pub use spec::{FingerprintSpec, validate_spec, validate_spec_with_manifest};
