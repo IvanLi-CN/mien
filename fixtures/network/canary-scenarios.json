@@ -1,0 +1,130 @@
+{
+  "schema": "mien.network-canary/1",
+  "owner": "network",
+  "purpose": "Authored WebRTC / IPv6 / DoH judgement scenarios for the local canary test. Only synthetic candidates, synthetic addresses and contract-derived expectations are committed; no host telemetry, no captured traffic.",
+  "webrtc": {
+    "rule": "A candidate is direct unless it is typ relay; any UDP transport is non-proxied. An empty candidate set is inconclusive, never 'blocked'.",
+    "scenarios": [
+      {
+        "id": "RTC-001",
+        "case": "host-candidate",
+        "sdp_like_entries": [
+          "candidate:1 1 udp 2122260223 192.0.2.10 54321 typ host generation 0"
+        ],
+        "verdict": "direct",
+        "meaning": "A host candidate exposes a local address; non-proxied UDP is live."
+      },
+      {
+        "id": "RTC-002",
+        "case": "server-reflexive-candidate",
+        "sdp_like_entries": [
+          "a=candidate:2 1 udp 1686052607 198.51.100.7 61234 typ srflx raddr 192.0.2.10 rport 54321"
+        ],
+        "verdict": "direct",
+        "meaning": "A srflx candidate proves the browser reached a STUN server outside the proxy."
+      },
+      {
+        "id": "RTC-003",
+        "case": "mdns-hostname-candidate",
+        "sdp_like_entries": [
+          "candidate:3 1 udp 2113937151 5d4e1f0b-1111-2222-3333-444455556666.local 50123 typ host"
+        ],
+        "verdict": "direct",
+        "meaning": "Default mDNS masking still signals a local UDP socket, so it is a direct candidate."
+      },
+      {
+        "id": "RTC-004",
+        "case": "relay-only",
+        "sdp_like_entries": [
+          "candidate:4 1 udp 41885439 203.0.113.9 443 typ relay raddr 0.0.0.0 rport 0"
+        ],
+        "verdict": "none",
+        "meaning": "Every candidate is relay, which is compatible with disabled non-proxied UDP."
+      },
+      {
+        "id": "RTC-005",
+        "case": "empty-gather",
+        "sdp_like_entries": [],
+        "verdict": "inconclusive",
+        "meaning": "A gatherer that reports nothing cannot distinguish a working block from a broken UDP path."
+      }
+    ]
+  },
+  "ipv6": {
+    "rule": "Only a non-loopback IPv6 address observed at the peer is egress; loopback is not egress; no attempt is inconclusive.",
+    "scenarios": [
+      {
+        "id": "V6-001",
+        "case": "global-egress-observed",
+        "observed_route": "2001:db8:1::20",
+        "verdict": "reachable"
+      },
+      {
+        "id": "V6-002",
+        "case": "loopback-only",
+        "observed_route": "::1",
+        "verdict": "inconclusive"
+      },
+      {
+        "id": "V6-003",
+        "case": "attempt-failed",
+        "observed_route": "connect error: EHOSTUNREACH",
+        "verdict": "blocked"
+      },
+      {
+        "id": "V6-004",
+        "case": "no-attempt",
+        "observed_route": null,
+        "verdict": "inconclusive"
+      }
+    ]
+  },
+  "doh": {
+    "rule": "Any of secure_dns_mode != 0, a configured DoH server, available secure transactions, or active DoT means DoH is a live bypass path. An unreadable configuration is inconclusive.",
+    "scenarios": [
+      {
+        "id": "DOH-001",
+        "case": "secure-dns-off",
+        "observation": {
+          "secure_dns_mode": 0,
+          "doh_servers": 0,
+          "secure_dns_available": false,
+          "dot_active": false
+        },
+        "verdict": "disabled"
+      },
+      {
+        "id": "DOH-002",
+        "case": "secure-mode-with-template",
+        "observation": {
+          "secure_dns_mode": 2,
+          "doh_servers": 1,
+          "secure_dns_available": true,
+          "dot_active": false
+        },
+        "verdict": "enabled"
+      },
+      {
+        "id": "DOH-003",
+        "case": "unreadable-configuration",
+        "observation": {
+          "secure_dns_mode": 0,
+          "doh_servers": 0,
+          "secure_dns_available": null,
+          "dot_active": false
+        },
+        "verdict": "inconclusive"
+      }
+    ]
+  },
+  "reconciliation": {
+    "rule": "A claim may only remain Declared when the observation supports it; there is no upgrade path from Unverified.",
+    "cases": [
+      {"claim": "declared", "evidence": "consistent", "status": "declared"},
+      {"claim": "declared", "evidence": "missing", "status": "unverified"},
+      {"claim": "declared", "evidence": "contradicted", "status": "unverified"},
+      {"claim": "unverified", "evidence": "consistent", "status": "unverified"},
+      {"claim": "unsupported", "evidence": "consistent", "status": "unsupported"}
+    ]
+  }
+}

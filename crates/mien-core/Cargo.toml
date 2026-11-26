@@ -29,5 +29,7 @@ protoc-bin-vendored = "3"
 
 [dev-dependencies]
 sha2 = "0.10"
+tokio-tungstenite = "0.29"
 tempfile = "3"
 sqlx.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }

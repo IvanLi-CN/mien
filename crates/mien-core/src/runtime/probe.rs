@@ -173,16 +173,13 @@ pub async fn wait_for_cdp(user_data_dir: &Path, timeout: Duration) -> Result<u16
             return Err(cdp_timeout());
         }
         if let Ok(text) = std::fs::read_to_string(&path) {
-            eprintln!("probe: file={:?} text={:?}", path, text);
             if let Some(port) = text
                 .lines()
                 .next()
                 .and_then(|line| line.trim().parse::<u16>().ok())
             {
-                eprintln!("probe: parsed port {port}");
                 if port != 0 {
                     let connected = tokio::net::TcpStream::connect(("127.0.0.1", port)).await;
-                    eprintln!("probe: connect result {:?}", connected.as_ref().err());
                     if connected.is_ok() {
                         return Ok(port);
                     }
