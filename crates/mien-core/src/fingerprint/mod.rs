@@ -21,7 +21,10 @@ mod tests;
 #[cfg(test)]
 mod window_tests;
 
-pub use argv::{Enforcement, LaunchPlan, NetworkControl, NetworkControls, build_launch_argv};
+pub use argv::{
+    Enforcement, HEADLESS_ARG, HEADLESS_LIMITATION, LaunchPlan, ModeArgs, NetworkControl,
+    NetworkControls, PSEUDO_HEADFUL_LIMITATION, build_launch_argv, build_launch_argv_for_mode,
+};
 pub use capability::{CapabilityManifest, load_pinned_manifest};
 pub use json::parse_spec_json;
 pub use spec::{FingerprintSpec, validate_spec, validate_spec_with_manifest};

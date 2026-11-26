@@ -59,7 +59,8 @@ pub const fn valid_transition(from: RuntimeState, to: RuntimeState) -> bool {
     )
 }
 
-/// Headless 与伪有头都明确拒绝，避免静默降低保证。
+/// 降级保证真值表：`headless`/`pseudo_headful`、`direct=true` 或 `isolation != enforced`
+/// 任一成立即为 true，三者都不成立时才能声明完整保证。
 pub const fn reduced_assurance(
     mode: crate::domain::profile::ProfileMode,
     direct: bool,

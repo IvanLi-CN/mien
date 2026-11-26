@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use crate::error::CoreError;
+use crate::{
+    domain::profile::ProfileMode,
+    error::{CoreError, ErrorCode},
+};
 
 use super::capability::{self, CapabilityManifest};
 use super::spec::{FingerprintSpec, Network, ValidatedSpec, Window, validate_spec_with_manifest};
@@ -40,6 +43,69 @@ pub struct LaunchPlan {
     pub argv: Vec<String>,
     pub window: Window,
     pub network: NetworkControls,
+    /// Runtime mode this argv was built for.
+    pub mode: ProfileMode,
+    /// UA scope the launch may claim; only `pseudo_headful` claims `chrome`.
+    pub ua_scope: Option<&'static str>,
+    /// Guarantee limitation the start response must disclose, when the mode has one.
+    pub limitation: Option<&'static str>,
+}
+
+/// The kernel argument shared by every Headless mode.
+pub const HEADLESS_ARG: &str = "--headless=new";
+
+/// `headless` promises no user-agent result at all.
+pub const HEADLESS_LIMITATION: &str = "headless makes no user-agent claim";
+
+/// `pseudo_headful` buys the UA patch and nothing else.
+pub const PSEUDO_HEADFUL_LIMITATION: &str =
+    "pseudo_headful changes UA only; other Headless characteristics remain";
+
+/// Mode-specific argv entries and the guarantee they carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModeArgs {
+    /// Append [`HEADLESS_ARG`] to the fingerprint flags.
+    pub headless: bool,
+    /// UA scope the mode may claim.
+    pub ua_scope: Option<&'static str>,
+    /// Disclosure the start response must surface.
+    pub limitation: Option<&'static str>,
+}
+
+impl ModeArgs {
+    /// Resolve `mode` against the installed kernel capability flag.
+    ///
+    /// `pseudo_headful` requires the manifest to declare `headless_chrome_ua_patch=true`;
+    /// without it the launch is refused rather than silently degraded to `headless` or
+    /// `headful`. The UA string itself is never synthesised here: the patch is the
+    /// kernel's claim, and passing a UA flag would forge it.
+    pub fn resolve(mode: ProfileMode, headless_chrome_ua_patch: bool) -> Result<Self, CoreError> {
+        Ok(match mode {
+            ProfileMode::Headful => Self {
+                headless: false,
+                ua_scope: None,
+                limitation: None,
+            },
+            ProfileMode::Headless => Self {
+                headless: true,
+                ua_scope: None,
+                limitation: Some(HEADLESS_LIMITATION),
+            },
+            ProfileMode::PseudoHeadful => {
+                if !headless_chrome_ua_patch {
+                    return Err(CoreError::validation(
+                        ErrorCode::RuntimeModeUnsupported,
+                        "pseudo_headful requires the kernel manifest to declare headless_chrome_ua_patch=true",
+                    ));
+                }
+                Self {
+                    headless: true,
+                    ua_scope: Some("chrome"),
+                    limitation: Some(PSEUDO_HEADFUL_LIMITATION),
+                }
+            }
+        })
+    }
 }
 
 /// Build deterministic Chromium argv from a spec, manifest, and data directory.
@@ -55,8 +121,33 @@ pub fn build_launch_argv(
     manifest: &CapabilityManifest,
     data_dir: &Path,
 ) -> Result<LaunchPlan, CoreError> {
+    build_launch_argv_for_mode(spec, manifest, data_dir, ProfileMode::Headful)
+}
+
+/// Mode-aware [`build_launch_argv`].
+///
+/// The fingerprint flags keep their fixed order; the mode contributes at most one
+/// trailing [`HEADLESS_ARG`], so headful argv is byte-identical to [`build_launch_argv`].
+///
+/// # Errors
+/// Invalid/admitted spec failures, or `RUNTIME_MODE_UNSUPPORTED` when `pseudo_headful`
+/// runs against a kernel without the `headless_chrome_ua_patch` capability.
+pub fn build_launch_argv_for_mode(
+    spec: &FingerprintSpec,
+    manifest: &CapabilityManifest,
+    data_dir: &Path,
+    mode: ProfileMode,
+) -> Result<LaunchPlan, CoreError> {
+    let mode_args = ModeArgs::resolve(mode, manifest.headless_chrome_ua_patch)?;
     let validated = validate_spec_with_manifest(spec, manifest)?;
-    build_from_validated(&validated, manifest, data_dir)
+    let mut plan = build_from_validated(&validated, manifest, data_dir)?;
+    if mode_args.headless {
+        plan.argv.push(HEADLESS_ARG.to_owned());
+    }
+    plan.mode = mode;
+    plan.ua_scope = mode_args.ua_scope;
+    plan.limitation = mode_args.limitation;
+    Ok(plan)
 }
 
 fn build_from_validated(
@@ -148,6 +239,9 @@ fn build_from_validated(
         argv,
         window: spec.window,
         network: NetworkControls::from_spec(&spec.network, spec.webrtc.disable_non_proxied_udp),
+        mode: ProfileMode::Headful,
+        ua_scope: None,
+        limitation: None,
     })
 }
 

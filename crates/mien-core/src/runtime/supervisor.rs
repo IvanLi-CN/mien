@@ -17,6 +17,7 @@ use tokio::{
 use crate::{
     domain::profile::{ProfileId, ProfileMode},
     error::{CoreError, ErrorCode},
+    fingerprint::argv::{HEADLESS_ARG, ModeArgs},
 };
 
 use super::{
@@ -42,6 +43,8 @@ pub struct RuntimeOptions {
     pub binary_sha256: String,
     pub manifest_sandbox_kind: String,
     pub mode: ProfileMode,
+    /// Kernel manifest `headless_chrome_ua_patch`; the only evidence `pseudo_headful` accepts.
+    pub headless_chrome_ua_patch: bool,
     pub automation_api: bool,
     pub launch_args: Vec<String>,
     pub data_dir: PathBuf,
@@ -66,6 +69,7 @@ impl RuntimeOptions {
             binary_sha256: binary_sha256.into(),
             manifest_sandbox_kind: "seatbelt".into(),
             mode: ProfileMode::Headful,
+            headless_chrome_ua_patch: false,
             automation_api: false,
             launch_args: Vec::new(),
             data_dir: data_dir.into(),
@@ -116,6 +120,8 @@ pub struct RuntimeSnapshot {
     pub isolation: Isolation,
     pub direct: bool,
     pub reduced_assurance: bool,
+    /// UA scope this launch may claim; `Some("chrome")` only for `pseudo_headful`.
+    pub ua_scope: Option<String>,
     pub pid: Option<u32>,
     pub pgid: Option<i32>,
     pub cdp_port: Option<u16>,
@@ -133,6 +139,8 @@ struct RuntimeMetadata {
     mode: ProfileMode,
     isolation: Isolation,
     direct: bool,
+    #[serde(default)]
+    ua_scope: Option<String>,
     proxy_port: Option<u16>,
     pid: u32,
     pgid: i32,
@@ -232,7 +240,7 @@ impl RuntimeRecord {
                 isolation: snapshot.isolation,
                 direct: snapshot.direct,
                 reduced_assurance: snapshot.reduced_assurance,
-                ua_scope: (snapshot.mode == ProfileMode::PseudoHeadful).then(|| "chrome".into()),
+                ua_scope: snapshot.ua_scope,
                 proxy_port: snapshot.proxy_port,
                 exit_code: snapshot.exit_code,
                 error_code: error_code.or(snapshot.error_code),
@@ -255,6 +263,8 @@ impl RuntimeRecord {
                 self.options.direct,
                 state.isolation,
             ),
+            ua_scope: (self.options.mode == ProfileMode::PseudoHeadful)
+                .then(|| "chrome".to_owned()),
             pid: state.pid,
             pgid: state.pgid,
             cdp_port: state.cdp_port,
@@ -277,6 +287,7 @@ impl RuntimeRecord {
             mode: snapshot.mode,
             isolation: snapshot.isolation,
             direct: snapshot.direct,
+            ua_scope: snapshot.ua_scope,
             proxy_port: snapshot.proxy_port,
             pid,
             pgid,
@@ -422,14 +433,12 @@ impl RuntimeSupervisor {
             .ok_or(CoreError::NotFound)
     }
 
-    /// 启动 macOS 有头内核；无头与伪有头显式拒绝。
+    /// 启动内核；运行模式由清单能力决定，不做静默降级。
+    ///
+    /// `pseudo_headful` 要求 `RuntimeOptions::headless_chrome_ua_patch`，缺失时返回
+    /// `RUNTIME_MODE_UNSUPPORTED`，且不会创建运行时记录或进程。
     pub async fn start(&self, options: RuntimeOptions) -> Result<RuntimeSnapshot, CoreError> {
-        if options.mode != ProfileMode::Headful {
-            return Err(CoreError::validation(
-                ErrorCode::RuntimeModeUnsupported,
-                "only headful runtime mode is supported",
-            ));
-        }
+        let mode_args = ModeArgs::resolve(options.mode, options.headless_chrome_ua_patch)?;
         let record = Arc::new(RuntimeRecord::new(options, self.events.clone())?);
         {
             let mut records = self.records.lock().expect("records lock");
@@ -441,7 +450,7 @@ impl RuntimeSupervisor {
             records.insert(record.options.runtime_id.clone(), record.clone());
         }
         record.transition(RuntimeState::Starting, None, None)?;
-        let result = self.start_inner(&record).await;
+        let result = self.start_inner(&record, mode_args).await;
         match result {
             Ok(()) => {
                 record.transition(RuntimeState::Running, None, None)?;
@@ -465,7 +474,11 @@ impl RuntimeSupervisor {
         }
     }
 
-    async fn start_inner(&self, record: &Arc<RuntimeRecord>) -> Result<(), CoreError> {
+    async fn start_inner(
+        &self,
+        record: &Arc<RuntimeRecord>,
+        mode_args: ModeArgs,
+    ) -> Result<(), CoreError> {
         let options = &record.options;
         if !options.direct && !options.proxy_ready {
             return Err(CoreError::validation(
@@ -489,6 +502,10 @@ impl RuntimeSupervisor {
         args.retain(|arg| {
             !arg.starts_with("--user-data-dir=") && !arg.starts_with("--remote-debugging-port=")
         });
+        // The mode owns this one flag; a caller plan may already carry it.
+        if mode_args.headless && !args.iter().any(|arg| arg == HEADLESS_ARG) {
+            args.push(HEADLESS_ARG.to_owned());
+        }
         args.push(format!(
             "--user-data-dir={}",
             options.data_dir.join("chrome").display()
@@ -672,6 +689,7 @@ impl RuntimeSupervisor {
                         metadata.direct,
                         metadata.isolation,
                     ),
+                    ua_scope: metadata.ua_scope,
                     pid: None,
                     pgid: None,
                     cdp_port: metadata.cdp_port,
@@ -720,13 +738,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn modes_are_explicitly_rejected() {
+    async fn pseudo_headful_without_the_ua_patch_is_rejected_before_spawn() {
         let root = std::env::temp_dir().join(format!("mien-runtime-{}", std::process::id()));
         let supervisor = RuntimeSupervisor::new(&root);
         let mut options = RuntimeOptions::new("r", ProfileId::new(), "/bin/true", "00", &root);
         options.mode = ProfileMode::PseudoHeadful;
         let error = supervisor.start(options).await.unwrap_err();
         assert_eq!(error.code(), ErrorCode::RuntimeModeUnsupported);
+        assert!(
+            supervisor.state("r").is_none(),
+            "a refused mode must not create a runtime record"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 }
