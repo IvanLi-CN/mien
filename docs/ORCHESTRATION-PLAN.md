@@ -94,3 +94,25 @@ flowchart TB
 - worker 回报缺证据或验收不达标时，发 `send` 修，不整张重跑；只有进程确认退出（`exited`）才重试。
 - 合并前必须确认：契约未漂移、`docs/spikes/` 证据在、CI 全绿、无孤儿进程残留。
 - 阻塞项（例如无受控 Tier A 节点）当日上报，不静默降级或跳过验收。
+
+## 7. M2 波次（指纹一致性、网络防护、Tier A、模式矩阵）
+
+M1 产品级闭环（T11 桌面 IPC）合并后，M2 按依赖拆成两批。全部 Task 从 `th/chore-orca-orchestration-plan` 的同一提交开 child worktree，协调者串行合并。
+
+| 波次 | Task | 目标 | 依赖 | 冲突面 |
+| --- | --- | --- | --- | --- |
+| F | T12 指纹一致性 | 三次启动 argv 一致、种子唯一、复制重置种子 | M1 | `fingerprint/{spec,capability,json}.rs`、`fixtures/fingerprint/` |
+| F | T13 代理存储与凭据加密 | AES-256-GCM 字段加密、AAD 绑定、CRUD、脱敏视图 | M1 | 新增 `secrets/`、`storage/proxy.rs`、迁移 0004、`Cargo.toml`、`NOTICE` |
+| F | T14 Tier A 出站编码 | VMess/Shadowsocks/Trojan 真实引擎 CRUD | M1 | `proto/xray/proxy/**`、`build.rs`、`proxy/api.rs` |
+| F | T15 运行模式矩阵 | headless/pseudo_headful 门禁与降低保证 | M1 | `runtime/{supervisor,starter,state}.rs`、`fingerprint/argv.rs` |
+| G | T16 网络防护证据 | DoH/IPv6/WebRTC canary 实测结论 | T15（模式矩阵稳定） | 新增 `network/`、`fixtures/{dns,network}/`、`docs/spikes/network/` |
+| G | T17 分享链接导入 | vless/vmess/ss/trojan/hysteria2 链接解析为草稿 | T13、T14 | 新增 `proxy/share_link.rs`、`fixtures/proxy/` |
+| G | T18 对账与并发准入 | 控制面重启对账、崩溃退避、10 档案准入 | T13、T15 | `runtime/supervisor.rs`、迁移 0005 |
+
+冲突控制：
+- T13 独占 `Cargo.toml`/`Cargo.lock`/`NOTICE`/`migrations/`，其余 Task 不得改这些路径；需要新依赖时先报告。
+- T14 独占 `crates/mien-core/proto/**` 与 `build.rs`。
+- T15 与 T16 都要碰网络控制语义，因此 T16 排在 T15 合并之后；T16 只加证据，不改 `argv.rs` 构造。
+- 每个 Task 的 spec 与验收命令在派发时给出；worker 不得跨域改动。
+
+停靠点：波次 F 全部合并后做一次 `cargo xtask check` + 真实内核/Xray 复跑；波次 G 结束后由主人决定是否进入 M3 服务化。
