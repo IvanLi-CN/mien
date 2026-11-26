@@ -57,4 +57,16 @@ pub mod proxy {
             tonic::include_proto!("xray.proxy.vless.outbound");
         }
     }
+    pub mod vmess {
+        tonic::include_proto!("xray.proxy.vmess");
+        pub mod outbound {
+            tonic::include_proto!("xray.proxy.vmess.outbound");
+        }
+    }
+    pub mod shadowsocks {
+        tonic::include_proto!("xray.proxy.shadowsocks");
+    }
+    pub mod trojan {
+        tonic::include_proto!("xray.proxy.trojan");
+    }
 }

@@ -147,3 +147,87 @@ async fn live_xray_crash_then_rebuild_original_api_port() {
     assert!(rebuilt.api().probe().await.is_ok());
     rebuilt.stop(Duration::from_secs(1)).await.unwrap()
 }
+fn tier_a(
+    protocol: ProxyProtocol,
+    credentials: &[(&str, &str)],
+    options: &[(&str, &str)],
+) -> ProxyConfig {
+    ProxyConfig {
+        protocol,
+        server: "127.0.0.1".into(),
+        port: 443,
+        transport: Transport::Tcp,
+        tls: TlsSettings::default(),
+        mux: MuxSettings::default(),
+        options: options
+            .iter()
+            .map(|(k, v)| ((*k).into(), (*v).into()))
+            .collect(),
+        credentials: Credentials {
+            values: credentials
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect(),
+        },
+    }
+}
+
+async fn assert_tier_a_round_trip(config: ProxyConfig) {
+    let Some(bin) = binary() else { return };
+    let mut engine = EngineProcess::start(&bin, &digest(&bin)).await.unwrap();
+    let api = engine.api();
+    let ctl = EngineController::new(api.clone());
+    ctl.set_state(EngineState::Running);
+    let spec = build_outbound(&config, b"tier-a-master").unwrap();
+    let b = binding("tier-a", spec.key.clone(), port());
+    ctl.acquire(b, &spec).unwrap();
+    assert_eq!(ctl.ref_count(&spec.key), 1);
+    assert!(
+        api.list_outbounds()
+            .unwrap()
+            .iter()
+            .any(|x| x.tag == spec.tag),
+        "{} outbound missing from engine list",
+        config.protocol.as_str()
+    );
+    ctl.release("tier-a").unwrap();
+    assert!(
+        !api.list_outbounds()
+            .unwrap()
+            .iter()
+            .any(|x| x.tag == spec.tag),
+        "{} outbound survived release",
+        config.protocol.as_str()
+    );
+    engine.stop(Duration::from_secs(1)).await.unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_xray_vmess_outbound() {
+    assert_tier_a_round_trip(tier_a(
+        ProxyProtocol::Vmess,
+        &[("id", "00000000-0000-4000-8000-000000000002")],
+        &[],
+    ))
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_xray_shadowsocks_outbound() {
+    assert_tier_a_round_trip(tier_a(
+        ProxyProtocol::Shadowsocks,
+        &[("password", "tier-a-secret")],
+        &[("method", "aes-256-gcm")],
+    ))
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_xray_trojan_outbound() {
+    assert_tier_a_round_trip(tier_a(
+        ProxyProtocol::Trojan,
+        &[("password", "tier-a-secret")],
+        &[],
+    ))
+    .await
+}

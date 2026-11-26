@@ -20,7 +20,7 @@ use super::xray::{
     },
     common::{
         net::{IpOrDomain, PortList, PortRange, ip_or_domain::Address as IpAddress},
-        protocol::{ServerEndpoint, User},
+        protocol::{SecurityConfig, SecurityType, ServerEndpoint, User},
         serial::TypedMessage,
     },
     core::{InboundHandlerConfig, OutboundHandlerConfig},
@@ -29,7 +29,13 @@ use super::xray::{
             Account as HttpAccount, ClientConfig as HttpClientConfig,
             ServerConfig as HttpServerConfig,
         },
+        shadowsocks::{
+            Account as ShadowsocksAccount, CipherType as ShadowsocksCipher,
+            ClientConfig as ShadowsocksConfig,
+        },
+        trojan::{Account as TrojanAccount, ClientConfig as TrojanConfig},
         vless::{Account as VlessAccount, outbound::Config as VlessConfig},
+        vmess::{Account as VmessAccount, outbound::Config as VmessConfig},
     },
 };
 use crate::error::{CoreError, ErrorCode};
@@ -45,6 +51,7 @@ pub enum ApiErrorCode {
     NotFound,
     Unavailable,
     Invalid,
+    TuicNotSupported,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiError {
@@ -58,6 +65,7 @@ impl fmt::Display for ApiError {
             ApiErrorCode::NotFound => "Xray resource not found",
             ApiErrorCode::Unavailable => "Xray management API unavailable",
             ApiErrorCode::Invalid => "invalid Xray API request",
+            ApiErrorCode::TuicNotSupported => "TUIC is not supported",
         })
     }
 }
@@ -408,24 +416,8 @@ fn to_outbound(x: Outbound) -> Result<OutboundHandlerConfig, ApiError> {
                 testpre: 0,
                 testseed: vec![],
             };
-            let user = User {
-                level: 0,
-                email: String::new(),
-                account: Some(TypedMessage {
-                    r#type: "xray.proxy.vless.Account".into(),
-                    value: a.encode_to_vec(),
-                }),
-            };
             let cfg = VlessConfig {
-                vnext: Some(ServerEndpoint {
-                    address: Some(address(
-                        s["address"]
-                            .as_str()
-                            .ok_or_else(|| invalid("missing address"))?,
-                    )),
-                    port: s["port"].as_u64().ok_or_else(|| invalid("missing port"))? as u32,
-                    user: Some(user),
-                }),
+                vnext: Some(endpoint(s, account("xray.proxy.vless.Account", &a))?),
             };
             ("xray.proxy.vless.outbound.Config", cfg.encode_to_vec())
         }
@@ -445,29 +437,81 @@ fn to_outbound(x: Outbound) -> Result<OutboundHandlerConfig, ApiError> {
                     .unwrap_or_default()
                     .into(),
             };
-            let user = User {
-                level: 0,
-                email: String::new(),
-                account: Some(TypedMessage {
-                    r#type: "xray.proxy.http.Account".into(),
-                    value: a.encode_to_vec(),
-                }),
-            };
             let cfg = HttpClientConfig {
-                server: Some(ServerEndpoint {
-                    address: Some(address(
-                        s["address"]
-                            .as_str()
-                            .ok_or_else(|| invalid("missing address"))?,
-                    )),
-                    port: s["port"].as_u64().ok_or_else(|| invalid("missing port"))? as u32,
-                    user: Some(user),
-                }),
+                server: Some(endpoint(s, account("xray.proxy.http.Account", &a))?),
                 header: vec![],
             };
             ("xray.proxy.http.ClientConfig", cfg.encode_to_vec())
         }
-        _ => return Err(invalid("unsupported outbound protocol")),
+        "vmess" => {
+            let s = x.settings["vnext"]
+                .get(0)
+                .ok_or_else(|| invalid("bad VMess settings"))?;
+            let u = s["users"].get(0).ok_or_else(|| invalid("bad VMess user"))?;
+            let a = VmessAccount {
+                id: u["id"]
+                    .as_str()
+                    .ok_or_else(|| invalid("VMESS_CREDENTIAL_REQUIRED"))?
+                    .into(),
+                security_settings: Some(SecurityConfig {
+                    r#type: i32::from(SecurityType::Auto),
+                }),
+                tests_enabled: String::new(),
+            };
+            let cfg = VmessConfig {
+                receiver: Some(endpoint(s, account("xray.proxy.vmess.Account", &a))?),
+            };
+            ("xray.proxy.vmess.outbound.Config", cfg.encode_to_vec())
+        }
+        "shadowsocks" => {
+            let s = x.settings["servers"]
+                .get(0)
+                .ok_or_else(|| invalid("bad Shadowsocks settings"))?;
+            let a = ShadowsocksAccount {
+                password: s["password"]
+                    .as_str()
+                    .ok_or_else(|| invalid("SHADOWSOCKS_CREDENTIAL_REQUIRED"))?
+                    .into(),
+                cipher_type: cipher(
+                    s["method"]
+                        .as_str()
+                        .ok_or_else(|| invalid("SHADOWSOCKS_METHOD_REQUIRED"))?,
+                )?,
+                iv_check: false,
+            };
+            let cfg = ShadowsocksConfig {
+                server: Some(endpoint(s, account("xray.proxy.shadowsocks.Account", &a))?),
+            };
+            ("xray.proxy.shadowsocks.ClientConfig", cfg.encode_to_vec())
+        }
+        "trojan" => {
+            let s = x.settings["servers"]
+                .get(0)
+                .ok_or_else(|| invalid("bad Trojan settings"))?;
+            let a = TrojanAccount {
+                password: s["password"]
+                    .as_str()
+                    .ok_or_else(|| invalid("TROJAN_CREDENTIAL_REQUIRED"))?
+                    .into(),
+            };
+            let cfg = TrojanConfig {
+                server: Some(endpoint(s, account("xray.proxy.trojan.Account", &a))?),
+            };
+            ("xray.proxy.trojan.ClientConfig", cfg.encode_to_vec())
+        }
+        "tuic" => {
+            return Err(ApiError {
+                code: ApiErrorCode::TuicNotSupported,
+                message: "TUIC is not supported".into(),
+            });
+        }
+        // Everything the manifest can declare but this encoder cannot build yet is
+        // rejected with a catalogue code, never downgraded to another protocol.
+        other => {
+            return Err(invalid(&format!(
+                "OUTBOUND_PROTOCOL_NOT_IMPLEMENTED: {other}"
+            )));
+        }
     };
     let m = x.mux.effective();
     let stream = super::xray::transport::internet::StreamConfig {
@@ -511,6 +555,45 @@ fn to_outbound(x: Outbound) -> Result<OutboundHandlerConfig, ApiError> {
         comment: String::new(),
     })
 }
+fn account<M: Message>(kind: &str, value: &M) -> User {
+    User {
+        level: 0,
+        email: String::new(),
+        account: Some(TypedMessage {
+            r#type: kind.into(),
+            value: value.encode_to_vec(),
+        }),
+    }
+}
+
+fn endpoint(s: &Value, user: User) -> Result<ServerEndpoint, ApiError> {
+    Ok(ServerEndpoint {
+        address: Some(address(
+            s["address"]
+                .as_str()
+                .ok_or_else(|| invalid("missing address"))?,
+        )),
+        port: s["port"].as_u64().ok_or_else(|| invalid("missing port"))? as u32,
+        user: Some(user),
+    })
+}
+
+/// Xray's own JSON `method` mapping; anything outside it is a configuration error.
+fn cipher(method: &str) -> Result<i32, ApiError> {
+    let cipher = match method.to_ascii_lowercase().as_str() {
+        "aes-128-gcm" | "aead_aes_128_gcm" => ShadowsocksCipher::Aes128Gcm,
+        "aes-256-gcm" | "aead_aes_256_gcm" => ShadowsocksCipher::Aes256Gcm,
+        "chacha20-poly1305" | "aead_chacha20_poly1305" | "chacha20-ietf-poly1305" => {
+            ShadowsocksCipher::Chacha20Poly1305
+        }
+        "xchacha20-poly1305" | "aead_xchacha20_poly1305" | "xchacha20-ietf-poly1305" => {
+            ShadowsocksCipher::Xchacha20Poly1305
+        }
+        other => return Err(invalid(&format!("SHADOWSOCKS_METHOD_UNSUPPORTED: {other}"))),
+    };
+    Ok(i32::from(cipher))
+}
+
 fn address(s: &str) -> IpOrDomain {
     let a = if let Ok(ip) = s.parse::<std::net::IpAddr>() {
         IpAddress::Ip(match ip {
@@ -663,6 +746,7 @@ fn api_error(e: ApiError) -> CoreError {
             ErrorCode::ProxyEngineApiUnavailable,
             "proxy engine API state could not be reconciled",
         ),
+        ApiErrorCode::TuicNotSupported => (ErrorCode::TuicNotSupported, "TUIC is not supported"),
         ApiErrorCode::Invalid => (
             ErrorCode::ProxyConfigInvalid,
             "proxy engine rejected the configuration as invalid",
@@ -750,5 +834,122 @@ mod tests {
                 .code,
             ApiErrorCode::Invalid
         )
+    }
+
+    fn outbound(protocol: &str, settings: Value) -> Outbound {
+        Outbound {
+            tag: "out:test".into(),
+            protocol: protocol.into(),
+            mux: MuxSettings::default(),
+            transport: Transport::Tcp,
+            settings,
+            stream_settings: Value::Null,
+        }
+    }
+
+    fn proxy_settings(protocol: &str, settings: Value) -> TypedMessage {
+        to_outbound(outbound(protocol, settings))
+            .unwrap()
+            .proxy_settings
+            .unwrap()
+    }
+
+    #[test]
+    fn vmess_encodes_account_with_auto_security() {
+        let m = proxy_settings(
+            "vmess",
+            serde_json::json!({"vnext": [{"address": "node.example", "port": 443, "users": [{"id": "00000000-0000-4000-8000-000000000002"}]}]}),
+        );
+        assert_eq!(m.r#type, "xray.proxy.vmess.outbound.Config");
+        let cfg = VmessConfig::decode(&m.value[..]).unwrap();
+        let inner = cfg.receiver.unwrap().user.unwrap().account.unwrap();
+        assert_eq!(inner.r#type, "xray.proxy.vmess.Account");
+        let account = VmessAccount::decode(&inner.value[..]).unwrap();
+        assert_eq!(
+            account.security_settings.unwrap().r#type,
+            i32::from(SecurityType::Auto)
+        );
+    }
+
+    #[test]
+    fn shadowsocks_encodes_mapped_cipher() {
+        let m = proxy_settings(
+            "shadowsocks",
+            serde_json::json!({"servers": [{"address": "node.example", "port": 8388, "method": "chacha20-poly1305", "password": "secret"}]}),
+        );
+        assert_eq!(m.r#type, "xray.proxy.shadowsocks.ClientConfig");
+        let cfg = ShadowsocksConfig::decode(&m.value[..]).unwrap();
+        let inner = cfg.server.unwrap().user.unwrap().account.unwrap();
+        assert_eq!(inner.r#type, "xray.proxy.shadowsocks.Account");
+        let account = ShadowsocksAccount::decode(&inner.value[..]).unwrap();
+        assert_eq!(
+            account.cipher_type,
+            i32::from(ShadowsocksCipher::Chacha20Poly1305)
+        );
+    }
+
+    #[test]
+    fn unknown_cipher_is_config_invalid() {
+        let e = to_outbound(outbound(
+            "shadowsocks",
+            serde_json::json!({"servers": [{"address": "node.example", "port": 8388, "method": "rc4-md5", "password": "secret"}]}),
+        ))
+        .unwrap_err();
+        assert_eq!(e.code, ApiErrorCode::Invalid);
+        assert!(e.message.contains("SHADOWSOCKS_METHOD_UNSUPPORTED"));
+    }
+
+    #[test]
+    fn trojan_encodes_password() {
+        let m = proxy_settings(
+            "trojan",
+            serde_json::json!({"servers": [{"address": "node.example", "port": 443, "password": "secret"}]}),
+        );
+        assert_eq!(m.r#type, "xray.proxy.trojan.ClientConfig");
+        let cfg = TrojanConfig::decode(&m.value[..]).unwrap();
+        let inner = cfg.server.unwrap().user.unwrap().account.unwrap();
+        assert_eq!(inner.r#type, "xray.proxy.trojan.Account");
+        assert_eq!(
+            TrojanAccount::decode(&inner.value[..]).unwrap().password,
+            "secret"
+        );
+    }
+
+    #[test]
+    fn undeclared_protocols_use_catalogue_codes() {
+        let tuic = to_outbound(outbound("tuic", serde_json::json!({}))).unwrap_err();
+        assert_eq!(tuic.code, ApiErrorCode::TuicNotSupported);
+        assert_eq!(api_error(tuic).code(), ErrorCode::TuicNotSupported);
+        for protocol in ["hysteria", "wireguard", "socks"] {
+            let e = to_outbound(outbound(protocol, serde_json::json!({}))).unwrap_err();
+            assert_eq!(e.code, ApiErrorCode::Invalid, "{protocol}");
+            assert_eq!(api_error(e).code(), ErrorCode::ProxyConfigInvalid);
+        }
+    }
+
+    #[test]
+    fn missing_credentials_report_stable_messages() {
+        let cases = [
+            (
+                "vmess",
+                serde_json::json!({"vnext": [{"address": "node.example", "port": 443, "users": [{}]}]}),
+                "VMESS_CREDENTIAL_REQUIRED",
+            ),
+            (
+                "shadowsocks",
+                serde_json::json!({"servers": [{"address": "node.example", "port": 8388, "method": "aes-128-gcm"}]}),
+                "SHADOWSOCKS_CREDENTIAL_REQUIRED",
+            ),
+            (
+                "trojan",
+                serde_json::json!({"servers": [{"address": "node.example", "port": 443}]}),
+                "TROJAN_CREDENTIAL_REQUIRED",
+            ),
+        ];
+        for (protocol, settings, expected) in cases {
+            let e = to_outbound(outbound(protocol, settings)).unwrap_err();
+            assert_eq!(e.code, ApiErrorCode::Invalid, "{protocol}");
+            assert!(e.message.contains(expected), "{protocol}: {}", e.message);
+        }
     }
 }
