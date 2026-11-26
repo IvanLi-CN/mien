@@ -237,7 +237,10 @@ async fn pump<R: tokio::io::AsyncRead + Unpin>(r: R, t: mpsc::Sender<String>) {
     let mut lines = BufReader::new(r).lines();
     while let Ok(Some(s)) = lines.next_line().await {
         if t.send(s).await.is_err() {
-            break;
+            // Never stop reading because the consumer is gone: the child keeps
+            // writing into this pipe, and closing it turns the next engine log
+            // line into SIGPIPE, which kills the shared engine.
+            continue;
         }
     }
 }

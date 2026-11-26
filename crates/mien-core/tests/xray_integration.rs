@@ -231,3 +231,65 @@ async fn live_xray_trojan_outbound() {
     ))
     .await
 }
+
+/// 回归：引擎写一条 warning 后必须存活。
+///
+/// `pump` 曾因接收端被丢弃而 `break`，读端随任务结束关闭，Xray 下一次写日志命中
+/// 已关闭管道，收到 `SIGPIPE` 退出——表现为「第一个出站失败后整个网关失效」。
+/// 因此必须真的经入站发一次必然失败的请求，让引擎自己写出那一行日志。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engine_survives_a_warning_after_the_log_consumer_is_dropped() {
+    let Some(bin) = binary() else { return };
+    let mut engine = EngineProcess::start(&bin, &digest(&bin)).await.unwrap();
+    let api = engine.api();
+
+    // 出站指向一个没人监听的回环端口；经入站发请求必然失败并让引擎写日志。
+    let dead = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap().port()
+    };
+    let spec = build_outbound(&cfg(dead), b"test-master").unwrap();
+    let ctl = EngineController::new(api.clone());
+    ctl.set_state(EngineState::Running);
+    let proxy_port = port();
+    ctl.acquire(
+        RuntimeBinding {
+            runtime_id: "warn".into(),
+            outbound_key: spec.key.clone(),
+            inbound_tag: "rt:warn:in".into(),
+            rule_tag: "rt:warn:rule".into(),
+            proxy_port,
+        },
+        &spec,
+    )
+    .unwrap();
+
+    // 真实请求：用绝对 URI 走 HTTP 入站，引擎会尝试 dial 死端口并写 warning。
+    use tokio::io::AsyncWriteExt;
+    for _ in 0..3 {
+        if let Ok(mut stream) = tokio::net::TcpStream::connect(("127.0.0.1", proxy_port)).await {
+            let _ = stream
+                .write_all(b"GET http://127.0.0.1:1/ HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+                .await;
+            let _ = stream.shutdown().await;
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+
+    assert!(
+        api.probe().await.is_ok(),
+        "engine died after writing a log line (SIGPIPE regression)"
+    );
+    let pid = engine.pid().expect("engine pid");
+    let out = std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "stat="])
+        .output()
+        .expect("ps");
+    let stat = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stat.trim().is_empty() && !stat.trim_start().starts_with('Z'),
+        "engine process is gone or a zombie: stat={stat:?}"
+    );
+
+    let _ = engine.stop(Duration::from_secs(1)).await;
+}
