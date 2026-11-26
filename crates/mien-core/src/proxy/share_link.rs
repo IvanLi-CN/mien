@@ -206,8 +206,9 @@ pub fn parse_share_link(link: &str) -> Result<ProxyDraft, CoreError> {
 }
 
 /// TLS 模式；未知取值必须拒绝，避免显式 TLS/REALITY 静默退化成明文。
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum Security {
+    #[default]
     None,
     Tls,
     Reality,
@@ -220,12 +221,6 @@ impl Security {
             Self::Tls => "tls",
             Self::Reality => "reality",
         }
-    }
-}
-
-impl Default for Security {
-    fn default() -> Self {
-        Self::None
     }
 }
 
