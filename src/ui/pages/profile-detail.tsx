@@ -19,7 +19,7 @@ function ProfileDetail({ id }: { id?: string }) {
   useEffect(() => {
     if (!id || !transport) return;
     transport
-      .command<Profile>("profiles_get", { profile_id: id })
+      .command<Profile>("profiles_get", { id })
       .then(setProfile)
       .catch(() => setError("PROFILE_UNAVAILABLE"));
   }, [id, transport]);
@@ -67,7 +67,7 @@ function ProfileDetail({ id }: { id?: string }) {
         <article className="detail-panel">
           <p className="eyebrow">VERIFICATION</p>
           <h2>Proof</h2>
-          <ProofStrip profile={profile} />
+          <ProofStrip profile={profile} state={state} isolation={profile.isolation} />
           <dl className="detail-list">
             <div>
               <dt>代理</dt>

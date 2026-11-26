@@ -2074,9 +2074,12 @@ version = "0.0.0"
 dependencies = [
  "mien-core",
  "serde",
+ "serde_json",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

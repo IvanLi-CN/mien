@@ -74,13 +74,14 @@ export function ProfileForm({ profile, profileId }: { profile?: Profile; profile
     try {
       const result = profileId
         ? await transport?.command<Profile>("profiles_update", {
-            profile_id: profileId,
-            profile: toPatch(values),
+            id: profileId,
+            patch: toPatch(values),
           })
-        : await transport?.command<Profile>("profiles_create", values);
+        : await transport?.command<Profile>("profiles_create", toCreateArgs(values));
       if (!result) throw new Error("传输层未装配");
       setSavedValues(JSON.stringify(values));
-      navigate(`/profiles/${result.id}`);
+      // 创建后回到列表，让新档案在真实查询里出现。
+      navigate(profileId ? `/profiles/${result.id}` : "/profiles");
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "保存失败，请稍后重试");
     } finally {
@@ -356,4 +357,18 @@ function toPatch(values: ProfileInput): ProfilePatch {
   const { name, group_id, tags, notes, fingerprint, proxy_id, mode, automation_api, start_url } =
     values;
   return { name, group_id, tags, notes, fingerprint, proxy_id, mode, automation_api, start_url };
+}
+
+/**
+ * 命令参数按 ADR-0008 用 camelCase 顶层键；`fingerprint` 内部保持契约的
+ * snake_case 字段。这里显式映射，避免把 OpenAPI 的 snake_case body 直接当 IPC 参数。
+ */
+function toCreateArgs(values: ProfileInput) {
+  return {
+    name: values.name,
+    fingerprint: values.fingerprint,
+    mode: values.mode,
+    startUrl: values.start_url || undefined,
+    notes: values.notes ?? undefined,
+  };
 }

@@ -135,6 +135,9 @@ pub struct ProfileQuery {
     pub cursor: Option<String>,
     pub limit: Option<u32>,
     pub search: Option<String>,
+    /// Restrict the page to one lifecycle status; `None` lists every status.
+    #[serde(default)]
+    pub status: Option<ProfileStatus>,
 }
 
 /// 分页结果。

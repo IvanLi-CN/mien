@@ -229,8 +229,15 @@ impl ProfileRepository for SqliteProfileRepository {
     async fn list(&self, query: ProfileQuery) -> Result<ProfilePage, CoreError> {
         let limit = query.limit.unwrap_or(50).clamp(1, 100) as i64;
         let pattern = query.search.map(|v| format!("%{v}%"));
-        let rows = sqlx::query("SELECT id,name,status,fingerprint_json,start_url,notes,kernel_version,mode,automation_api,proxy_id,created_at,updated_at,archived_at,deleted_at,deletion_error FROM profiles WHERE (?1 IS NULL OR name LIKE ?1) AND (?2 IS NULL OR id > ?2) ORDER BY id LIMIT ?3")
-            .bind(pattern).bind(query.cursor).bind(limit + 1).fetch_all(&self.pool).await.map_err(map_sqlx_error)?;
+        let status = query.status.map(status_str);
+        let rows = sqlx::query("SELECT id,name,status,fingerprint_json,start_url,notes,kernel_version,mode,automation_api,proxy_id,created_at,updated_at,archived_at,deleted_at,deletion_error FROM profiles WHERE (?1 IS NULL OR name LIKE ?1) AND (?2 IS NULL OR id > ?2) AND (?3 IS NULL OR status = ?3) ORDER BY id LIMIT ?4")
+            .bind(pattern)
+            .bind(query.cursor)
+            .bind(status)
+            .bind(limit + 1)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_sqlx_error)?;
         let mut items = rows
             .into_iter()
             .map(|row| profile_from_row(&row))
