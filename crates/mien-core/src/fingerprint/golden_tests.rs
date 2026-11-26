@@ -66,7 +66,6 @@ fn golden_argv_matches_exactly_and_builds_repeatably() {
             plan.network.ipv6_mode.value,
             golden.expected_network.ipv6_mode
         );
-        assert_eq!(plan.network.ipv6_mode.status, Enforcement::Declared);
         // 没有任何 IPv6 开关，清单声明只是期望；实测见 docs/spikes/network。
         assert_eq!(plan.network.ipv6_mode.status, Enforcement::Unverified);
         assert_eq!(
