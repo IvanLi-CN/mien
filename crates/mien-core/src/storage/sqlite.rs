@@ -581,6 +581,11 @@ mod tests {
                 "profile_relations",
                 include_str!("../../../../migrations/0003_profile_relations.sql"),
             ),
+            (
+                4,
+                "proxy_outbounds",
+                include_str!("../../../../migrations/0004_proxy_outbounds.sql"),
+            ),
         ];
         runtime
             .block_on(crate::storage::migrations::apply_all(&pool, &migrations))
@@ -601,7 +606,7 @@ mod tests {
                 &pool,
             ))
             .expect("version");
-        assert_eq!(version, crate::storage::migrations::SchemaVersion(3));
+        assert_eq!(version, crate::storage::migrations::SchemaVersion(4));
         drop(pool);
         let _ = std::fs::remove_dir_all(path);
     }
