@@ -59,8 +59,7 @@ fn options(binary: &Path, root: &Path, runtime_id: &str) -> RuntimeOptions {
         "--no-default-browser-check".into(),
         "--disable-background-networking".into(),
         "--disable-gpu".into(),
-        "--use-mock-keychain".into(),
-        "--password-store=basic".into(),
+        // Keychain flags are injected by the supervisor, not restated here.
     ];
     options
 }

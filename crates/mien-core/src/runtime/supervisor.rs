@@ -27,9 +27,17 @@ use super::{
 };
 
 const DEFAULT_STOP_TIMEOUT: Duration = Duration::from_secs(5);
-/// Chromium flags every launch carries so the host clipboard/Keychain prompts and
-/// the default-browser dialog stay out of the way. Mien owns the profile in the
-/// data directory, so persisting the choice in the host store buys nothing.
+
+/// Chromium flags every launch carries so host dialogs stay out of the way.
+///
+/// `--use-mock-keychain` is the only switch that actually stops the macOS
+/// SecurityAgent prompt on this kernel: the fingerprint-chromium build is ad-hoc
+/// signed with no Team ID, so any real `Chromium Safe Storage` access raises the
+/// dialog and blocks startup. `--password-store=basic` alone is a no-op on macOS
+/// (verified: removing the mock keychain stalled CDP until the prompt was
+/// answered). The remaining two flags only drop the first-run and
+/// default-browser dialogs; Mien owns the profile in the data directory, so
+/// persisting the browser choice in the host store buys nothing.
 pub const LAUNCHER_FLAGS: &[&str] = &[
     "--use-mock-keychain",
     "--password-store=basic",
