@@ -14,6 +14,23 @@ pub struct KernelInstall {
     pub binary_sha256: String,
 }
 
+/// 运行时使用的可执行文件摘要（十六进制小写），写入安装记录并参与启动前校验。
+///
+/// # Errors
+/// 文件不可读。
+pub fn binary_sha256(path: &std::path::Path) -> Result<String, CoreError> {
+    let bytes = std::fs::read(path).map_err(|_| {
+        CoreError::validation(
+            crate::error::ErrorCode::KernelNotFound,
+            "kernel executable is missing",
+        )
+    })?;
+    Ok(crate::proxy::keys::sha256(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
 /// 运行时校验可执行文件摘要；不符返回 `KERNEL_CHECKSUM_MISMATCH`。
 ///
 /// # Errors

@@ -7,6 +7,23 @@ export type RuntimeState = components["schemas"]["RuntimeState"];
 export type RuntimeMode = components["schemas"]["RuntimeMode"];
 export type Isolation = components["schemas"]["Isolation"];
 
+/** `runtime_status` / `runtime_stop` 的返回载荷。 */
+export type RuntimeStatus = {
+  state: RuntimeState;
+  isolation: Isolation;
+  pid?: number;
+  cdpPort?: number;
+  proxyPort?: number;
+  errorCode?: string;
+};
+
+/** `runtime_start` 的返回载荷；`disclosures` 是必须呈现的降低保证说明。 */
+export type RuntimeStart = RuntimeStatus & {
+  runtimeId: string;
+  reducedAssurance: boolean;
+  disclosures: string[];
+};
+
 export const runtimeStateLabels: Record<RuntimeState, string> = {
   starting: "启动中",
   running: "运行中",
@@ -45,14 +62,14 @@ export const defaultProfileInput: ProfileInput = {
   fingerprint: {
     schema_version: 1,
     platform: "macos",
-    platform_version: "15",
-    brand: "Chrome",
-    brand_version: "148",
-    hardware_concurrency: 8,
-    languages: ["zh-CN", "en-US"],
-    timezone: "Asia/Shanghai",
+    platform_version: "14.5",
+    brand: "Edge",
+    brand_version: "148.0.0.0",
+    // Pinned manifest 只声明 12；其他取值会在准入阶段被拒绝。
+    hardware_concurrency: 12,
+    languages: ["en-US", "en"],
+    timezone: "America/Los_Angeles",
     window: { width: 1440, height: 900 },
-    spoof: { font: true, audio: true, canvas: true, clientrects: true, gpu: true },
     webrtc: { disable_non_proxied_udp: true },
     network: { doh_mode: "disabled", ipv6_mode: "block" },
   },

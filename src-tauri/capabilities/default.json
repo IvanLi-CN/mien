@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "主窗口最小授权：只有核心 IPC；dialog/opener 在对应功能落地时追加",
+  "description": "主窗口最小授权：核心 IPC 与应用命令；dialog/opener 在对应功能落地时追加",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "allow-app-info",
+    "allow-profiles-list",
+    "allow-profiles-get",
+    "allow-profiles-create",
+    "allow-profiles-update",
+    "allow-runtime-start",
+    "allow-runtime-stop",
+    "allow-runtime-status"
+  ]
 }

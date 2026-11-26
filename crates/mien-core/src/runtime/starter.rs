@@ -35,7 +35,10 @@ impl std::fmt::Debug for ProxyAttachment {
 }
 
 /// Engine side of the start path.
-pub trait ProxyAttach {
+///
+/// `Send + Sync` because a start request is awaited on a host async runtime and
+/// the attachment is borrowed across awaits.
+pub trait ProxyAttach: Send + Sync {
     fn attach(&self, runtime_id: &str) -> Result<ProxyAttachment, CoreError>;
     fn detach(&self, runtime_id: &str) -> Result<(), CoreError>;
 }

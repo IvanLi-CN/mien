@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useTransport } from "../transport/context";
-import { ProfileCard } from "./profiles/profile-card";
+import { commandErrorText, ProfileCard } from "./profiles/profile-card";
 import type { Profile } from "./profiles/profile-model";
 
 export function ProfilesPage() {
@@ -16,12 +16,15 @@ export function ProfilesPage() {
       return;
     }
     transport
-      .command<{ items: Profile[] }>("profiles_list", { limit: 24, status: "active" })
+      .command<{ items: Profile[]; nextCursor?: string | null }>("profiles_list", {
+        limit: 24,
+        status: "active",
+      })
       .then((result) => {
         if (active) setProfiles(result.items);
       })
-      .catch(() => {
-        if (active) setError("PROFILES_UNAVAILABLE");
+      .catch((failure) => {
+        if (active) setError(commandErrorText(failure, "PROFILES_UNAVAILABLE"));
       })
       .finally(() => {
         if (active) setLoading(false);
