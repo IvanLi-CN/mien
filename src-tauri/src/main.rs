@@ -23,11 +23,26 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let state = state::AppState::open()?;
-            tracing::info!(
-                data_root = %state.data_root().display(),
-                schema_version = state.schema_version(),
-                "host state ready"
-            );
+            // Reconciliation must run before the first start request: only rows
+            // whose command line is attributable are terminated, everything else
+            // keeps its port lease (REQ-RUNTIME-012).
+            let holder = app.handle().clone();
+            let data_root = state.data_root().display().to_string();
+            let schema_version = state.schema_version();
+            tauri::async_runtime::spawn(async move {
+                let state = holder.state::<state::AppState>();
+                match state.reconcile().await {
+                    Ok(rows) => tracing::info!(
+                        data_root,
+                        schema_version,
+                        reconciled = rows.len(),
+                        "runtime reconciliation finished"
+                    ),
+                    Err(error) => {
+                        tracing::warn!(data_root, %error, "runtime reconciliation failed")
+                    }
+                }
+            });
             app.manage(state);
             Ok(())
         })

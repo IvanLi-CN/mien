@@ -116,6 +116,7 @@ impl Fixture {
             sandbox_kind: "seatbelt".into(),
             proxy: None,
             stop_timeout: Duration::from_secs(5),
+            restart: mien_core::runtime::RestartPolicy::none(),
         };
         request
             .start(&self.supervisor, &format!("rt-{}", profile.id.0))
@@ -335,6 +336,7 @@ async fn pseudo_headful_is_refused_without_the_ua_patch_capability() {
         sandbox_kind: "seatbelt".into(),
         proxy: None,
         stop_timeout: Duration::from_secs(1),
+        restart: mien_core::runtime::RestartPolicy::none(),
     };
     let error = request
         .start(&supervisor, &runtime_id)

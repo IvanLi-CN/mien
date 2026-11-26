@@ -216,6 +216,31 @@ pub fn process_alive(pid: u32) -> bool {
     }
 }
 
+/// Whether the group holds a process that is not a zombie.
+///
+/// `kill(-pgid, 0)` also succeeds for an unreaped zombie, so a group whose only
+/// members are defunct must not keep a port lease or force `stopping`. The scan
+/// goes through `ps -axo pgid=,stat=` because BSD `ps -g` selects by *group
+/// name* on macOS and silently returns nothing for a numeric pgid.
+pub fn process_group_has_live(pgid: i32) -> bool {
+    let output = match std::process::Command::new("ps")
+        .args(["-axo", "pgid=,stat="])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return process_group_alive(pgid),
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let group = fields.next()?.parse::<i32>().ok()?;
+            let stat = fields.next().unwrap_or_default();
+            Some((group, stat))
+        })
+        .any(|(group, stat)| group == pgid && !stat.starts_with('Z'))
+}
+
 pub fn process_group_alive(pgid: i32) -> bool {
     #[cfg(unix)]
     {

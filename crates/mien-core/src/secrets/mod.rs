@@ -77,6 +77,11 @@ impl MasterKey {
         Self::parse_hex(text).map(Some)
     }
 
+    /// 仅供派生 HMAC / `outbound_key` 使用；不得打印、序列化或写入日志。
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
     /// 读取 `<root>/secrets/master.key`；文件必须是 0600 的普通文件。
     ///
     /// # Errors

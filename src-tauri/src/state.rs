@@ -4,6 +4,7 @@
 //! 因此本文件可以按 `#[path]` 直接编入宿主测试。
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use mien_core::CoreError;
 use mien_core::domain::profile::{
@@ -13,15 +14,57 @@ use mien_core::domain::profile::{
 use mien_core::error::ErrorCode;
 use mien_core::fingerprint::spec::{FingerprintSpec, Network, Platform, Spoof, Webrtc, Window};
 use mien_core::fingerprint::{CapabilityManifest, load_pinned_manifest};
+use mien_core::ports::proxy::{ProxyId, ProxyKind, ProxyRepository};
 use mien_core::ports::repository::ProfileRepository;
-use mien_core::runtime::{
-    Isolation, RuntimeSnapshot, RuntimeState, RuntimeSupervisor, StartProfile,
+use mien_core::proxy::api::GrpcXrayApi;
+use mien_core::proxy::attach::GatewayAttach;
+use mien_core::proxy::engine::{EngineBinary, EngineController, EngineProcess};
+use mien_core::proxy::keys::{
+    Credentials, MuxSettings, OutboundSpec, ProxyConfig, ProxyProtocol, TlsSettings, Transport,
+    build_outbound,
 };
-use mien_core::storage::{open_and_migrate, sqlite::SqliteProfileRepository};
+use mien_core::runtime::{
+    Isolation, RestartPolicy, RuntimeSnapshot, RuntimeState, RuntimeSupervisor, StartProfile,
+};
+use mien_core::secrets::MasterKey;
+use mien_core::storage::{
+    open_and_migrate, proxy::SqliteProxyRepository, sqlite::SqliteProfileRepository,
+};
 use serde::{Deserialize, Serialize};
 
 /// 内核可执行文件相对安装目录的候选位置（macOS 解包布局优先）。
 const KERNEL_NAMES: [&str; 3] = ["Chromium.app/Contents/MacOS/Chromium", "Chromium", "chrome"];
+
+/// 代理种类 → 引擎协议。清单声明为 Tier 之外的种类在这里被拒绝，不回退直连。
+fn protocol_for(kind: ProxyKind) -> Result<ProxyProtocol, CoreError> {
+    match kind {
+        ProxyKind::Vless => Ok(ProxyProtocol::Vless),
+        ProxyKind::Vmess => Ok(ProxyProtocol::Vmess),
+        ProxyKind::Shadowsocks => Ok(ProxyProtocol::Shadowsocks),
+        ProxyKind::Trojan => Ok(ProxyProtocol::Trojan),
+        ProxyKind::Hysteria2 => Ok(ProxyProtocol::Hysteria2),
+        ProxyKind::Wireguard => Ok(ProxyProtocol::Wireguard),
+        ProxyKind::Http => Ok(ProxyProtocol::Http),
+        ProxyKind::Https => Ok(ProxyProtocol::Https),
+        ProxyKind::Socks5 => Ok(ProxyProtocol::Socks5),
+    }
+}
+
+/// 引擎可执行文件：`MIEN_XRAY_BIN`（验收）优先，否则按安装目录解析；摘要缺失即空串。
+fn xray_bin(data_root: &Path) -> (PathBuf, String) {
+    let path = std::env::var_os("MIEN_XRAY_BIN")
+        .map_or_else(|| data_root.join("xray").join("xray"), PathBuf::from);
+    let sha256 = mien_core::kernel::registry::binary_sha256(&path).unwrap_or_default();
+    (path, sha256)
+}
+
+/// `MIEN_RESTART=0` 关闭崩溃自动重启；默认开启有界阶梯。
+fn restart_policy() -> RestartPolicy {
+    match std::env::var("MIEN_RESTART").as_deref() {
+        Ok("0") => RestartPolicy::none(),
+        _ => RestartPolicy::bounded(),
+    }
+}
 
 fn kernel_missing() -> CoreError {
     CoreError::validation(ErrorCode::KernelNotFound, "kernel executable is missing")
@@ -254,6 +297,10 @@ pub struct AppState {
     manifest: CapabilityManifest,
     schema_version: u32,
     kernel_bin: Option<PathBuf>,
+    xray_bin: PathBuf,
+    xray_sha256: String,
+    /// 共享引擎控制器与失败监听；首次代理启动时创建，宿主全程复用。
+    engine: std::sync::OnceLock<Arc<GatewayAttach<GrpcXrayApi>>>,
 }
 
 impl AppState {
@@ -282,10 +329,14 @@ impl AppState {
         let repository = SqliteProfileRepository::new(pool, &data_root)?;
         let supervisor = RuntimeSupervisor::new(&data_root);
         let manifest = load_pinned_manifest()?;
+        let (xray_bin, xray_sha256) = xray_bin(&data_root);
         Ok(Self {
             data_root,
             repository,
             supervisor,
+            xray_bin,
+            xray_sha256,
+            engine: std::sync::OnceLock::new(),
             manifest,
             schema_version,
             kernel_bin,
@@ -427,25 +478,62 @@ impl AppState {
     /// 指纹/内核准入失败或进程无法启动。
     pub async fn start_runtime(&self, id: &str) -> Result<RuntimeStartView, CoreError> {
         let profile = self.repository.get(&Self::profile_id(id)).await?;
-        if profile.proxy_id.is_some() {
-            return Err(CoreError::validation(
-                ErrorCode::ProxyEngineNotReady,
-                "the profile requires a proxy engine binding",
-            ));
-        }
+        // The proxy gate runs before kernel resolution: a binding without usable
+        // credentials must fail closed as `PROXY_ENGINE_NOT_READY`, not as a
+        // missing kernel, so the UI names the actual blocker.
+        let spec = match &profile.proxy_id {
+            Some(proxy_id) => Some(self.proxy_spec(proxy_id).await?),
+            None => None,
+        };
         let kernel = self.kernel_binary(&profile)?;
         let runtime_id = runtime_id(&profile.id.0);
-        let request = StartProfile {
-            profile: &profile,
-            binary: kernel.path,
-            binary_sha256: kernel.sha256,
-            manifest: &self.manifest,
-            data_root: self.data_root.clone(),
-            sandbox_kind: self.manifest.sandbox_kind.clone(),
-            proxy: None,
-            stop_timeout: std::time::Duration::from_secs(5),
+        let started = match &profile.proxy_id {
+            Some(_) => {
+                let spec = spec.ok_or_else(|| {
+                    CoreError::validation(
+                        ErrorCode::ProxyEngineNotReady,
+                        "the profile requires a proxy engine binding",
+                    )
+                })?;
+                // One engine per host: the first proxy start owns the slot.
+                if self.engine.get().is_none() {
+                    let mut engine =
+                        EngineProcess::start(&self.xray_bin, &self.xray_sha256).await?;
+                    let attach = GatewayAttach::new(
+                        Arc::new(EngineController::with_fallback(engine.api(), false)),
+                        spec,
+                    );
+                    attach.register_engine(EngineBinary {
+                        path: self.xray_bin.clone(),
+                        sha256: self.xray_sha256.clone(),
+                    });
+                    let request = self.start_request(&profile, &kernel, Some(&attach));
+                    match request.start(&self.supervisor, &runtime_id).await {
+                        Ok(started) => {
+                            let _ = self.engine.set(Arc::new(attach));
+                            started
+                        }
+                        Err(error) => {
+                            let _ = engine.stop(std::time::Duration::from_secs(1)).await;
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    let Some(attach) = self.engine.get() else {
+                        return Err(CoreError::validation(
+                            ErrorCode::ProxyEngineNotReady,
+                            "shared proxy engine is not ready",
+                        ));
+                    };
+                    let request = self.start_request(&profile, &kernel, Some(attach.as_ref()));
+                    request.start(&self.supervisor, &runtime_id).await?
+                }
+            }
+            None => {
+                let request = self.start_request(&profile, &kernel, None);
+                request.start(&self.supervisor, &runtime_id).await?
+            }
         };
-        let started = request.start(&self.supervisor, &runtime_id).await?;
         Ok(RuntimeStartView {
             runtime_id: started.snapshot.runtime_id,
             state: started.snapshot.state,
@@ -482,6 +570,77 @@ impl AppState {
             Some(snapshot) => RuntimeStatusView::from_snapshot(&snapshot),
             None => RuntimeStatusView::stopped(),
         })
+    }
+
+    /// 控制面启动对账：终止可归属的残留内核，报告未能归属的端口租约。
+    ///
+    /// 必须在接受任何启动请求之前调用；数据库状态写入留给代理网关阶段，
+    /// 这里只返回分类结果供宿主记录。
+    ///
+    /// # Errors
+    /// 数据根不可读。
+    pub async fn reconcile(&self) -> Result<Vec<RuntimeSnapshot>, CoreError> {
+        self.supervisor.reconcile().await
+    }
+
+    /// 启动请求装配；`proxy` 为代理档案的网关适配器。
+    fn start_request<'a>(
+        &'a self,
+        profile: &'a Profile,
+        kernel: &'a KernelBinary,
+        proxy: Option<&'a dyn mien_core::runtime::ProxyAttach>,
+    ) -> StartProfile<'a> {
+        StartProfile {
+            profile,
+            binary: kernel.path.clone(),
+            binary_sha256: kernel.sha256.clone(),
+            manifest: &self.manifest,
+            data_root: self.data_root.clone(),
+            sandbox_kind: self.manifest.sandbox_kind.clone(),
+            proxy,
+            stop_timeout: std::time::Duration::from_secs(5),
+            restart: restart_policy(),
+        }
+    }
+
+    /// 代理配置 → 出站规格。只接受真实记录与真实凭据，任何一步缺失都失败关闭。
+    ///
+    /// # Errors
+    /// 主密钥缺失、代理不存在或凭据缺失时返回相应错误码；绝不构造占位节点。
+    async fn proxy_spec(&self, proxy_id: &str) -> Result<OutboundSpec, CoreError> {
+        let key = MasterKey::load(&self.data_root).map_err(|_| {
+            CoreError::validation(
+                ErrorCode::ProxyEngineNotReady,
+                "the master key is not available for proxy credentials",
+            )
+        })?;
+        let key_bytes: [u8; 32] = key.as_bytes().try_into().map_err(|_| CoreError::Storage)?;
+        let repository = SqliteProxyRepository::new(
+            self.repository.pool().clone(),
+            MasterKey::from_bytes(key_bytes),
+        );
+        let id = ProxyId(proxy_id.to_owned());
+        let view = repository.get(&id).await?;
+        let secret = repository.load_secret(&id).await?;
+        let config = ProxyConfig {
+            protocol: protocol_for(view.kind)?,
+            server: view.server,
+            port: view.port,
+            transport: Transport::Tcp,
+            tls: TlsSettings::default(),
+            mux: MuxSettings::default(),
+            options: secret
+                .options
+                .iter()
+                .filter_map(|(name, value)| {
+                    value.as_str().map(|text| (name.clone(), text.to_owned()))
+                })
+                .collect(),
+            credentials: Credentials {
+                values: secret.credentials.clone(),
+            },
+        };
+        build_outbound(&config, key.as_bytes())
     }
 
     fn view(&self, profile: Profile) -> ProfileView {

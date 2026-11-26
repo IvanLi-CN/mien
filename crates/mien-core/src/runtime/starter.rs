@@ -14,7 +14,8 @@ use crate::error::{CoreError, ErrorCode};
 use crate::fingerprint::{CapabilityManifest, Enforcement, LaunchPlan, build_launch_argv_for_mode};
 use crate::proxy::gateway::proxy_server_arg;
 
-use super::supervisor::{RuntimeOptions, RuntimeSnapshot, RuntimeSupervisor};
+use super::state::RuntimeState;
+use super::supervisor::{RestartPolicy, RuntimeOptions, RuntimeSnapshot, RuntimeSupervisor};
 
 /// Proxy attachment returned by the shared engine for one runtime.
 #[derive(Clone, PartialEq, Eq)]
@@ -53,6 +54,8 @@ pub struct StartProfile<'a> {
     pub sandbox_kind: String,
     pub proxy: Option<&'a dyn ProxyAttach>,
     pub stop_timeout: Duration,
+    /// 崩溃后的有界重启策略；`RestartPolicy::none()` 是最保守的选择。
+    pub restart: RestartPolicy,
 }
 
 impl std::fmt::Debug for StartProfile<'_> {
@@ -161,6 +164,7 @@ impl StartProfile<'_> {
         options.automation_api = self.profile.automation_api;
         options.stop_timeout = self.stop_timeout;
         options.launch_args.clone_from(&launch.argv);
+        options.restart = self.restart.clone();
         options.direct = proxy.is_none();
         options.proxy_ready = proxy.is_some();
         match &proxy {
@@ -196,6 +200,54 @@ impl StartProfile<'_> {
                 Err(error)
             }
         }
+    }
+
+    /// Tear down a runtime whose shared engine rebuild failed (REQ-RUNTIME-019);
+    /// a direct runtime is untouched. Runs in three phases so the state machine
+    /// reaches `stopping` before the proxy resources are dropped and only writes
+    /// `failed` after the process group is confirmed gone.
+    ///
+    /// # Errors
+    /// The teardown could not confirm that the kernel exited.
+    pub async fn engine_teardown(
+        &self,
+        supervisor: &RuntimeSupervisor,
+        runtime_id: &str,
+    ) -> Result<RuntimeSnapshot, CoreError> {
+        let record = supervisor.record(runtime_id).ok_or(CoreError::NotFound)?;
+        let Some(engine) = self.proxy.filter(|_| self.profile.proxy_id.is_some()) else {
+            return supervisor.stop(runtime_id).await;
+        };
+        match record.persistable_state() {
+            RuntimeState::Stopped | RuntimeState::Failed => return Ok(record.snapshot()),
+            RuntimeState::Crashed => {
+                // Repeated crashes still sit on this same runtime id.
+                record
+                    .transition_check(RuntimeState::Starting, None, None)
+                    .or_else(|_| record.transition_check(RuntimeState::Stopping, None, None))?;
+            }
+            _ => {}
+        }
+        if record.persistable_state() != RuntimeState::Stopping {
+            record.mark_stop_requested();
+            record.transition_check(RuntimeState::Stopping, None, None)?;
+        } else {
+            record.mark_stop_requested();
+        }
+        // Phase 1: mark `stopping` so a control-plane kill here re-reconciles
+        // the row instead of trusting a `running` claim.
+        record.persist_state(RuntimeState::Stopping);
+        // Phase 2: drop the proxy binding before the process group dies. A stop
+        // racing this teardown may have released it already, which is fine.
+        let _ = engine.detach(runtime_id);
+        record.stop_process(self.stop_timeout).await?;
+        record.transition_check(
+            RuntimeState::Failed,
+            Some(ErrorCode::ProxyEngineCrashed.as_str().to_owned()),
+            Some("shared proxy engine rebuild window exhausted".into()),
+        )?;
+        record.release_permit();
+        Ok(record.snapshot())
     }
 
     /// Stop the runtime and release its proxy binding.
@@ -261,6 +313,7 @@ mod tests {
             sandbox_kind: "seatbelt".into(),
             proxy: None,
             stop_timeout: Duration::from_secs(1),
+            restart: RestartPolicy::none(),
         };
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
         let supervisor = RuntimeSupervisor::new(std::env::temp_dir());
