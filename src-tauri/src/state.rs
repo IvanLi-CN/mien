@@ -198,8 +198,11 @@ pub struct ProfileView {
 pub struct RuntimeStartView {
     pub runtime_id: String,
     pub state: RuntimeState,
+    pub mode: ProfileMode,
     pub isolation: Isolation,
     pub reduced_assurance: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ua_scope: Option<&'static str>,
     pub disclosures: Vec<String>,
 }
 
@@ -446,8 +449,10 @@ impl AppState {
         Ok(RuntimeStartView {
             runtime_id: started.snapshot.runtime_id,
             state: started.snapshot.state,
+            mode: started.mode,
             isolation: started.snapshot.isolation,
             reduced_assurance: started.snapshot.reduced_assurance,
+            ua_scope: started.ua_scope,
             disclosures: started.disclosures,
         })
     }

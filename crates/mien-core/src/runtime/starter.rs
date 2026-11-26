@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::domain::profile::{Profile, ProfileMode, ProfileStatus};
 use crate::error::{CoreError, ErrorCode};
-use crate::fingerprint::{CapabilityManifest, Enforcement, LaunchPlan, build_launch_argv};
+use crate::fingerprint::{CapabilityManifest, Enforcement, LaunchPlan, build_launch_argv_for_mode};
 use crate::proxy::gateway::proxy_server_arg;
 
 use super::supervisor::{RuntimeOptions, RuntimeSnapshot, RuntimeSupervisor};
@@ -72,6 +72,12 @@ pub struct StartedProfile {
     pub snapshot: RuntimeSnapshot,
     /// Deterministic launch plan the runtime used.
     pub launch: LaunchPlan,
+    /// Runtime mode actually requested; never silently rewritten.
+    pub mode: ProfileMode,
+    /// UA scope the launch may claim; only `pseudo_headful` claims `chrome`.
+    pub ua_scope: Option<&'static str>,
+    /// Whether the response must disclose reduced assurance.
+    pub reduced_assurance: bool,
     /// Proxy binding, when the profile is not direct.
     pub proxy: Option<ProxyAttachment>,
     /// Reduced-assurance reasons the UI/API must disclose.
@@ -82,8 +88,9 @@ impl StartProfile<'_> {
     /// Validate the profile, attach the proxy, and supervise the kernel.
     ///
     /// # Errors
-    /// Non-active profiles, unsupported modes, unverified fingerprints, a
-    /// missing proxy engine, or a kernel that fails to start.
+    /// Non-active profiles, a mode the kernel manifest cannot support
+    /// (`RUNTIME_MODE_UNSUPPORTED`), unverified fingerprints, a missing proxy
+    /// engine, or a kernel that fails to start.
     pub async fn start(
         &self,
         supervisor: &RuntimeSupervisor,
@@ -91,12 +98,6 @@ impl StartProfile<'_> {
     ) -> Result<StartedProfile, CoreError> {
         if self.profile.status != ProfileStatus::Active {
             return Err(CoreError::InvalidTransition);
-        }
-        if self.profile.mode != ProfileMode::Headful {
-            return Err(CoreError::validation(
-                ErrorCode::RuntimeModeUnsupported,
-                "only headful mode is implemented for the macOS slice",
-            ));
         }
         if self.profile.proxy_id.is_some() && self.proxy.is_none() {
             return Err(CoreError::validation(
@@ -108,8 +109,18 @@ impl StartProfile<'_> {
         let data_dir = profile_data_dir(&self.data_root, &self.profile.id.0);
         std::fs::create_dir_all(&data_dir).map_err(|_| CoreError::Storage)?;
 
-        let mut launch = build_launch_argv(&self.profile.fingerprint, self.manifest, &data_dir)?;
+        // Mode resolution runs before any process or proxy resource exists: an
+        // unsupported mode must not leave a half-built runtime behind.
+        let mut launch = build_launch_argv_for_mode(
+            &self.profile.fingerprint,
+            self.manifest,
+            &data_dir,
+            self.profile.mode,
+        )?;
         let mut disclosures = Vec::new();
+        if let Some(limitation) = launch.limitation {
+            disclosures.push(limitation.to_owned());
+        }
         for (name, status) in [
             ("doh_mode", launch.network.doh_mode.status),
             ("ipv6_mode", launch.network.ipv6_mode.status),
@@ -146,6 +157,7 @@ impl StartProfile<'_> {
         );
         options.manifest_sandbox_kind.clone_from(&self.sandbox_kind);
         options.mode = self.profile.mode;
+        options.headless_chrome_ua_patch = self.manifest.headless_chrome_ua_patch;
         options.automation_api = self.profile.automation_api;
         options.stop_timeout = self.stop_timeout;
         options.launch_args.clone_from(&launch.argv);
@@ -163,12 +175,20 @@ impl StartProfile<'_> {
         }
 
         match supervisor.start(options).await {
-            Ok(snapshot) => Ok(StartedProfile {
-                snapshot,
-                launch,
-                proxy,
-                disclosures,
-            }),
+            Ok(snapshot) => {
+                let mode = launch.mode;
+                let ua_scope = launch.ua_scope;
+                let reduced_assurance = snapshot.reduced_assurance;
+                Ok(StartedProfile {
+                    snapshot,
+                    launch,
+                    mode,
+                    ua_scope,
+                    reduced_assurance,
+                    proxy,
+                    disclosures,
+                })
+            }
             Err(error) => {
                 if let (Some(engine), Some(_)) = (self.proxy, &proxy) {
                     let _ = engine.detach(runtime_id);
