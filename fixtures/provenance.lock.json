@@ -133,16 +133,23 @@
       "license": "Apache-2.0",
       "retrieved_at": "2026-11-25T00:00:00Z",
       "fetch_command": "none",
-      "size": 606,
-      "notes": "Documentation-only local resolver boundary.",
-      "tree_sha256": "57d80b1c92e1cf6a3f27b1ad2c715b43b2a86e6232b382ed4e64f7a6ca723dba",
+      "size": 3089,
+      "notes": "Authored DNS canary zone, resolver stub contract and expected-name/observed-query scenarios covering all three verdicts.",
+      "tree_sha256": "de9bcd034f362a461214cbf6f2bbac7cac309cb2b4ce8f8523f0012293cbb892",
       "fixtures": [
         {
           "path": "fixtures/dns/README.md",
           "origin": "authored",
           "license": "Apache-2.0",
-          "content_sha256": "7dbcab216db9d73b85dc6515479a1e672717452271c76be57c2ded717a97e743",
-          "size": 606
+          "content_sha256": "6d8805a34665cd4b132cbc5274f3fb69987c151ca1167bc74254c67690c03f74",
+          "size": 1145
+        },
+        {
+          "path": "fixtures/dns/canary-scenarios.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "aeebdd37ae10c056ab5f5206cfe261f71785e672b3bd34f48b2005d22443f5f4",
+          "size": 1944
         }
       ]
     },
@@ -155,16 +162,23 @@
       "license": "Apache-2.0",
       "retrieved_at": "2026-11-25T00:00:00Z",
       "fetch_command": "none",
-      "size": 532,
-      "notes": "Documentation-only controlled network scenarios.",
-      "tree_sha256": "27cb11f79c595c37dcf891a495bea9cc190cfc2f52458aab4e4d07ba025687c9",
+      "size": 5484,
+      "notes": "Authored WebRTC, IPv6 and DoH judgement scenarios with expected verdicts, plus the reconcile table.",
+      "tree_sha256": "eb699c37ac548e854567eed153faac5a719106b72d261da86ef9bde1c21151b0",
       "fixtures": [
         {
           "path": "fixtures/network/README.md",
           "origin": "authored",
           "license": "Apache-2.0",
-          "content_sha256": "6e417084839da9108d1d4672b8119f685188619a016f62cba21e8754f1fcf3b2",
-          "size": 532
+          "content_sha256": "7a85805e6ae723812bd7cbe6b34c815701b08564cca3f7a94bad1a00ec7b073f",
+          "size": 978
+        },
+        {
+          "path": "fixtures/network/canary-scenarios.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "4f36d5445f3fdce94c1f56ba1499829d69512784917f46baab54ec33549aecf9",
+          "size": 4506
         }
       ]
     },

@@ -8,6 +8,7 @@ pub mod domain;
 pub mod error;
 pub mod fingerprint;
 pub mod kernel;
+pub mod network;
 pub mod ports;
 pub mod proxy;
 pub mod runtime;
