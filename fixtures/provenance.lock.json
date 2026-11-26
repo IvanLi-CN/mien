@@ -104,16 +104,23 @@
       "license": "Apache-2.0",
       "retrieved_at": "2026-11-25T00:00:00Z",
       "fetch_command": "none",
-      "size": 16059,
-      "notes": "Authored documentation boundary plus the share-link import scenario table; no endpoint or credentials.",
-      "tree_sha256": "668934b2a5a1b1823be73a03d6838511290d398d1125107671042707704866a1",
+      "size": 19601,
+      "notes": "Authored documentation boundary, the share-link import scenario table, and the T20 proxy end-to-end scenario table; no endpoint or credentials.",
+      "tree_sha256": "0c36e8c69e88477203ee2a86cb243327b5dbf5a40149814a665b916fb842e5df",
       "fixtures": [
         {
           "path": "fixtures/proxy/README.md",
           "origin": "authored",
           "license": "Apache-2.0",
-          "content_sha256": "63d0224278745061c7a6c75dd78105577331a23eac49ed8933f50917f2c92b93",
-          "size": 1739
+          "content_sha256": "7c02bc221a2ac39b2b55893d789be6709e2418f01b266c4ab0bd81da5ad1b69a",
+          "size": 2906
+        },
+        {
+          "path": "fixtures/proxy/e2e-scenarios.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "a234e3528dd6bfaf72c1836f122c62b1d4d9fa1da8ba8ec9719f51b9eab825fd",
+          "size": 2375
         },
         {
           "path": "fixtures/proxy/share-links.json",
