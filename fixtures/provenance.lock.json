@@ -104,16 +104,23 @@
       "license": "Apache-2.0",
       "retrieved_at": "2026-11-25T00:00:00Z",
       "fetch_command": "none",
-      "size": 605,
-      "notes": "Documentation-only boundary; no endpoint or credentials.",
-      "tree_sha256": "ac0e63739cdd17eca2ec26e08c3786d61776fdca02a49092c117313b6663fe88",
+      "size": 16059,
+      "notes": "Authored documentation boundary plus the share-link import scenario table; no endpoint or credentials.",
+      "tree_sha256": "668934b2a5a1b1823be73a03d6838511290d398d1125107671042707704866a1",
       "fixtures": [
         {
           "path": "fixtures/proxy/README.md",
           "origin": "authored",
           "license": "Apache-2.0",
-          "content_sha256": "cb60e5baa57f490021194555fcbb2c0cda83a5f828c80af109090cee672eb782",
-          "size": 605
+          "content_sha256": "63d0224278745061c7a6c75dd78105577331a23eac49ed8933f50917f2c92b93",
+          "size": 1739
+        },
+        {
+          "path": "fixtures/proxy/share-links.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "0952be6daaa65b6a253a81b16cc221abf92a5cd7acd519cc08a2e5b05f25b969",
+          "size": 14320
         }
       ]
     },

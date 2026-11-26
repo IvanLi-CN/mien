@@ -15,6 +15,7 @@ publish = false
 mien-core = { path = "crates/mien-core" }
 
 aes-gcm = "0.10"
+base64 = "0.22"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"

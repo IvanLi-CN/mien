@@ -1036,6 +1036,7 @@ name = "mien-core"
 version = "0.0.0"
 dependencies = [
  "aes-gcm",
+ "base64",
  "libc",
  "prost",
  "prost-types",
