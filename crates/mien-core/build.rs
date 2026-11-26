@@ -22,6 +22,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "proxy/freedom/config.proto",
         "proxy/vless/outbound/config.proto",
         "proxy/vless/account.proto",
+        "proxy/vmess/outbound/config.proto",
+        "proxy/vmess/account.proto",
+        "proxy/shadowsocks/config.proto",
+        "proxy/trojan/config.proto",
     ]
     .iter()
     .map(|p| root.join(p))
