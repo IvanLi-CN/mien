@@ -24,3 +24,20 @@ Share-link import scenarios for `parse_share_link` (`REQ-PROXY-015`, `PROXY-010`
   they cannot be stored as readable JSON here.
 - Error expectations assert that the message names the offending field and never carries a
   credential value or the link itself.
+## `e2e-scenarios.json`
+
+Scenario table for `crates/mien-core/tests/proxy_e2e.rs`, which drives real HTTP traffic
+through the shared engine into a controlled Xray server inbound (`REQ-PROXY-001`,
+`REQ-PROXY-003`, `REQ-PROXY-005`, `REQ-PROXY-021`) and checks the rejected paths
+(`REQ-PROXY-009`, `REQ-PROXY-014`).
+
+- `scenarios[]` covers the four Tier A TCP protocols (`vless`, `vmess`, `shadowsocks` with
+  `aes-256-gcm`, `trojan`). Each carries a synthetic `credentials` map and a distinct
+  `rejectedCredentials` map so the negative control can reuse the same node.
+- `originHostTemplate` is expanded per run into a name that no resolver outside the
+  controlled server can resolve; the server maps it to `127.0.0.1` in its own `dns.hosts`.
+  That resolvability gap is what makes a direct connection unable to explain the traffic.
+- `expect` holds the accepted HTTP status, the ECHO body fragments, the required zero origin
+  hits for rejected credentials, and the `>N` comparison on the server's own inbound uplink
+  counter. Numbers are compared as growth, so they are stable across runs.
+- Nothing here contains a usable credential or a reachable real endpoint.
