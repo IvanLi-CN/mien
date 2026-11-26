@@ -201,6 +201,15 @@ async fn three_modes_launch_with_explicit_guarantees() {
             mode.as_str()
         );
 
+        // 宿主交互必须被压住：任何模式都不得弹钥匙串或默认浏览器对话框。
+        for flag in mien_core::runtime::supervisor::LAUNCHER_FLAGS {
+            assert!(
+                command.split_whitespace().any(|arg| arg == *flag),
+                "{} process argv is missing {flag}: {command}",
+                mode.as_str()
+            );
+        }
+
         // 降级保证与限制说明：headful 只有 direct 一条，其余模式各有模式声明。
         assert!(
             started.reduced_assurance,

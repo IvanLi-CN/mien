@@ -27,6 +27,15 @@ use super::{
 };
 
 const DEFAULT_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+/// Chromium flags every launch carries so the host clipboard/Keychain prompts and
+/// the default-browser dialog stay out of the way. Mien owns the profile in the
+/// data directory, so persisting the choice in the host store buys nothing.
+pub const LAUNCHER_FLAGS: &[&str] = &[
+    "--use-mock-keychain",
+    "--password-store=basic",
+    "--no-first-run",
+    "--no-default-browser-check",
+];
 const START_GRACE: Duration = Duration::from_millis(100);
 const MONITOR_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -513,8 +522,11 @@ impl RuntimeSupervisor {
         args.push(format!("--mien-runtime-id={}", options.runtime_id));
         // Never touch the host Keychain: use Chromium's in-memory mock keychain
         // and the basic password store for every supervised launch.
-        args.push("--use-mock-keychain".into());
-        args.push("--password-store=basic".into());
+        for flag in LAUNCHER_FLAGS {
+            if !args.iter().any(|arg| arg == flag) {
+                args.push((*flag).to_owned());
+            }
+        }
         if options.automation_api {
             args.push("--remote-debugging-port=0".into());
         }
