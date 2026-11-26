@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     process::Stdio,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -21,8 +21,12 @@ use crate::{
 };
 
 use super::{
+    admission::{AdmissionPermit, Backoff, DEFAULT_RESTART_DELAYS, RuntimeAdmission},
     logs::RuntimeLogs,
-    probe::{self, process_alive, process_belongs_to, process_group_alive, signal_process_group},
+    probe::{
+        self, process_alive, process_belongs_to, process_group_alive, process_group_has_live,
+        signal_process_group,
+    },
     state::{self, Isolation, RuntimeState},
 };
 
@@ -46,13 +50,63 @@ pub const LAUNCHER_FLAGS: &[&str] = &[
 ];
 const START_GRACE: Duration = Duration::from_millis(100);
 const MONITOR_INTERVAL: Duration = Duration::from_millis(50);
+/// A run this long clears the crash ladder; anything shorter keeps counting.
+const STABLE_RUN: Duration = Duration::from_secs(30);
 
 fn spawn_failed(message: &str) -> CoreError {
     CoreError::validation(ErrorCode::RuntimeSpawnFailed, message)
 }
 
-/// 启动参数。`launch_args` 只作为参数数组传给内核，不经过 shell。
+/// 崩溃重启策略。默认关闭（SPEC REQ-RUNTIME-010：默认不自动重启）；启用时严格按
+/// `1s,2s,4s,8s` 四次上限，耗尽后进入 `failed`，不会无限重启。
 #[derive(Debug, Clone)]
+pub struct RestartPolicy {
+    pub delays: Vec<Duration>,
+    /// 稳定运行多久后清零阶梯。
+    pub stable_after: Duration,
+}
+
+impl RestartPolicy {
+    /// 不自动重启；崩溃直接写 `crashed`。
+    #[must_use]
+    pub fn none() -> Self {
+        Self {
+            delays: Vec::new(),
+            stable_after: STABLE_RUN,
+        }
+    }
+
+    /// 文档化的有界阶梯：`1s, 2s, 4s, 8s`，最多四次。
+    #[must_use]
+    pub fn bounded() -> Self {
+        Self {
+            delays: DEFAULT_RESTART_DELAYS.to_vec(),
+            stable_after: STABLE_RUN,
+        }
+    }
+
+    #[must_use]
+    pub fn with_delays(delays: &[Duration], stable_after: Duration) -> Self {
+        Self {
+            delays: delays.to_vec(),
+            stable_after,
+        }
+    }
+
+    #[must_use]
+    pub fn is_enabled(&self) -> bool {
+        !self.delays.is_empty()
+    }
+}
+
+impl Default for RestartPolicy {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+/// 启动参数。`launch_args` 只作为参数数组传给内核，不经过 shell。
+#[derive(Clone)]
 pub struct RuntimeOptions {
     pub runtime_id: String,
     pub profile_id: ProfileId,
@@ -69,6 +123,19 @@ pub struct RuntimeOptions {
     pub proxy_ready: bool,
     pub proxy_port: Option<u16>,
     pub stop_timeout: Duration,
+    /// 崩溃后的重启策略；默认关闭，显式启用才重启。
+    pub restart: RestartPolicy,
+}
+
+impl std::fmt::Debug for RuntimeOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeOptions")
+            .field("runtime_id", &self.runtime_id)
+            .field("profile_id", &self.profile_id)
+            .field("mode", &self.mode)
+            .field("direct", &self.direct)
+            .finish_non_exhaustive()
+    }
 }
 
 impl RuntimeOptions {
@@ -94,6 +161,7 @@ impl RuntimeOptions {
             proxy_ready: true,
             proxy_port: None,
             stop_timeout: DEFAULT_STOP_TIMEOUT,
+            restart: RestartPolicy::none(),
         }
     }
 }
@@ -165,12 +233,20 @@ struct RuntimeMetadata {
     state: RuntimeState,
 }
 
-struct RuntimeRecord {
+pub(crate) struct RuntimeRecord {
     options: RuntimeOptions,
     logs: Arc<RuntimeLogs>,
     state: Mutex<RecordState>,
     child: Mutex<Option<Child>>,
     stop_requested: Mutex<bool>,
+    /// Bounded crash ladder; empty means no auto restart.
+    backoff: Mutex<Backoff>,
+    /// Concurrency slot, held from admission until a terminal state.
+    permit: Mutex<Option<AdmissionPermit>>,
+    /// Mode arguments are replayed on every bounded restart.
+    mode_args: ModeArgs,
+    /// Start of the current process; a run past `stable_after` clears the ladder.
+    started_at: Mutex<Option<Instant>>,
     events: Arc<Mutex<Vec<RuntimeEvent>>>,
 }
 
@@ -189,11 +265,13 @@ impl RuntimeRecord {
     fn new(
         options: RuntimeOptions,
         events: Arc<Mutex<Vec<RuntimeEvent>>>,
+        mode_args: ModeArgs,
     ) -> Result<Self, CoreError> {
         let logs = Arc::new(
             RuntimeLogs::new(options.data_dir.join("logs"))
                 .map_err(|_| spawn_failed("kernel process could not be created"))?,
         );
+        let backoff = Backoff::with_delays(&options.restart.delays);
         Ok(Self {
             options,
             logs,
@@ -208,6 +286,10 @@ impl RuntimeRecord {
             }),
             child: Mutex::new(None),
             stop_requested: Mutex::new(false),
+            backoff: Mutex::new(backoff),
+            permit: Mutex::new(None),
+            mode_args,
+            started_at: Mutex::new(None),
             events,
         })
     }
@@ -238,6 +320,16 @@ impl RuntimeRecord {
         Ok(())
     }
 
+    /// [`Self::transition`] for callers outside the supervisor module.
+    pub(crate) fn transition_check(
+        &self,
+        target: RuntimeState,
+        error_code: Option<String>,
+        detail: Option<String>,
+    ) -> Result<(), CoreError> {
+        self.transition(target, error_code, detail)
+    }
+
     fn emit(&self, state: RuntimeState, error_code: Option<String>, detail: Option<String>) {
         let snapshot = self.snapshot();
         let mut events = self.events.lock().expect("event lock");
@@ -266,7 +358,7 @@ impl RuntimeRecord {
         });
     }
 
-    fn snapshot(&self) -> RuntimeSnapshot {
+    pub(crate) fn snapshot(&self) -> RuntimeSnapshot {
         let state = self.state.lock().expect("runtime state lock").clone();
         RuntimeSnapshot {
             runtime_id: self.options.runtime_id.clone(),
@@ -291,7 +383,7 @@ impl RuntimeRecord {
         }
     }
 
-    fn persist_metadata(&self) {
+    pub(crate) fn persist_metadata(&self) {
         let snapshot = self.snapshot();
         let (Some(pid), Some(pgid)) = (snapshot.pid, snapshot.pgid) else {
             return;
@@ -339,7 +431,7 @@ impl RuntimeRecord {
         self.state.lock().expect("runtime state lock").exit_code = status.code();
     }
 
-    fn mark_stop_requested(&self) {
+    pub(crate) fn mark_stop_requested(&self) {
         *self.stop_requested.lock().expect("stop lock") = true;
     }
 
@@ -353,12 +445,58 @@ impl RuntimeRecord {
         let _ = std::fs::remove_file(self.options.data_dir.join("runtime.json"));
     }
 
-    fn persistable_state(&self) -> RuntimeState {
+    pub(crate) fn persistable_state(&self) -> RuntimeState {
         self.state.lock().expect("runtime state lock").state
     }
 
-    async fn stop_process(&self, timeout: Duration) -> Result<(), CoreError> {
-        self.mark_stop_requested();
+    /// Drops the admission slot; safe on any terminal path.
+    pub(crate) fn release_permit(&self) {
+        let _ = self.permit.lock().expect("permit lock").take();
+    }
+
+    /// Next restart delay, or `None` once the window is exhausted. A run longer
+    /// than `stable_after` clears the ladder first (SPEC REQ-RUNTIME-010).
+    fn next_restart_delay(&self) -> Option<Duration> {
+        if !self.options.restart.is_enabled() {
+            return None;
+        }
+        let stable_after = self.options.restart.stable_after;
+        let mut backoff = self.backoff.lock().expect("backoff lock");
+        if self
+            .started_at
+            .lock()
+            .expect("started_at lock")
+            .is_some_and(|started| started.elapsed() >= stable_after)
+        {
+            backoff.reset();
+        }
+        backoff.next_delay()
+    }
+
+    fn exhausted_detail(&self) -> String {
+        format!(
+            "kernel crashed {} times; restart window exhausted",
+            self.backoff.lock().expect("backoff lock").max_attempts()
+        )
+    }
+
+    fn crash_error_code(&self) -> &'static str {
+        ErrorCode::RuntimeSpawnFailed.as_str()
+    }
+
+    /// Persist an externally supplied state (used by engine-failure teardown).
+    pub(crate) fn persist_state(&self, state: RuntimeState) {
+        self.state.lock().expect("runtime state lock").state = state;
+        self.persist_metadata();
+    }
+
+    /// Spawn the kernel once more without touching the state machine.
+    async fn respawn_once(&self) -> Result<(), CoreError> {
+        *self.stop_requested.lock().expect("stop lock") = false;
+        self.start_inner().await
+    }
+
+    pub(crate) async fn stop_process(&self, timeout: Duration) -> Result<(), CoreError> {
         let pgid = self.state.lock().expect("runtime state lock").pgid;
         if let Some(pgid) = pgid {
             signal_process_group(pgid, false);
@@ -411,92 +549,9 @@ impl RuntimeRecord {
         self.clear_process();
         Ok(())
     }
-}
 
-/// 运行时监督器；一个档案最多一个非终态实例。
-pub struct RuntimeSupervisor {
-    records: Mutex<HashMap<String, Arc<RuntimeRecord>>>,
-    events: Arc<Mutex<Vec<RuntimeEvent>>>,
-    root: PathBuf,
-}
-
-impl RuntimeSupervisor {
-    pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self {
-            records: Mutex::new(HashMap::new()),
-            events: Arc::new(Mutex::new(Vec::new())),
-            root: root.into(),
-        }
-    }
-
-    pub fn events(&self) -> Vec<RuntimeEvent> {
-        self.events.lock().expect("event lock").clone()
-    }
-
-    pub fn state(&self, runtime_id: &str) -> Option<RuntimeSnapshot> {
-        self.records
-            .lock()
-            .expect("records lock")
-            .get(runtime_id)
-            .map(|record| record.snapshot())
-    }
-
-    pub fn logs_tail(&self, runtime_id: &str, limit: usize) -> Result<Vec<String>, CoreError> {
-        self.records
-            .lock()
-            .expect("records lock")
-            .get(runtime_id)
-            .map(|record| record.logs.tail(limit))
-            .ok_or(CoreError::NotFound)
-    }
-
-    /// 启动内核；运行模式由清单能力决定，不做静默降级。
-    ///
-    /// `pseudo_headful` 要求 `RuntimeOptions::headless_chrome_ua_patch`，缺失时返回
-    /// `RUNTIME_MODE_UNSUPPORTED`，且不会创建运行时记录或进程。
-    pub async fn start(&self, options: RuntimeOptions) -> Result<RuntimeSnapshot, CoreError> {
-        let mode_args = ModeArgs::resolve(options.mode, options.headless_chrome_ua_patch)?;
-        let record = Arc::new(RuntimeRecord::new(options, self.events.clone())?);
-        {
-            let mut records = self.records.lock().expect("records lock");
-            if let Some(existing) = records.get(&record.options.runtime_id) {
-                if !existing.snapshot().state.is_terminal() {
-                    return Ok(existing.snapshot());
-                }
-            }
-            records.insert(record.options.runtime_id.clone(), record.clone());
-        }
-        record.transition(RuntimeState::Starting, None, None)?;
-        let result = self.start_inner(&record, mode_args).await;
-        match result {
-            Ok(()) => {
-                record.transition(RuntimeState::Running, None, None)?;
-                self.spawn_monitor(record.clone());
-                Ok(record.snapshot())
-            }
-            Err(start_error) => {
-                let _ = record.transition(
-                    RuntimeState::Stopping,
-                    Some(start_error.code_str().to_owned()),
-                    None,
-                );
-                let _ = record.stop_process(record.options.stop_timeout).await;
-                let _ = record.transition(
-                    RuntimeState::Failed,
-                    Some(start_error.code_str().to_owned()),
-                    Some(start_error.to_string()),
-                );
-                Err(start_error)
-            }
-        }
-    }
-
-    async fn start_inner(
-        &self,
-        record: &Arc<RuntimeRecord>,
-        mode_args: ModeArgs,
-    ) -> Result<(), CoreError> {
-        let options = &record.options;
+    async fn start_inner(&self) -> Result<(), CoreError> {
+        let options = &self.options;
         if !options.direct && !options.proxy_ready {
             return Err(CoreError::validation(
                 ErrorCode::ProxyEngineNotReady,
@@ -512,7 +567,7 @@ impl RuntimeSupervisor {
             .map_err(|_| spawn_failed("kernel process could not be created"))?;
         std::fs::create_dir_all(options.data_dir.join("downloads"))
             .map_err(|_| spawn_failed("kernel process could not be created"))?;
-        record.set_isolation(isolation);
+        self.set_isolation(isolation);
 
         let mut command = Command::new(&options.binary);
         let mut args = options.launch_args.clone();
@@ -520,7 +575,7 @@ impl RuntimeSupervisor {
             !arg.starts_with("--user-data-dir=") && !arg.starts_with("--remote-debugging-port=")
         });
         // The mode owns this one flag; a caller plan may already carry it.
-        if mode_args.headless && !args.iter().any(|arg| arg == HEADLESS_ARG) {
+        if self.mode_args.headless && !args.iter().any(|arg| arg == HEADLESS_ARG) {
             args.push(HEADLESS_ARG.to_owned());
         }
         args.push(format!(
@@ -528,8 +583,8 @@ impl RuntimeSupervisor {
             options.data_dir.join("chrome").display()
         ));
         args.push(format!("--mien-runtime-id={}", options.runtime_id));
-        // Never touch the host Keychain: use Chromium's in-memory mock keychain
-        // and the basic password store for every supervised launch.
+        // Fresh profiles get the shared launcher flags; the profile's own argv
+        // may already carry one, so never duplicate them.
         for flag in LAUNCHER_FLAGS {
             if !args.iter().any(|arg| arg == flag) {
                 args.push((*flag).to_owned());
@@ -554,19 +609,19 @@ impl RuntimeSupervisor {
             .ok_or_else(|| spawn_failed("kernel process could not be created"))?;
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        record.set_process(child, pid);
+        self.set_process(child, pid);
         if let Some(stdout) = stdout {
-            spawn_log_pump(stdout, record.logs.clone(), "stdout");
+            spawn_log_pump(stdout, self.logs.clone(), "stdout");
         }
         if let Some(stderr) = stderr {
-            spawn_log_pump(stderr, record.logs.clone(), "stderr");
+            spawn_log_pump(stderr, self.logs.clone(), "stderr");
         }
 
         if options.automation_api {
             let port =
                 probe::wait_for_cdp(&options.data_dir.join("chrome"), Duration::from_secs(10))
                     .await?;
-            record.set_cdp_port(port);
+            self.set_cdp_port(port);
         } else {
             tokio::time::sleep(START_GRACE).await;
             if !process_alive(pid) {
@@ -576,58 +631,121 @@ impl RuntimeSupervisor {
         #[cfg(target_os = "linux")]
         {
             match probe::require_linux_isolation(pid).await {
-                Ok(isolation) => record.set_isolation(isolation),
+                Ok(isolation) => self.set_isolation(isolation),
                 Err(error) => {
-                    let _ = record.stop_process(Duration::from_secs(2)).await;
+                    let _ = self.stop_process(Duration::from_secs(2)).await;
                     return Err(error);
                 }
             }
         }
         Ok(())
     }
+}
 
-    fn spawn_monitor(&self, record: Arc<RuntimeRecord>) {
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(MONITOR_INTERVAL).await;
-                let status = {
-                    let mut child = record.child.lock().expect("child lock");
-                    match child.as_mut() {
-                        Some(child) => child.try_wait().ok().flatten(),
-                        None => return,
-                    }
-                };
-                let Some(status) = status else { continue };
-                record.set_exit(status);
-                record.child.lock().expect("child lock").take();
-                record.clear_process();
-                match record.persistable_state() {
-                    RuntimeState::Starting | RuntimeState::Running => {
-                        let _ = record.transition(
-                            RuntimeState::Stopping,
-                            None,
-                            Some("kernel exited".into()),
-                        );
-                        let target = if record.stop_requested() {
-                            RuntimeState::Stopped
-                        } else {
-                            RuntimeState::Crashed
-                        };
-                        let _ = record.transition(target, None, None);
-                    }
-                    RuntimeState::Stopping => {
-                        let target = if record.stop_requested() {
-                            RuntimeState::Stopped
-                        } else {
-                            RuntimeState::Crashed
-                        };
-                        let _ = record.transition(target, None, None);
-                    }
-                    _ => {}
+/// 运行时监督器；一个档案最多一个非终态实例。
+pub struct RuntimeSupervisor {
+    records: Mutex<HashMap<String, Arc<RuntimeRecord>>>,
+    events: Arc<Mutex<Vec<RuntimeEvent>>>,
+    root: PathBuf,
+    /// 并发准入闸门；默认 `max_concurrent_runtimes = 10`。
+    admission: Arc<RuntimeAdmission>,
+}
+
+impl RuntimeSupervisor {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self {
+            records: Mutex::new(HashMap::new()),
+            events: Arc::new(Mutex::new(Vec::new())),
+            root: root.into(),
+            admission: RuntimeAdmission::default_limit(),
+        }
+    }
+
+    /// 使用显式并发上限（测试与受限宿主）。
+    #[must_use]
+    pub fn with_admission(mut self, admission: Arc<RuntimeAdmission>) -> Self {
+        self.admission = admission;
+        self
+    }
+
+    #[must_use]
+    pub fn admission(&self) -> &Arc<RuntimeAdmission> {
+        &self.admission
+    }
+
+    pub fn events(&self) -> Vec<RuntimeEvent> {
+        self.events.lock().expect("event lock").clone()
+    }
+
+    pub(crate) fn record(&self, runtime_id: &str) -> Option<Arc<RuntimeRecord>> {
+        self.records
+            .lock()
+            .expect("records lock")
+            .get(runtime_id)
+            .cloned()
+    }
+
+    pub fn state(&self, runtime_id: &str) -> Option<RuntimeSnapshot> {
+        self.records
+            .lock()
+            .expect("records lock")
+            .get(runtime_id)
+            .map(|record| record.snapshot())
+    }
+
+    pub fn logs_tail(&self, runtime_id: &str, limit: usize) -> Result<Vec<String>, CoreError> {
+        self.records
+            .lock()
+            .expect("records lock")
+            .get(runtime_id)
+            .map(|record| record.logs.tail(limit))
+            .ok_or(CoreError::NotFound)
+    }
+
+    /// 启动内核；运行模式由清单能力决定，不做静默降级。
+    ///
+    /// `pseudo_headful` 要求 `RuntimeOptions::headless_chrome_ua_patch`，缺失时返回
+    /// `RUNTIME_MODE_UNSUPPORTED`，且不会创建运行时记录或进程。超出并发上限时返回
+    /// `RUNTIME_CONFLICT`，同样不创建记录、进程或代理绑定。
+    pub async fn start(&self, options: RuntimeOptions) -> Result<RuntimeSnapshot, CoreError> {
+        let mode_args = ModeArgs::resolve(options.mode, options.headless_chrome_ua_patch)?;
+        let runtime_id = options.runtime_id.clone();
+        let record = Arc::new(RuntimeRecord::new(options, self.events.clone(), mode_args)?);
+        {
+            let mut records = self.records.lock().expect("records lock");
+            if let Some(existing) = records.get(&record.options.runtime_id) {
+                if !existing.snapshot().state.is_terminal() {
+                    return Ok(existing.snapshot());
                 }
-                return;
             }
-        });
+            let permit = self.admission.try_admit(&runtime_id)?;
+            *record.permit.lock().expect("permit lock") = Some(permit);
+            records.insert(record.options.runtime_id.clone(), record.clone());
+        }
+        record.transition(RuntimeState::Starting, None, None)?;
+        match record.start_inner().await {
+            Ok(()) => {
+                *record.started_at.lock().expect("started_at lock") = Some(Instant::now());
+                record.transition(RuntimeState::Running, None, None)?;
+                spawn_monitor_record(record.clone());
+                Ok(record.snapshot())
+            }
+            Err(start_error) => {
+                let _ = record.transition(
+                    RuntimeState::Stopping,
+                    Some(start_error.code_str().to_owned()),
+                    None,
+                );
+                let _ = record.stop_process(record.options.stop_timeout).await;
+                let _ = record.transition(
+                    RuntimeState::Failed,
+                    Some(start_error.code_str().to_owned()),
+                    Some(start_error.to_string()),
+                );
+                record.release_permit();
+                Err(start_error)
+            }
+        }
     }
 
     pub async fn stop(&self, runtime_id: &str) -> Result<RuntimeSnapshot, CoreError> {
@@ -639,12 +757,20 @@ impl RuntimeSupervisor {
             .cloned()
             .ok_or(CoreError::NotFound)?;
         let state = record.persistable_state();
-        if state.is_terminal() {
+        if state == RuntimeState::Stopped {
             return Ok(record.snapshot());
         }
-        record.transition(RuntimeState::Stopping, None, None)?;
+        // Recorded before the transition so the monitor observes a user stop.
+        record.mark_stop_requested();
+        // `crashed`/`failed` also settle through `stopping` (SPEC transition table).
+        let target = match state {
+            RuntimeState::Crashed | RuntimeState::Failed => RuntimeState::Stopped,
+            _ => RuntimeState::Stopping,
+        };
+        record.transition(target, None, None)?;
         record.stop_process(record.options.stop_timeout).await?;
         record.transition(RuntimeState::Stopped, None, None)?;
+        record.release_permit();
         Ok(record.snapshot())
     }
 
@@ -668,59 +794,247 @@ impl RuntimeSupervisor {
     }
 
     /// 控制面重启对账：只终止命令行可安全归属的残留进程。
+    /// 两遍：第一遍终止可归属进程组；第二遍让「同一进程组被另一行终止」的重复行
+    /// 也落定，避免永久 `stopping` 与重复 `profile_id`。
     pub async fn reconcile(&self) -> Result<Vec<RuntimeSnapshot>, CoreError> {
-        let mut snapshots = Vec::new();
-        let entries = std::fs::read_dir(&self.root).map_err(|_| CoreError::Storage)?;
-        for entry in entries.flatten() {
-            let path = entry.path().join("runtime.json");
-            let Ok(bytes) = std::fs::read(&path) else {
-                continue;
-            };
-            let Ok(metadata) = serde_json::from_slice::<RuntimeMetadata>(&bytes) else {
-                continue;
-            };
-            if metadata.state.is_terminal() {
-                let _ = std::fs::remove_file(path);
+        let mut outcomes = Vec::with_capacity(self.reconcile_entries()?.len());
+        let mut pending = Vec::new();
+        for (directory, metadata) in self.reconcile_entries()? {
+            let snapshot = self.reconcile_entry(metadata).await;
+            if snapshot.state == RuntimeState::Stopping {
+                pending.push((directory, snapshot));
                 continue;
             }
-            if process_alive(metadata.pid)
-                && process_belongs_to(metadata.pid, &metadata.binary, &metadata.runtime_id)
-            {
-                signal_process_group(metadata.pgid, false);
-                let deadline = tokio::time::Instant::now() + DEFAULT_STOP_TIMEOUT;
-                while process_group_alive(metadata.pgid) && tokio::time::Instant::now() < deadline {
-                    tokio::time::sleep(MONITOR_INTERVAL).await;
-                }
-                if process_group_alive(metadata.pgid) {
-                    signal_process_group(metadata.pgid, true);
-                }
+            let _ = std::fs::remove_file(directory.join("runtime.json"));
+            outcomes.push(snapshot);
+        }
+        for (directory, snapshot) in pending {
+            let pgid = snapshot.pgid.unwrap_or_default();
+            let still_live = process_group_alive(pgid) && process_group_has_live(pgid);
+            if still_live {
+                outcomes.push(snapshot);
+                continue;
             }
-            if !process_group_alive(metadata.pgid) {
-                let _ = std::fs::remove_file(path);
-                snapshots.push(RuntimeSnapshot {
-                    runtime_id: metadata.runtime_id,
-                    profile_id: metadata.profile_id,
-                    state: RuntimeState::Crashed,
-                    mode: metadata.mode,
-                    isolation: metadata.isolation,
-                    direct: metadata.direct,
-                    reduced_assurance: state::reduced_assurance(
-                        metadata.mode,
-                        metadata.direct,
-                        metadata.isolation,
-                    ),
-                    ua_scope: metadata.ua_scope,
-                    pid: None,
-                    pgid: None,
-                    cdp_port: metadata.cdp_port,
-                    proxy_port: metadata.proxy_port,
-                    exit_code: None,
-                    error_code: None,
-                });
+            let _ = std::fs::remove_file(directory.join("runtime.json"));
+            outcomes.push(RuntimeSnapshot {
+                state: RuntimeState::Crashed,
+                pid: None,
+                pgid: None,
+                ..snapshot
+            });
+        }
+        Ok(outcomes)
+    }
+
+    /// 深度优先扫描数据根下的 `runtime.json`；档案目录可以嵌在 `profiles/` 下。
+    fn reconcile_entries(&self) -> Result<Vec<(PathBuf, RuntimeMetadata)>, CoreError> {
+        let mut found = Vec::new();
+        let mut pending = vec![self.root.clone()];
+        while let Some(directory) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                if path.file_name().is_none_or(|name| name != "runtime.json") {
+                    continue;
+                }
+                let Some(parent) = path.parent() else {
+                    continue;
+                };
+                let Ok(bytes) = std::fs::read(&path) else {
+                    continue;
+                };
+                let Ok(metadata) = serde_json::from_slice::<RuntimeMetadata>(&bytes) else {
+                    continue;
+                };
+                found.push((parent.to_path_buf(), metadata));
             }
         }
-        Ok(snapshots)
+        Ok(found)
     }
+
+    /// 单个残留行：只有命令行可归属才终止。仍存活且不可归属时保留行、端口与绑定。
+    async fn reconcile_entry(&self, metadata: RuntimeMetadata) -> RuntimeSnapshot {
+        if !metadata.state.is_terminal() {
+            let mut attributable = false;
+            let deadline = tokio::time::Instant::now() + DEFAULT_STOP_TIMEOUT;
+            loop {
+                if process_alive(metadata.pid)
+                    && process_belongs_to(metadata.pid, &metadata.binary, &metadata.runtime_id)
+                {
+                    if !attributable {
+                        attributable = true;
+                        signal_process_group(metadata.pgid, false);
+                    }
+                    if !process_group_has_live(metadata.pgid) {
+                        break;
+                    }
+                    if tokio::time::Instant::now() >= deadline {
+                        signal_process_group(metadata.pgid, true);
+                    }
+                } else if attributable && !process_group_alive(metadata.pgid) {
+                    break;
+                }
+                if tokio::time::Instant::now() >= deadline + Duration::from_secs(2) {
+                    break;
+                }
+                tokio::time::sleep(MONITOR_INTERVAL).await;
+            }
+            // Only a *live* member blocks settlement; unreaped zombies do not.
+            if process_group_alive(metadata.pgid) && process_group_has_live(metadata.pgid) {
+                return reconciled_snapshot(metadata, RuntimeState::Stopping);
+            }
+        }
+        reconciled_snapshot(metadata, RuntimeState::Crashed)
+    }
+}
+
+/// 对账结果快照：内核已退出时清空 pid/pgid，归属不明时保留原 pid。
+fn reconciled_snapshot(metadata: RuntimeMetadata, state: RuntimeState) -> RuntimeSnapshot {
+    let settled = state != RuntimeState::Stopping;
+    RuntimeSnapshot {
+        reduced_assurance: state::reduced_assurance(
+            metadata.mode,
+            metadata.direct,
+            metadata.isolation,
+        ),
+        runtime_id: metadata.runtime_id,
+        profile_id: metadata.profile_id,
+        state,
+        mode: metadata.mode,
+        isolation: metadata.isolation,
+        direct: metadata.direct,
+        ua_scope: metadata.ua_scope,
+        pid: (!settled).then_some(metadata.pid),
+        pgid: (!settled).then_some(metadata.pgid),
+        cdp_port: metadata.cdp_port,
+        proxy_port: metadata.proxy_port,
+        exit_code: None,
+        error_code: None,
+    }
+}
+
+/// 崩溃后的有界重启：等待给定阶梯间隔后重拉内核；每次失败继续消耗阶梯，
+/// 窗口耗尽才写 `failed`。阶梯的消耗点集中在 [`RuntimeRecord::next_restart_delay`]，
+/// 因此 `runtime.crashed` 仍是一次转移一条事件。
+async fn respawn(record: Arc<RuntimeRecord>, delay: Duration) {
+    tokio::time::sleep(delay).await;
+    // A user stop during the wait wins and never restarts.
+    if record.persistable_state() != RuntimeState::Crashed {
+        return;
+    }
+    let _ = record.transition(RuntimeState::Starting, None, None);
+    match record.respawn_once().await {
+        Ok(()) => {
+            *record.started_at.lock().expect("started_at lock") = Some(Instant::now());
+            let _ = record.transition(RuntimeState::Running, None, None);
+            spawn_monitor_record(record);
+        }
+        Err(error) => {
+            let code = error.code_str().to_owned();
+            let _ = record.transition(
+                RuntimeState::Stopping,
+                Some(code.clone()),
+                Some(error.to_string()),
+            );
+            let _ = record.stop_process(record.options.stop_timeout).await;
+            match record.next_restart_delay() {
+                Some(next) => {
+                    let _ = record.transition(
+                        RuntimeState::Crashed,
+                        Some(code),
+                        Some(format!("restarting in {next:?}")),
+                    );
+                    Box::pin(respawn(record, next)).await;
+                }
+                None => {
+                    let _ = record.transition(
+                        RuntimeState::Failed,
+                        Some(code),
+                        Some(record.exhausted_detail()),
+                    );
+                    record.release_permit();
+                }
+            }
+        }
+    }
+}
+
+/// Monitor one record; the task outlives the caller.
+fn spawn_monitor_record(record: Arc<RuntimeRecord>) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(MONITOR_INTERVAL).await;
+            let status = {
+                let mut child = record.child.lock().expect("child lock");
+                match child.as_mut() {
+                    Some(child) => child.try_wait().ok().flatten(),
+                    None => return,
+                }
+            };
+            let Some(status) = status else { continue };
+            record.set_exit(status);
+            record.child.lock().expect("child lock").take();
+            record.clear_process();
+            match record.persistable_state() {
+                RuntimeState::Starting | RuntimeState::Running => {
+                    let _ = record.transition(
+                        RuntimeState::Stopping,
+                        None,
+                        Some("kernel exited".into()),
+                    );
+                    if record.stop_requested() {
+                        let _ = record.transition(RuntimeState::Stopped, None, None);
+                        record.release_permit();
+                        return;
+                    }
+                    // Default policy is no auto restart: a crash stays `crashed`.
+                    if !record.options.restart.is_enabled() {
+                        let _ = record.transition(RuntimeState::Crashed, None, None);
+                        record.release_permit();
+                        return;
+                    }
+                    match record.next_restart_delay() {
+                        Some(delay) => {
+                            let _ = record.transition(
+                                RuntimeState::Crashed,
+                                Some(record.crash_error_code().to_owned()),
+                                Some(format!("restarting in {delay:?}")),
+                            );
+                            tokio::spawn(respawn(record.clone(), delay));
+                        }
+                        // Exhausted: `stopping -> failed` right after this exit's
+                        // teardown; `crashed` alone would be a dead end.
+                        None => {
+                            let _ = record.transition(
+                                RuntimeState::Failed,
+                                Some(record.crash_error_code().to_owned()),
+                                Some(record.exhausted_detail()),
+                            );
+                            record.release_permit();
+                        }
+                    }
+                    return;
+                }
+                RuntimeState::Stopping => {
+                    let target = if record.stop_requested() {
+                        RuntimeState::Stopped
+                    } else {
+                        RuntimeState::Crashed
+                    };
+                    let _ = record.transition(target, None, None);
+                    record.release_permit();
+                }
+                _ => {}
+            }
+            return;
+        }
+    });
 }
 
 fn spawn_log_pump<R: AsyncRead + Unpin + Send + 'static>(
@@ -769,6 +1083,7 @@ mod tests {
             supervisor.state("r").is_none(),
             "a refused mode must not create a runtime record"
         );
+        assert_eq!(supervisor.admission().active(), 0, "no slot on refusal");
         let _ = std::fs::remove_dir_all(root);
     }
 }

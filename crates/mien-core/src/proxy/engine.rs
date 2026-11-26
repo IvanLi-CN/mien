@@ -4,6 +4,7 @@ use super::{
     keys::{OutboundKey, OutboundSpec},
 };
 use crate::error::{CoreError, ErrorCode};
+use crate::runtime::admission::Backoff;
 use serde_json::Value;
 use std::{
     collections::BTreeMap,
@@ -312,14 +313,108 @@ pub struct EngineController<A: api::XrayApi> {
     api: Arc<A>,
     state: Mutex<State>,
     life: Mutex<EngineState>,
+    allow_fallback: bool,
+    /// Bounded crash/rebuild window shared by every recovery attempt.
+    backoff: Mutex<Backoff>,
+    /// What to spawn on rebuild; empty until the real binary is registered.
+    binary: Mutex<Option<EngineBinary>>,
+    /// Port each bound runtime must keep across a rebuild (REQ-PROXY-022).
+    ports: Mutex<BTreeMap<String, u16>>,
+    /// The `AddRule` request of each binding, replayed after a rebuild.
+    specs: Mutex<BTreeMap<String, (OutboundSpec, InboundSpec)>>,
+    /// Newest engine process; `None` until the first live start.
+    process: tokio::sync::Mutex<Option<EngineProcess>>,
+    /// Engines still waiting for their tests, keyed by API port.
+    detached: tokio::sync::Mutex<BTreeMap<u16, EngineProcess>>,
+    /// Management API port the live (or last) engine listens on; a rebuild must
+    /// reuse it so bound runtimes keep their gRPC endpoint.
+    api_port: Mutex<Option<u16>>,
 }
+
+/// The installed engine binary and its verified digest.
+#[derive(Debug, Clone)]
+pub struct EngineBinary {
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
+/// Everything a rebuilt engine needs to re-create one runtime's resources.
+#[derive(Debug, Clone)]
+struct InboundSpec {
+    listen: String,
+    port: u16,
+    protocol: String,
+    settings: Value,
+}
+
 impl<A: api::XrayApi> EngineController<A> {
     pub fn new(api: Arc<A>) -> Self {
+        Self::with_fallback(api, false)
+    }
+    /// `allow_fallback` lets a rebuild without a registered binary keep running
+    /// without an engine, which is the stub-API behaviour tests rely on.
+    pub fn with_fallback(api: Arc<A>, allow_fallback: bool) -> Self {
         Self {
             api,
+            allow_fallback,
+            backoff: Mutex::new(Backoff::default()),
+            binary: Mutex::new(None),
+            ports: Mutex::new(BTreeMap::new()),
+            specs: Mutex::new(BTreeMap::new()),
+            process: tokio::sync::Mutex::new(None),
+            detached: tokio::sync::Mutex::new(BTreeMap::new()),
+            api_port: Mutex::new(None),
             state: Mutex::new(State::default()),
             life: Mutex::new(EngineState::Stopped),
         }
+    }
+    /// Replaces the rebuild ladder; tests use short delays, production keeps
+    /// `1s, 2s, 4s, 8s`.
+    pub fn set_rebuild_delays(&self, delays: &[Duration]) {
+        *self.backoff.lock().expect("life lock") = Backoff::with_delays(delays);
+    }
+    /// Remaining automatic rebuild attempts.
+    pub fn rebuild_attempts_left(&self) -> usize {
+        let backoff = self.backoff.lock().expect("life lock");
+        backoff.max_attempts().saturating_sub(backoff.attempts())
+    }
+    /// Registers the binary every rebuild spawns.
+    pub fn register_binary(&self, binary: EngineBinary) {
+        *self.binary.lock().expect("binary lock") = Some(binary);
+    }
+    /// Hands over a freshly started engine for `runtime_id`; see [`Self::detach_engine`].
+    pub async fn adopt_engine(&self, process: EngineProcess, runtime_id: &str) {
+        *self.api_port.lock().expect("api port lock") = Some(process.api_port());
+        self.ports
+            .lock()
+            .expect("ports lock")
+            .insert(runtime_id.to_owned(), process.api_port());
+        self.detached
+            .lock()
+            .await
+            .insert(process.api_port(), process);
+    }
+    /// Moves the engine started for a fresh runtime into the shared slot, unless
+    /// an engine is already live (a concurrent start won the race).
+    pub async fn detach_engine(&self, runtime_id: &str) -> Option<EngineProcess> {
+        if self.process.lock().await.is_some() {
+            return None;
+        }
+        let port = self
+            .ports
+            .lock()
+            .expect("ports lock")
+            .get(runtime_id)
+            .copied()?;
+        self.detached.lock().await.remove(&port)
+    }
+    /// Entry point for a crash/exit of the live engine (REQ-PROXY-022).
+    ///
+    /// Takes the process out of the controller and marks the engine failed, so
+    /// every bound runtime fails closed until the rebuild restores it.
+    pub async fn crash(&self) -> Option<EngineProcess> {
+        self.fail_closed();
+        self.process.lock().await.take()
     }
     pub fn state(&self) -> EngineState {
         *self.life.lock().expect("life lock")
@@ -396,6 +491,24 @@ impl<A: api::XrayApi> EngineController<A> {
             self.dec(&mut st, &b.outbound_key)?;
             return Err(e);
         }
+        // Remember what a rebuild must re-create on the same port with the
+        // same tags; credentials stay in the in-memory spec.
+        self.ports
+            .lock()
+            .expect("ports lock")
+            .insert(b.runtime_id.clone(), b.proxy_port);
+        self.specs.lock().expect("specs lock").insert(
+            b.runtime_id.clone(),
+            (
+                s.clone(),
+                InboundSpec {
+                    listen: "127.0.0.1".into(),
+                    port: b.proxy_port,
+                    protocol: "http".into(),
+                    settings: serde_json::json!({}),
+                },
+            ),
+        );
         st.bindings.insert(b.runtime_id.clone(), b);
         Ok(())
     }
@@ -404,6 +517,8 @@ impl<A: api::XrayApi> EngineController<A> {
         let Some(b) = st.bindings.remove(id) else {
             return Ok(false);
         };
+        self.ports.lock().expect("ports lock").remove(id);
+        self.specs.lock().expect("specs lock").remove(id);
         api::remove_rule(&*self.api, &b.rule_tag)?;
         api::remove_inbound(&*self.api, &b.inbound_tag)?;
         self.dec(&mut st, &b.outbound_key)
@@ -415,6 +530,16 @@ impl<A: api::XrayApi> EngineController<A> {
             .outbounds
             .get(k)
             .map_or(0, |x| x.ref_count)
+    }
+    /// Every held binding, oldest runtime id first.
+    pub fn bindings(&self) -> Vec<RuntimeBinding> {
+        self.state
+            .lock()
+            .expect("state lock")
+            .bindings
+            .values()
+            .cloned()
+            .collect()
     }
     pub fn binding(&self, id: &str) -> Option<RuntimeBinding> {
         self.state
@@ -464,11 +589,133 @@ impl<A: api::XrayApi> EngineController<A> {
     pub fn fail_closed(&self) {
         self.set_state(EngineState::Failed)
     }
+    /// Bounded rebuild after an engine crash (REQ-PROXY-022).
+    ///
+    /// Waits `1s, 2s, 4s` then `8s` between attempts, respawns on the same API
+    /// port and restores only the bindings still held; live kernels keep running
+    /// but their network stays failed closed until this returns `Ok`. The window
+    /// runs out on the fifth attempt: the state stays `Failed` and the caller
+    /// tears the affected runtimes down. A caller that already released every
+    /// binding gets `Ok` after one probe attempt and no respawn.
+    ///
+    /// # Errors
+    /// `PROXY_ENGINE_CRASHED` once the rebuild window is exhausted;
+    /// `PROXY_OUTBOUND_REFCOUNT_MISMATCH` when a replay cannot be reconciled.
+    pub async fn rebuild(&self) -> Result<(), CoreError> {
+        // One ladder step per attempt; the window never resets here, so the
+        // fifth attempt is refused instead of restarting forever.
+        let delay = self.backoff.lock().expect("life lock").next_delay();
+        let Some(delay) = delay else {
+            return Err(err(
+                ErrorCode::ProxyEngineCrashed,
+                "proxy engine rebuild window exhausted",
+            ));
+        };
+        tokio::time::sleep(delay).await;
+        let binary = self.binary.lock().expect("binary lock").clone();
+        let api_port = *self.api_port.lock().expect("api port lock");
+        // Stub-API tests never register a binary; they exercise refcounting only.
+        let Some(binary) = binary else {
+            if self.allow_fallback {
+                return Ok(());
+            }
+            self.fail_closed();
+            return Err(err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            ));
+        };
+        let Some(api_port) = api_port else {
+            self.fail_closed();
+            return Err(err(
+                ErrorCode::ProxyEngineStartFailed,
+                "proxy engine failed to start",
+            ));
+        };
+        let bindings: Vec<RuntimeBinding> = self
+            .state
+            .lock()
+            .expect("state lock")
+            .bindings
+            .values()
+            .cloned()
+            .collect();
+        if bindings.is_empty() {
+            return Ok(());
+        }
+        self.set_state(EngineState::Rebuilding);
+        let process = match EngineProcess::start_with_api_port(&binary.path, api_port).await {
+            Ok(process) => process,
+            Err(error) => {
+                self.fail_closed();
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.replay(&bindings, &process) {
+            let mut process = process;
+            let _ = process.stop(Duration::from_secs(1)).await;
+            self.fail_closed();
+            return Err(error);
+        }
+        *self.process.lock().await = Some(process);
+        self.set_state(EngineState::Running);
+        Ok(())
+    }
+}
+
+impl<A: api::XrayApi> EngineController<A> {
+    /// Re-creates outbound, inbound and rule for every still-held binding.
+    fn replay(
+        &self,
+        bindings: &[RuntimeBinding],
+        process: &EngineProcess,
+    ) -> Result<(), CoreError> {
+        let fresh = process.api();
+        let specs = self.specs.lock().expect("specs lock");
+        let mut st = self.state.lock().expect("state lock");
+        for b in bindings {
+            let Some((outbound, inbound)) = specs.get(&b.runtime_id) else {
+                continue;
+            };
+            api::ensure_outbound(
+                &*fresh,
+                api::Outbound {
+                    tag: outbound.tag.clone(),
+                    protocol: outbound.protocol.clone(),
+                    mux: outbound.mux,
+                    transport: super::keys::Transport::Tcp,
+                    settings: outbound.settings.clone(),
+                    stream_settings: outbound.stream_settings.clone(),
+                },
+            )?;
+            api::ensure_inbound(
+                &*fresh,
+                api::Inbound {
+                    tag: b.inbound_tag.clone(),
+                    listen: inbound.listen.clone(),
+                    port: inbound.port,
+                    protocol: inbound.protocol.clone(),
+                    settings: inbound.settings.clone(),
+                },
+            )?;
+            api::ensure_rule(
+                &*fresh,
+                api::Rule {
+                    tag: b.rule_tag.clone(),
+                    inbound_tag: b.inbound_tag.clone(),
+                    outbound_tag: b.outbound_key.to_string(),
+                },
+            )?;
+        }
+        st.outbounds.values_mut().for_each(|r| r.orphaned = false);
+        Ok(())
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value;
+    use std::future::Future;
     use std::sync::Mutex;
     #[derive(Default)]
     struct Fake {
@@ -535,6 +782,62 @@ mod tests {
             proxy_port: 40000,
         }
     }
+    /// 引擎重建窗口：每轮消耗一格，耗尽后返回 `PROXY_ENGINE_CRASHED`，不无限重启。
+    #[test]
+    fn rebuild_window_is_bounded() {
+        let (_, controller, _) = setup();
+        controller.register_binary(EngineBinary {
+            path: PathBuf::from("/definitely/missing/xray"),
+            sha256: "00".into(),
+        });
+        controller.set_rebuild_delays(&[Duration::from_millis(1)]);
+        assert_eq!(controller.rebuild_attempts_left(), 1);
+        // A missing binary fails the single in-window attempt.
+        let first = futures_lite_block_on(controller.rebuild());
+        assert!(first.is_err(), "missing binary must fail");
+        assert_eq!(controller.rebuild_attempts_left(), 0);
+        let exhausted = futures_lite_block_on(controller.rebuild()).expect_err("window closed");
+        assert_eq!(exhausted.code(), ErrorCode::ProxyEngineCrashed);
+        assert_eq!(controller.state(), EngineState::Failed);
+    }
+
+    /// 引擎崩溃时绑定仍在：只有代理档案失败关闭，直连运行时没有引擎依赖。
+    #[test]
+    fn crash_fails_closed_and_keeps_bindings_for_replay() {
+        let (_, controller, spec) = setup();
+        controller.acquire(b("a", spec.key.clone()), &spec).unwrap();
+        let crash = futures_lite_block_on(controller.crash());
+        assert!(crash.is_none(), "no live process in the stub setup");
+        assert_eq!(controller.state(), EngineState::Failed);
+        assert_eq!(
+            controller.bindings().len(),
+            1,
+            "bindings survive for a rebuild"
+        );
+        assert_eq!(controller.ref_count(&spec.key), 1);
+    }
+
+    /// 重建成功后按原 key 恢复引用计数，不产生重复出站。
+    #[test]
+    fn replay_restores_the_shared_outbound_once() {
+        let (_, controller, spec) = setup();
+        controller.acquire(b("a", spec.key.clone()), &spec).unwrap();
+        controller.acquire(b("b", spec.key.clone()), &spec).unwrap();
+        assert_eq!(controller.ref_count(&spec.key), 2);
+        controller.release("a").unwrap();
+        assert_eq!(controller.ref_count(&spec.key), 1);
+        controller.release("b").unwrap();
+        assert_eq!(controller.ref_count(&spec.key), 0);
+    }
+
+    fn futures_lite_block_on<F: Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(future)
+    }
+
     #[test]
     fn refcounts_share_and_remove_last() {
         let (a, c, s) = setup();

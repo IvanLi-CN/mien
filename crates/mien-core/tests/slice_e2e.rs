@@ -69,6 +69,34 @@ fn kernel() -> Option<PathBuf> {
     }
 }
 
+/// 列出命令行带 `mien-runtime-id=` 的残留进程（pid 与完整命令行）。
+fn runtime_residuals() -> Vec<String> {
+    let output = std::process::Command::new("pgrep")
+        .args(["-fl", "mien-runtime-id="])
+        .output()
+        .expect("pgrep");
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// 收尾契约：任何含真实内核的用例结束前都必须确认零孤儿；失败时打印现场。
+#[track_caller]
+fn assert_no_residual_kernels() {
+    let mut residuals = runtime_residuals();
+    for _ in 0..100 {
+        if residuals.is_empty() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        residuals = runtime_residuals();
+    }
+    panic!("residual kernel processes: {residuals:#?}");
+}
+
 fn seed_proxy(pool: &sqlx::SqlitePool, id: &str) {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
     let now = "2026-01-01T00:00:00Z";
@@ -124,6 +152,7 @@ async fn start_profile(
         sandbox_kind: "seatbelt".into(),
         proxy,
         stop_timeout: Duration::from_secs(5),
+        restart: mien_core::runtime::RestartPolicy::none(),
     };
     request
         .start(supervisor, &format!("rt-{}", profile.id.0))
@@ -209,6 +238,8 @@ fn slice_starts_stops_and_restarts() {
     assert_eq!(second.snapshot.state, RuntimeState::Running);
     let stopped = stop(&supervisor, &format!("rt-{}", stored.id.0));
     assert_eq!(stopped.state, RuntimeState::Stopped);
+    drop(_guard2);
+    assert_no_residual_kernels();
 }
 
 #[test]
@@ -259,6 +290,8 @@ fn slice_binds_a_proxy_and_releases_it() {
     assert_eq!(proxy.attached.lock().expect("lock").len(), 1);
 
     stop(&supervisor, &format!("rt-{}", stored.id.0));
+    drop(_guard);
+    assert_no_residual_kernels();
 }
 
 #[test]
@@ -293,6 +326,7 @@ fn inactive_profiles_are_refused() {
         sandbox_kind: "seatbelt".into(),
         proxy: None,
         stop_timeout: Duration::from_secs(2),
+        restart: mien_core::runtime::RestartPolicy::none(),
     };
     let error = runtime
         .block_on(request.start(&supervisor, "rt-archived"))
@@ -307,6 +341,7 @@ fn slice_attaches_the_real_shared_engine() {
     };
     let Some(xray) = std::env::var_os("MIEN_XRAY_BIN").map(PathBuf::from) else {
         println!("skipped: MIEN_XRAY_BIN not set");
+        assert_no_residual_kernels();
         return;
     };
     let digest = sha256(&binary);
@@ -366,6 +401,7 @@ fn slice_attaches_the_real_shared_engine() {
         sandbox_kind: "seatbelt".into(),
         proxy: Some(&attach),
         stop_timeout: Duration::from_secs(5),
+        restart: mien_core::runtime::RestartPolicy::none(),
     };
     let started = runtime
         .block_on(async { request.start(&supervisor, &runtime_id).await })
@@ -408,4 +444,6 @@ fn slice_attaches_the_real_shared_engine() {
     runtime
         .block_on(engine.stop(Duration::from_secs(1)))
         .expect("xray stop");
+    drop(_guard);
+    assert_no_residual_kernels();
 }
