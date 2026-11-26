@@ -6,3 +6,5 @@
 - **Generate/fetch:** Golden cases are checked against the canonical installed-kernel manifest and repeated deterministically; no external assets are fetched.
 
 Golden `expected_argv` arrays are exact process argument arrays. Runtime network controls are asserted separately with an enforcement status; they are never inferred from Chromium flags.
+
+`golden-argv/macos-headful-consistency.json` records three launches of one stored profile as `expected_argv_runs`: the arrays must be byte-identical across launches, and the expected network controls carry an enforcement status rather than a flag.

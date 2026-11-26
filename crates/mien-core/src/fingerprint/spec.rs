@@ -111,6 +111,25 @@ impl FingerprintSpec {
         validate_spec(&spec)?;
         Ok(spec)
     }
+
+    /// Duplicate every explicit field and draw a seed that differs from the source.
+    ///
+    /// Derived traits are never stored on [`FingerprintSpec`]; consumers obtain
+    /// them only through [`derive_traits`] on the copy's new seed, so a duplicate
+    /// cannot inherit the source's canvas/audio/WebGL/memory/GPU values. The copy
+    /// is validated against the pinned manifest before it is returned, so a
+    /// duplicate is admissible by construction.
+    pub fn duplicate(&self) -> Result<Self, CoreError> {
+        let mut copy = self.clone();
+        loop {
+            copy.seed = generate_seed()?;
+            if copy.seed != self.seed {
+                break;
+            }
+        }
+        validate_spec(&copy)?;
+        Ok(copy)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
