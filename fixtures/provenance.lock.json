@@ -32,9 +32,9 @@
       "license": "Apache-2.0",
       "retrieved_at": "2026-11-25T00:00:00Z",
       "fetch_command": "none",
-      "size": 5270,
+      "size": 5272,
       "notes": "Synthetic schema-backed fingerprint specs, deterministic argv expectations, repeated-launch consistency evidence, and rejected capability cases.",
-      "tree_sha256": "b18ba838711de4e950f9055987e6366b714b53f056c8be0dda0099e997ed2e0e",
+      "tree_sha256": "9d3d0cc9019313e7006abd0b06678a43cb723c5647c1e032d8104e20d83cc4b4",
       "fixtures": [
         {
           "path": "fixtures/fingerprint/golden-argv/macos-headful-default.json",
@@ -47,8 +47,8 @@
           "path": "fixtures/fingerprint/golden-argv/macos-headful-consistency.json",
           "origin": "authored",
           "license": "Apache-2.0",
-          "content_sha256": "58b8155f6f6658834ba7c93e7295eaeb6d01daf291664abc184dfa198ff49d9b",
-          "size": 2066
+          "content_sha256": "394d426b8569972f2e5ba09743188918818381c267891ddef3f83f0bfbe0df74",
+          "size": 2068
         },
         {
           "path": "fixtures/fingerprint/golden-argv/linux-spoof-toggles.json",

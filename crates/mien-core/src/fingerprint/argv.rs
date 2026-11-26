@@ -254,7 +254,10 @@ impl NetworkControls {
             },
             ipv6_mode: NetworkControl {
                 value: network.ipv6_mode.clone(),
-                status: Enforcement::Declared,
+                // 实测（docs/spikes/network）：pinned 148 没有任何 IPv6 阻断开关，
+                // 直连下 IPv6 走真实出口。清单声明是期望，不是已执行的控制，
+                // 因此只能是 Unverified；代理模式下的阻断由代理层负责。
+                status: Enforcement::Unverified,
             },
             disable_non_proxied_udp: NetworkControl {
                 value: disable_non_proxied_udp,

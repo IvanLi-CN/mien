@@ -58,7 +58,7 @@
   ],
   "expected_network": {
     "doh_mode": {"value": "disabled", "status": "declared"},
-    "ipv6_mode": {"value": "block", "status": "declared"},
+    "ipv6_mode": {"value": "block", "status": "unverified"},
     "disable_non_proxied_udp": {"value": true, "status": "unverified"}
   }
 }

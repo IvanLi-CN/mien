@@ -140,7 +140,8 @@ fn argv_is_deterministic_and_network_controls_are_explicit_but_not_flags() {
     assert_eq!(first.network.doh_mode.value, "disabled");
     assert_eq!(first.network.doh_mode.status, Enforcement::Declared);
     assert_eq!(first.network.ipv6_mode.value, "block");
-    assert_eq!(first.network.ipv6_mode.status, Enforcement::Declared);
+    // 无 IPv6 阻断开关；实测直连会出网，见 docs/spikes/network。
+    assert_eq!(first.network.ipv6_mode.status, Enforcement::Unverified);
     assert!(first.network.disable_non_proxied_udp.value);
     assert_eq!(
         first.network.disable_non_proxied_udp.status,
