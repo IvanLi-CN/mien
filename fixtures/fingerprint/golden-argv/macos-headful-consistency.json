@@ -1,0 +1,64 @@
+{
+  "schema_ref": "../../docs/contracts/fingerprint-spec.schema.json",
+  "case": "macos-headful-consistency",
+  "spec": {
+    "schema_version": 1,
+    "seed": 148001,
+    "platform": "macos",
+    "platform_version": "14.5",
+    "brand": "Edge",
+    "brand_version": "148.0.0.0",
+    "hardware_concurrency": 12,
+    "languages": ["en-US", "en"],
+    "timezone": "America/Los_Angeles",
+    "window": {"width": 1280, "height": 720},
+    "webrtc": {"disable_non_proxied_udp": true},
+    "network": {"doh_mode": "disabled", "ipv6_mode": "block"}
+  },
+  "expected_argv_runs": [
+    [
+      "--user-data-dir=/synthetic/profile",
+      "--fingerprint=148001",
+      "--fingerprint-platform=macos",
+      "--fingerprint-platform-version=14.5",
+      "--fingerprint-brand=Edge",
+      "--fingerprint-brand-version=148.0.0.0",
+      "--fingerprint-hardware-concurrency=12",
+      "--lang=en-US",
+      "--accept-lang=en-US,en",
+      "--timezone=America/Los_Angeles",
+      "--window-size=1280,720"
+    ],
+    [
+      "--user-data-dir=/synthetic/profile",
+      "--fingerprint=148001",
+      "--fingerprint-platform=macos",
+      "--fingerprint-platform-version=14.5",
+      "--fingerprint-brand=Edge",
+      "--fingerprint-brand-version=148.0.0.0",
+      "--fingerprint-hardware-concurrency=12",
+      "--lang=en-US",
+      "--accept-lang=en-US,en",
+      "--timezone=America/Los_Angeles",
+      "--window-size=1280,720"
+    ],
+    [
+      "--user-data-dir=/synthetic/profile",
+      "--fingerprint=148001",
+      "--fingerprint-platform=macos",
+      "--fingerprint-platform-version=14.5",
+      "--fingerprint-brand=Edge",
+      "--fingerprint-brand-version=148.0.0.0",
+      "--fingerprint-hardware-concurrency=12",
+      "--lang=en-US",
+      "--accept-lang=en-US,en",
+      "--timezone=America/Los_Angeles",
+      "--window-size=1280,720"
+    ]
+  ],
+  "expected_network": {
+    "doh_mode": {"value": "disabled", "status": "declared"},
+    "ipv6_mode": {"value": "block", "status": "declared"},
+    "disable_non_proxied_udp": {"value": true, "status": "unverified"}
+  }
+}

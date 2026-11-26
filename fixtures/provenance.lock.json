@@ -32,9 +32,9 @@
       "license": "Apache-2.0",
       "retrieved_at": "2026-11-25T00:00:00Z",
       "fetch_command": "none",
-      "size": 3204,
-      "notes": "Synthetic schema-backed fingerprint specs, deterministic argv expectations, and rejected capability cases.",
-      "tree_sha256": "7290260fdff1dd40f408304cd49d82648dfd4b3d42565119cba8ec08547762b6",
+      "size": 5270,
+      "notes": "Synthetic schema-backed fingerprint specs, deterministic argv expectations, repeated-launch consistency evidence, and rejected capability cases.",
+      "tree_sha256": "b18ba838711de4e950f9055987e6366b714b53f056c8be0dda0099e997ed2e0e",
       "fixtures": [
         {
           "path": "fixtures/fingerprint/golden-argv/macos-headful-default.json",
@@ -42,6 +42,13 @@
           "license": "Apache-2.0",
           "content_sha256": "4e808e1ab30c2cf9d629ceb45a029cd3057226b2c04fca21197f204918525b95",
           "size": 1074
+        },
+        {
+          "path": "fixtures/fingerprint/golden-argv/macos-headful-consistency.json",
+          "origin": "authored",
+          "license": "Apache-2.0",
+          "content_sha256": "58b8155f6f6658834ba7c93e7295eaeb6d01daf291664abc184dfa198ff49d9b",
+          "size": 2066
         },
         {
           "path": "fixtures/fingerprint/golden-argv/linux-spoof-toggles.json",
@@ -61,8 +68,8 @@
           "path": "fixtures/fingerprint/README.md",
           "origin": "authored",
           "license": "Apache-2.0",
-          "content_sha256": "f29416296e1b5e79eb6f3642800b21466be04b2154327cd7d34158505a0bc052",
-          "size": 673
+          "content_sha256": "4767bf5f67bb142e3cccaea0dbd23eaab1500f834931ff7d7cb4b19da8c9c263",
+          "size": 922
         }
       ]
     },
