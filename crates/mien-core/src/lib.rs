@@ -11,6 +11,7 @@ pub mod kernel;
 pub mod ports;
 pub mod proxy;
 pub mod runtime;
+pub mod secrets;
 pub mod storage;
 
 pub use error::{CoreError, ErrorCode};

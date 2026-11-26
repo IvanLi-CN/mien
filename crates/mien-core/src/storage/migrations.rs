@@ -83,6 +83,11 @@ pub fn open_and_migrate(path: &std::path::Path) -> Result<sqlx::SqlitePool, Core
             "profile_relations",
             include_str!("../../../../migrations/0003_profile_relations.sql"),
         ),
+        (
+            4,
+            "proxy_outbounds",
+            include_str!("../../../../migrations/0004_proxy_outbounds.sql"),
+        ),
     ];
     runtime.block_on(apply_all(&pool, FILES))?;
     Ok(pool)

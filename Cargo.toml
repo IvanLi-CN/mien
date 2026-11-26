@@ -14,6 +14,7 @@ publish = false
 [workspace.dependencies]
 mien-core = { path = "crates/mien-core" }
 
+aes-gcm = "0.10"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"
@@ -32,3 +33,4 @@ tonic = { version = "0.14", features = ["transport"] }
 tonic-prost = "0.14"
 prost = "0.14"
 prost-types = "0.14"
+zeroize = { version = "1", features = ["derive"] }

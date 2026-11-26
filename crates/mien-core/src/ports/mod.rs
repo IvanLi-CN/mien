@@ -3,4 +3,5 @@
 //! 占位归属：T9-A（仓储）、T9-D（进程启动器与显示环境）。
 
 pub mod launcher;
+pub mod proxy;
 pub mod repository;

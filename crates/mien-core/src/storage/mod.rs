@@ -3,6 +3,7 @@
 //! 占位归属：T9-A（仓储实现与事务）。
 
 pub mod migrations;
+pub mod proxy;
 pub mod sqlite;
 pub use migrations::{current_version, open_and_migrate};
 
