@@ -5,4 +5,5 @@ pub mod attach;
 pub mod engine;
 pub mod gateway;
 pub mod keys;
+pub mod share_link;
 pub mod xray;
