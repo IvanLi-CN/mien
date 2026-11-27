@@ -28,9 +28,55 @@ pub const KERNEL_BIN_ENV: &str = "MIEN_KERNEL_BIN";
 pub const XRAY_BIN_ENV: &str = "MIEN_XRAY_BIN";
 /// 服务端直连出口开关；未设置时直连档案启动返回 `DIRECT_EGRESS_DISABLED`。
 pub const ALLOW_DIRECT_EGRESS_ENV: &str = "MIEN_ALLOW_DIRECT_EGRESS";
+/// 代理检查回显端点（`http://host[:port]/path`）；未设置时检查端点返回 503。
+pub const PROXY_CHECK_URL_ENV: &str = "MIEN_PROXY_CHECK_URL";
+/// 代理检查总预算（秒）；默认 10 秒，上限 60 秒。
+pub const PROXY_CHECK_TIMEOUT_ENV: &str = "MIEN_PROXY_CHECK_TIMEOUT_SECS";
 
 /// 数据库文件名，位于数据根下。
 const DATABASE_FILE: &str = "mien.db";
+
+/// 代理检查运行参数：回显端点与总预算。
+///
+/// 回显端点是可选的（`REQ-PROXY-013` 的「可选回显端点」）：未配置时检查端点
+/// 返回 503，而不是伪造一次节点失败。默认预算 10 秒，允许 1..=60 秒。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProxyCheckRuntime {
+    pub url: Option<String>,
+    pub timeout: Duration,
+}
+
+impl Default for ProxyCheckRuntime {
+    fn default() -> Self {
+        Self {
+            url: std::env::var(PROXY_CHECK_URL_ENV)
+                .ok()
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty()),
+            timeout: proxy_check_timeout_from_env(),
+        }
+    }
+}
+
+impl ProxyCheckRuntime {
+    /// 显式指定回显端点与预算（测试与受限宿主使用）。
+    pub fn new(url: Option<String>, timeout: Duration) -> Self {
+        Self {
+            url,
+            timeout: timeout.clamp(Duration::from_secs(1), Duration::from_secs(60)),
+        }
+    }
+}
+
+/// `MIEN_PROXY_CHECK_TIMEOUT_SECS`：默认 10 秒，非数字或越界回落默认值。
+fn proxy_check_timeout_from_env() -> Duration {
+    let seconds = std::env::var(PROXY_CHECK_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|seconds| (1..=60).contains(seconds))
+        .unwrap_or(10);
+    Duration::from_secs(seconds)
+}
 
 /// 内核能力清单：进程内只加载一次，失败缓存为稳定错误码。
 static KERNEL: LazyLock<Result<String, String>> = LazyLock::new(|| {
@@ -283,6 +329,8 @@ struct Inner {
     allow_direct_egress: bool,
     /// 共享代理引擎槽；首次代理启动时填充，进程存活期间复用。
     engine: Arc<tokio::sync::Mutex<Option<Arc<crate::profiles::SharedEngine>>>>,
+    /// 代理检查参数：回显端点与总预算。
+    proxy_check: Arc<ProxyCheckRuntime>,
     /// 事件频道参数：保留窗口、票据 TTL、心跳与实时轮询间隔。
     events: Arc<crate::events::EventRuntime>,
 }
@@ -337,6 +385,7 @@ impl AppState {
                 kernel_bin,
                 allow_direct_egress,
                 engine: Arc::new(tokio::sync::Mutex::new(None)),
+                proxy_check: Arc::new(ProxyCheckRuntime::default()),
                 events: Arc::new(crate::events::EventRuntime::default()),
             }),
         }
@@ -490,6 +539,16 @@ impl AppState {
     /// 事件频道参数。
     pub fn events(&self) -> &crate::events::EventRuntime {
         &self.inner.events
+    }
+
+    /// 代理检查参数：回显端点与总预算。
+    pub fn proxy_check(&self) -> &ProxyCheckRuntime {
+        &self.inner.proxy_check
+    }
+
+    /// 替换代理检查参数（测试与受限宿主使用）。
+    pub fn with_proxy_check(self, proxy_check: ProxyCheckRuntime) -> Self {
+        self.with_mut(|inner| inner.proxy_check = Arc::new(proxy_check))
     }
 
     /// 共享代理引擎槽。

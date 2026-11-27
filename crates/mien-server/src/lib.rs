@@ -9,6 +9,7 @@ pub mod discovery;
 pub mod events;
 pub mod health;
 pub mod profiles;
+pub mod proxies;
 pub mod routes;
 pub mod state;
 pub mod tokens;
@@ -44,6 +45,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::auth_routes())
         .merge(routes::token_routes())
         .merge(routes::profile_routes())
+        .merge(routes::proxy_routes())
         .merge(routes::event_routes())
         .fallback(not_found)
         .with_state(state.clone())
