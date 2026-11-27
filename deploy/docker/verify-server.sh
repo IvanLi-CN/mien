@@ -5,8 +5,10 @@ set -u
 #
 # Runs as the container user (10001:10001), never as root, and exercises the real
 # HTTP API end to end: health, login, forced password change, profile creation,
-# a headful launch under Xvfb, stop, relaunch, final stop. Every step prints one
-# `PASS`/`FAIL` line; the exit status is 0 only when nothing failed.
+# a headful launch under Xvfb, stop, relaunch, final stop, a headless launch
+# proven from the kernel's own argv, and a `running` probe left behind for the
+# restart phases. Every step prints one `PASS`/`FAIL` line; the exit status is 0
+# only when nothing failed.
 #
 # It deliberately does not fake any result:
 # - `/readyz` 503 is recorded as a value, not converted into a failure.
@@ -18,13 +20,19 @@ set -u
 # `403 DIRECT_EGRESS_DISABLED`, and this script reports that instead of passing.
 #
 # Usage (inside the container):
-#   verify-server.sh
+#   verify-server.sh                  full acceptance (default)
+#   MIEN_VERIFY_PHASE=check verify-server.sh
+#                                     post-restart assertions only; needs the
+#                                     state file the `full` phase left behind
 # Environment:
 #   MIEN_PUBLIC_URL          needed for write requests: a Cookie write whose
 #                            Origin differs from this value is rejected.
 #   MIEN_VERIFY_BASE         default http://127.0.0.1:8787
 #   MIEN_VERIFY_NEW_PASSWORD default below; on a reused volume the stored
 #                            password is already this value.
+#   MIEN_VERIFY_PHASE        full (default) or check
+#   MIEN_VERIFY_REARM        1 makes the `check` phase start the probe again so
+#                            a following restart has a live claim to reconcile
 
 BASE="${MIEN_VERIFY_BASE:-http://127.0.0.1:${MIEN_HEALTHCHECK_PORT:-8787}}"
 PUBLIC_URL="${MIEN_PUBLIC_URL:-}"
@@ -103,6 +111,223 @@ runtime_json() {
   api GET "/api/v1/profiles/$PROFILE_ID/runtime" | sed '$d'
 }
 
+# Poll the runtime until it reaches the wanted state or a terminal failure.
+wait_for_state() {
+  wanted=$1
+  waited=0
+  RUNTIME_BODY='{}'
+  while [ "$waited" -lt "$START_TIMEOUT" ]; do
+    RUNTIME_BODY=$(runtime_json)
+    state=$(printf '%s' "$RUNTIME_BODY" | jq -r '.state // empty' 2>/dev/null)
+    if [ "$state" = "$wanted" ]; then
+      return 0
+    fi
+    case "$state" in
+      failed | crashed)
+        return 1
+        ;;
+    esac
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+start_once() {
+  label=$1
+  response=$(api POST "/api/v1/profiles/$PROFILE_ID/start" '')
+  status=$(status_of_response "$response")
+  body=$(body_of "$response")
+  if [ "$status" = '202' ]; then
+    pass "$label start_status: 202"
+  else
+    fail "$label start_status: expected 202, got '$status'"
+    say "$label start_body=$body"
+    return 1
+  fi
+  if wait_for_state running; then
+    pass "$label runtime_state: running"
+    return 0
+  fi
+  fail "$label runtime_state: $(printf '%s' "$RUNTIME_BODY" | jq -r '.state // "unknown"')"
+  say "$label runtime_body=$RUNTIME_BODY"
+  return 1
+}
+
+# Kernel pid from /proc: the process whose argv carries this runtime's id.
+kernel_pid() {
+  for cmdline in /proc/[0-9]*/cmdline; do
+    pid=${cmdline#/proc/}
+    pid=${pid%/cmdline}
+    if tr '\0' ' ' <"$cmdline" 2>/dev/null | grep -q -- "--mien-runtime-id=rt-$PROFILE_ID"; then
+      printf '%s' "$pid"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# True while `$1` is still this runtime's kernel process.
+kernel_alive() {
+  [ -n "$1" ] || return 1
+  # dash reports a failed `<` redirect itself, which `2>/dev/null` on `tr`
+  # cannot silence; checking readability first keeps the output clean.
+  [ -r "/proc/$1/cmdline" ] || return 1
+  tr '\0' ' ' <"/proc/$1/cmdline" | grep -q -- '--mien-runtime-id'
+}
+
+# Every process whose argv claims a runtime id, as `pid:cmdline` lines.
+# The glob is expanded once, so this function's own `tr`/`grep` children are
+# never candidates; the shell itself and its parent are excluded explicitly.
+mien_kernel_processes() {
+  for cmdline in /proc/[0-9]*/cmdline; do
+    pid=${cmdline#/proc/}
+    pid=${pid%/cmdline}
+    [ "$pid" = "$$" ] && continue
+    [ "$pid" = "$PPID" ] && continue
+    if tr '\0' ' ' <"$cmdline" 2>/dev/null | grep -q -- '--mien-runtime-id='; then
+      printf '%s:%s\n' "$pid" "$(tr '\0' ' ' <"$cmdline" 2>/dev/null)"
+    fi
+  done
+}
+
+# Log in with an already-known password; sets COOKIE and CSRF.
+# The post-restart phase has no bootstrap file any more, only the rotated
+# password this run set, so it reuses the same login instead of a second path.
+login_with_password() {
+  attempt_password=$1
+  login=$(curl -sS --max-time 30 -D /tmp/mien-verify-headers.txt -X POST "$BASE/api/v1/auth/login" \
+    -H 'Content-Type: application/json' -H 'Accept: application/json' \
+    -w '\n%{http_code}' \
+    --data-binary "$(jq -nc --arg password "$attempt_password" '{password: $password}')")
+  login_status=$(status_of_response "$login")
+  login_body=$(body_of "$login")
+  if [ "$login_status" != '200' ]; then
+    fail "login_status: expected 200, got '$login_status'"
+    say "login_body=$login_body"
+    return 1
+  fi
+  # The session cookie is read from `Set-Cookie`, not from curl's cookie jar: in
+  # server mode the cookie is `Secure`, and a jar may refuse to store a Secure
+  # cookie for a plain `http://` origin. `api()` sends the value back explicitly.
+  COOKIE=$(tr -d '\r' </tmp/mien-verify-headers.txt \
+    | awk '/^[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee]: mien_session=/ { sub(/^[^=]*=/, ""); sub(/;.*/, ""); print }' \
+    | tail -n 1)
+  CSRF=$(printf '%s' "$login_body" | jq -r '.csrf_token')
+  if [ -z "$COOKIE" ] || [ -z "$CSRF" ] || [ "$CSRF" = 'null' ]; then
+    fail 'session_cookie_and_csrf_received'
+    return 1
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Restart phases: `full` runs the acceptance above, `check` runs after a
+# container restart and asserts what the new control plane made true.
+# ---------------------------------------------------------------------------
+PHASE="${MIEN_VERIFY_PHASE:-full}"
+STATE_FILE="$DATA_ROOT/verify-restart.state"
+
+# Post-restart assertions. Run as its own phase because `docker restart` and
+# `docker kill` cannot be issued from inside the container this script lives in.
+run_restart_check() {
+  say '== restart check =='
+  expect_equal 'restart healthz_status' "$(status_of "$BASE/healthz")" '200'
+  expect_equal 'restart readyz_status' "$(status_of "$BASE/readyz")" '200'
+
+  if [ ! -f "$STATE_FILE" ]; then
+    say "BLOCKED restart_state_missing: $STATE_FILE"
+    say 'BLOCKED detail=the prepare phase did not leave a running probe profile'
+    say 'RESULT BLOCKED (no restart was prepared; no assertion was skipped)'
+    return 3
+  fi
+  # The file only holds `KEY=value` lines written above; it carries no secret.
+  # shellcheck disable=SC1090
+  . "$STATE_FILE"
+  PROFILE_ID=${PROFILE_ID:-}
+  PRE_STATE=${PRE_STATE:-unknown}
+  PRE_ISOLATION=${PRE_ISOLATION:-unknown}
+  if [ -z "$PROFILE_ID" ]; then
+    say "BLOCKED restart_state_invalid: $STATE_FILE"
+    say 'RESULT BLOCKED (probe profile id missing)'
+    return 3
+  fi
+  # Without this, a restart that happened on a stopped runtime would look like
+  # a pass without ever exercising reconciliation.
+  expect_equal 'restart probe_was_running' "$PRE_STATE" 'running'
+
+  if login_with_password "$NEW_PASSWORD"; then
+    pass 'restart login_status: 200'
+    pass "restart session_cookie_and_csrf_received cookie_len=${#COOKIE} csrf_len=${#CSRF}"
+  else
+    say 'RESULT FAIL'
+    return 1
+  fi
+
+  lookup=$(api GET "/api/v1/profiles/$PROFILE_ID")
+  expect_equal 'restart profile_get_status' "$(status_of_response "$lookup")" '200'
+  expect_equal 'restart profile_id' "$(body_of "$lookup" | jq -r '.id')" "$PROFILE_ID"
+
+  row_state=$(sqlite3 "$DATA_ROOT/mien.db" \
+    "SELECT state FROM runtimes WHERE profile_id='$PROFILE_ID';" 2>/dev/null || true)
+  api_state=$(runtime_json | jq -r '.state // "missing"' 2>/dev/null)
+  say "restart pre_restart_state=$PRE_STATE runtime_row_state=${row_state:-missing} api_state=$api_state"
+  case "$row_state" in
+    stopped | crashed | failed) pass "restart runtime_row_terminal: $row_state" ;;
+    *) fail "restart runtime_row_terminal: expected stopped/crashed/failed, got '${row_state:-missing}'" ;;
+  esac
+  case "$api_state" in
+    stopped | crashed | failed) pass "restart api_state_terminal: $api_state" ;;
+    *) fail "restart api_state_terminal: expected stopped/crashed/failed, got '$api_state'" ;;
+  esac
+
+  # `last_known_isolation` is the last successful `running` verdict; a restart
+  # must not rewrite it to `unknown` while settling the row.
+  isolation_after=$(sqlite3 "$DATA_ROOT/mien.db" \
+    "SELECT last_known_isolation FROM runtimes WHERE profile_id='$PROFILE_ID';" 2>/dev/null || true)
+  expect_equal 'restart last_known_isolation_retained' "${isolation_after:-missing}" "$PRE_ISOLATION"
+
+  orphans=$(mien_kernel_processes)
+  if [ -z "$orphans" ]; then
+    pass 'restart orphan_kernel_processes: 0'
+  else
+    fail 'restart orphan_kernel_processes: 0'
+    say "restart orphan_kernel_processes_actual=$orphans"
+  fi
+
+  # Arm the next restart phase: the probe must be left running again, so the
+  # following `docker kill` tests reconciliation and not an already-terminal row.
+  if [ "${MIEN_VERIFY_REARM:-0}" = '1' ]; then
+    if start_once 'restart-rearm'; then
+      row_state=$(sqlite3 "$DATA_ROOT/mien.db" \
+        "SELECT state FROM runtimes WHERE profile_id='$PROFILE_ID';" 2>/dev/null || true)
+      isolation_now=$(sqlite3 "$DATA_ROOT/mien.db" \
+        "SELECT last_known_isolation FROM runtimes WHERE profile_id='$PROFILE_ID';" 2>/dev/null || true)
+      expect_equal 'restart rearm runtime_row' "${row_state:-missing}" 'running'
+      printf 'PROFILE_ID=%s\nPRE_STATE=%s\nPRE_ISOLATION=%s\n' \
+        "$PROFILE_ID" "${row_state:-missing}" "${isolation_now:-unknown}" >"$STATE_FILE"
+      pass "restart rearm state_recorded profile_id=$PROFILE_ID"
+    fi
+  fi
+
+  if [ "$FAILURES" -eq 0 ]; then
+    say 'RESULT PASS (0 failures)'
+    return 0
+  fi
+  say "RESULT FAIL ($FAILURES failure(s))"
+  return 1
+}
+
+if [ "$PHASE" = 'check' ]; then
+  run_restart_check
+  exit $?
+fi
+if [ "$PHASE" != 'full' ]; then
+  say "BLOCKED phase_unknown: $PHASE"
+  say 'BLOCKED detail=MIEN_VERIFY_PHASE must be full or check'
+  exit 3
+fi
+
 # ---------------------------------------------------------------------------
 # 1. Health: liveness 200, readiness 200 or 503 (both in the contract)
 # ---------------------------------------------------------------------------
@@ -163,29 +388,10 @@ fi
 # The session cookie is read from `Set-Cookie`, not from curl's cookie jar: in
 # server mode the cookie is `Secure`, and a jar may refuse to store a Secure
 # cookie for a plain `http://` origin. `api()` sends the value back explicitly.
-login=$(curl -sS --max-time 30 -D /tmp/mien-verify-headers.txt -X POST "$BASE/api/v1/auth/login" \
-  -H 'Content-Type: application/json' -H 'Accept: application/json' \
-  -w '\n%{http_code}' \
-  --data-binary "$(jq -nc --arg password "$CURRENT_PASSWORD" '{password: $password}')")
-login_status=$(status_of_response "$login")
-login_body=$(body_of "$login")
-if [ "$login_status" = '200' ]; then
+if login_with_password "$CURRENT_PASSWORD"; then
   pass 'login_status: 200'
-else
-  fail "login_status: expected 200, got '$login_status'"
-  say "login_body=$login_body"
-  say 'RESULT FAIL'
-  exit 1
-fi
-
-COOKIE=$(tr -d '\r' </tmp/mien-verify-headers.txt \
-  | awk '/^[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee]: mien_session=/ { sub(/^[^=]*=/, ""); sub(/;.*/, ""); print }' \
-  | tail -n 1)
-CSRF=$(printf '%s' "$login_body" | jq -r '.csrf_token')
-if [ -n "$COOKIE" ] && [ -n "$CSRF" ] && [ "$CSRF" != 'null' ]; then
   pass "session_cookie_and_csrf_received cookie_len=${#COOKIE} csrf_len=${#CSRF}"
 else
-  fail 'session_cookie_and_csrf_received'
   say 'RESULT FAIL'
   exit 1
 fi
@@ -256,68 +462,6 @@ expect_equal 'profile_isolation_before_start' \
 # ---------------------------------------------------------------------------
 # 4/5. Start headful, wait for `running`, prove the kernel from /proc
 # ---------------------------------------------------------------------------
-# Poll the runtime until it reaches the wanted state or a terminal failure.
-wait_for_state() {
-  wanted=$1
-  waited=0
-  RUNTIME_BODY='{}'
-  while [ "$waited" -lt "$START_TIMEOUT" ]; do
-    RUNTIME_BODY=$(runtime_json)
-    state=$(printf '%s' "$RUNTIME_BODY" | jq -r '.state // empty' 2>/dev/null)
-    if [ "$state" = "$wanted" ]; then
-      return 0
-    fi
-    case "$state" in
-      failed | crashed)
-        return 1
-        ;;
-    esac
-    sleep 1
-    waited=$((waited + 1))
-  done
-  return 1
-}
-
-start_once() {
-  label=$1
-  response=$(api POST "/api/v1/profiles/$PROFILE_ID/start" '')
-  status=$(status_of_response "$response")
-  body=$(body_of "$response")
-  if [ "$status" = '202' ]; then
-    pass "$label start_status: 202"
-  else
-    fail "$label start_status: expected 202, got '$status'"
-    say "$label start_body=$body"
-    return 1
-  fi
-  if wait_for_state running; then
-    pass "$label runtime_state: running"
-    return 0
-  fi
-  fail "$label runtime_state: $(printf '%s' "$RUNTIME_BODY" | jq -r '.state // "unknown"')"
-  say "$label runtime_body=$RUNTIME_BODY"
-  return 1
-}
-
-# Kernel pid from /proc: the process whose argv carries this runtime's id.
-kernel_pid() {
-  for cmdline in /proc/[0-9]*/cmdline; do
-    pid=${cmdline#/proc/}
-    pid=${pid%/cmdline}
-    if tr '\0' ' ' <"$cmdline" 2>/dev/null | grep -q -- "--mien-runtime-id=rt-$PROFILE_ID"; then
-      printf '%s' "$pid"
-      return 0
-    fi
-  done
-  return 1
-}
-
-# True while `$1` is still this runtime's kernel process.
-kernel_alive() {
-  [ -n "$1" ] || return 1
-  tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null | grep -q -- '--mien-runtime-id'
-}
-
 say '== runtime start #1 =='
 if start_once 'start1'; then
   isolation=$(printf '%s' "$RUNTIME_BODY" | jq -r '.isolation')
@@ -447,6 +591,118 @@ say '== migrations =='
 version=$(sqlite3 "$DATA_ROOT/mien.db" \
   'SELECT COALESCE(MAX(version), 0) FROM schema_migrations;' 2>/dev/null || echo 'error')
 expect_equal 'schema_version' "$version" '8'
+
+# ---------------------------------------------------------------------------
+# 10. Headless mode in the container
+# ---------------------------------------------------------------------------
+# A separate profile with `mode: headless`; the headful acceptance above proves
+# the display stack, this proves the mode does not depend on it and that its
+# guarantee is lowered in the response. The kernel argv is read from /proc, so
+# `--headless=new` is proven on the real process, not just in a plan.
+say '== headless mode =='
+HEADLESS_NAME="$PROFILE_NAME-headless"
+headless_body=$(jq -nc --arg name "$HEADLESS_NAME" --argjson fingerprint "$fingerprint" \
+  '{name: $name, mode: "headless", fingerprint: $fingerprint}')
+headless_create=$(api POST /api/v1/profiles "$headless_body")
+headless_status=$(status_of_response "$headless_create")
+headless_json=$(body_of "$headless_create")
+HEADLESS_ID=
+if [ "$headless_status" = '201' ]; then
+  HEADLESS_ID=$(printf '%s' "$headless_json" | jq -r '.id')
+  pass "headless profile_create_status: 201 id=$HEADLESS_ID"
+  expect_equal 'headless profile_mode' "$(printf '%s' "$headless_json" | jq -r '.mode')" 'headless'
+else
+  fail "headless profile_create_status: expected 201, got '$headless_status'"
+  say "headless profile_create_body=$headless_json"
+fi
+
+if [ -n "$HEADLESS_ID" ]; then
+  # `wait_for_state`/`start_once`/`kernel_pid` address the headful profile by id;
+  # the headless phase needs the same helpers pointed at this one.
+  HEADFUL_ID=$PROFILE_ID
+  PROFILE_ID=$HEADLESS_ID
+  if start_once 'headless'; then
+    isolation=$(printf '%s' "$RUNTIME_BODY" | jq -r '.isolation')
+    say "headless_isolation_actual=$isolation"
+    expect_equal 'headless reduced_assurance' \
+      "$(printf '%s' "$RUNTIME_BODY" | jq -r '.reduced_assurance')" 'true'
+    expect_equal 'headless direct' "$(printf '%s' "$RUNTIME_BODY" | jq -r '.direct')" 'true'
+    expect_equal 'headless mode_reported' "$(printf '%s' "$RUNTIME_BODY" | jq -r '.mode')" 'headless'
+    limitations=$(printf '%s' "$RUNTIME_BODY" | jq -r '.limitations | join("; ")')
+    say "headless limitations_actual=$limitations"
+
+    if HEADLESS_PID=$(kernel_pid); then
+      headless_cmdline=$(tr '\0' ' ' <"/proc/$HEADLESS_PID/cmdline" 2>/dev/null)
+      say "headless kernel_pid=$HEADLESS_PID cmdline=$headless_cmdline"
+      # Split the argv on NUL into one token per line so the checks are exact
+      # tokens, never substring matches inside a path or another flag's value.
+      headless_argv=$(tr '\0' '\n' <"/proc/$HEADLESS_PID/cmdline" 2>/dev/null)
+      if printf '%s\n' "$headless_argv" | grep -qx -- '--headless=new'; then
+        pass 'headless argv_contains --headless=new'
+      elif printf '%s\n' "$headless_argv" | grep -qx -- '--headless'; then
+        pass 'headless argv_contains --headless'
+      else
+        fail 'headless argv_contains --headless (the process is not running headless)'
+      fi
+      if printf '%s\n' "$headless_argv" | grep -qE -- '^--(start-maximized|start-fullscreen|kiosk)$'; then
+        fail "headless argv_contains_headful_window_flags: $(printf '%s\n' "$headless_argv" | grep -E -- '^--(start-maximized|start-fullscreen|kiosk)$' | tr '\n' ' ')"
+      else
+        pass 'headless argv_has_no_headful_window_flags'
+      fi
+      # `--window-size=W,H` stays in argv for both modes; it is viewport geometry,
+      # not evidence of a window, so record it and only fail on other window flags.
+      window_size=$(printf '%s\n' "$headless_argv" | grep -E -- '^--window-size=' || true)
+      say "headless window_size_arg=${window_size:-none}"
+      other_window=$(printf '%s\n' "$headless_argv" \
+        | grep -E -- '^--(app|new-window|window-position|window-name|auto-open-devtools-for-tabs)=' || true)
+      if [ -z "$other_window" ]; then
+        pass 'headless argv_has_no_other_window_arguments'
+      else
+        fail "headless argv_has_no_other_window_arguments: $other_window"
+      fi
+
+      stop=$(api POST "/api/v1/profiles/$HEADLESS_ID/stop" '')
+      expect_equal 'headless stop_status' "$(status_of_response "$stop")" '202'
+      if wait_for_state stopped; then
+        pass 'headless runtime_state: stopped'
+      else
+        fail "headless runtime_state: $(printf '%s' "$RUNTIME_BODY" | jq -r '.state // "unknown"')"
+      fi
+      waited=0
+      while [ "$waited" -lt 15 ] && kernel_alive "$HEADLESS_PID"; do
+        sleep 1
+        waited=$((waited + 1))
+      done
+      if kernel_alive "$HEADLESS_PID"; then
+        fail "headless kernel_process_gone pid=$HEADLESS_PID"
+      else
+        pass "headless kernel_process_gone pid=$HEADLESS_PID"
+      fi
+    else
+      fail 'headless kernel_process_found_in_proc'
+    fi
+  fi
+  PROFILE_ID=$HEADFUL_ID
+fi
+
+# ---------------------------------------------------------------------------
+# 11. Leave a running probe for the restart phases
+# ---------------------------------------------------------------------------
+# `docker restart`/`docker kill` cannot be issued from inside this container, so
+# the script leaves a `running` row plus the values the post-restart phase needs.
+# The state file holds only the profile id and the observed state/isolation.
+say '== restart prepare =='
+if start_once 'restart-prepare'; then
+  row_state=$(sqlite3 "$DATA_ROOT/mien.db" \
+    "SELECT state FROM runtimes WHERE profile_id='$PROFILE_ID';" 2>/dev/null || true)
+  isolation_now=$(sqlite3 "$DATA_ROOT/mien.db" \
+    "SELECT last_known_isolation FROM runtimes WHERE profile_id='$PROFILE_ID';" 2>/dev/null || true)
+  expect_equal 'restart_prepare runtime_row' "${row_state:-missing}" 'running'
+  printf 'PROFILE_ID=%s\nPRE_STATE=%s\nPRE_ISOLATION=%s\n' \
+    "$PROFILE_ID" "${row_state:-missing}" "${isolation_now:-unknown}" >"$STATE_FILE"
+  chmod 0600 "$STATE_FILE"
+  say "restart_prepare state_file=$STATE_FILE profile_id=$PROFILE_ID isolation=$isolation_now"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
