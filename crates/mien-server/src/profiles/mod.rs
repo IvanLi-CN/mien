@@ -54,6 +54,7 @@ use serde_json::Value;
 use sqlx::{Row, SqlitePool};
 
 use crate::RequestId;
+use crate::auth::{AuditEvent, record_audit};
 use crate::state::{AppState, XRAY_BIN_ENV};
 
 /// 列表页大小上限（`docs/contracts/openapi.yaml#/components/parameters/Limit`）。
@@ -1001,34 +1002,42 @@ pub async fn archive(state: &AppState, id: &str) -> Result<(), ApiError> {
 
 /// 恢复：`archived|deleted -> active`。
 ///
+/// 返回是否真的发生了状态转移：仓库层对已 `active` 的档案返回当时行而不写库，
+/// 调用方据此避免为重放记一条 `profile.restored`。
+///
 /// # Errors
 /// 档案不存在、回收站目录缺失（409）或存储错误。
-pub async fn restore(state: &AppState, id: &str) -> Result<(), ApiError> {
+pub async fn restore(state: &AppState, id: &str) -> Result<bool, ApiError> {
     let repository = repository(state)?;
     let current = load_profile(state, id).await?;
+    let changed = current.status != ProfileStatus::Active;
     repository
         .restore(&current.id)
         .await
-        .map(|_| ())
+        .map(|_| changed)
         .map_err(ApiError::from_core)
 }
 
 /// 删除：默认软删除，`permanent=true` 永久清理。
 ///
+/// 返回是否真的改变了状态：已软删除的档案再软删除是仓库层的幂等空操作，
+/// 调用方据此避免重放 `profile.deleted`；永久清理成功必然删掉了一行。
+///
 /// # Errors
 /// 档案不存在、运行时非终态（409）、状态不符或目录操作失败。
-pub async fn delete(state: &AppState, id: &str, permanent: bool) -> Result<(), ApiError> {
+pub async fn delete(state: &AppState, id: &str, permanent: bool) -> Result<bool, ApiError> {
     let repository = repository(state)?;
     let pool = pool_for(state)?;
     let current = load_profile(state, id).await?;
     ensure_stopped(state, &current).await?;
+    let repeated = !permanent && current.status == ProfileStatus::Deleted;
     let result = if permanent {
         repository.purge(&current.id).await
     } else {
         repository.soft_delete(&current.id).await.map(|_| ())
     };
     match result {
-        Ok(()) => Ok(()),
+        Ok(()) => Ok(!repeated),
         Err(error) => Err(purge_error(pool, &current.id.0, error).await),
     }
 }
@@ -1894,6 +1903,37 @@ pub fn ok<T: Serialize>(body: &T) -> Response {
 /// `202 Accepted` + JSON。
 pub fn accepted<T: Serialize>(body: &T) -> Response {
     (StatusCode::ACCEPTED, Json(body)).into_response()
+}
+
+/// 写一条成功的审计事件；失败只记日志，不影响已完成的业务动作。
+///
+/// `target` 忠实反映被操作对象：档案级事件用 `profile:<id>`，由
+/// [`crate::auth::record_audit`] 据此填 `profile_id`；导入等批级事件用 `profiles`。
+/// `action` 与 `event_type` 同值，与导出/导入路径的既有约定一致。
+/// 审计只记非敏感元数据：口令、载荷正文、指纹种子与凭据都不进入。
+pub(super) async fn audit(
+    state: &AppState,
+    event_type: &str,
+    target: &str,
+    request_id: &str,
+    metadata: Value,
+) {
+    let Some(pool) = state.db() else {
+        return;
+    };
+    record_audit(
+        pool,
+        AuditEvent {
+            actor: crate::auth::ADMIN_ACCOUNT,
+            event_type,
+            action: event_type,
+            target,
+            result: "success",
+            request_id,
+            metadata,
+        },
+    )
+    .await;
 }
 
 /// 删除请求的 `permanent` 查询参数。

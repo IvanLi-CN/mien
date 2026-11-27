@@ -1,11 +1,13 @@
-//! 审计事件列表验收（T29，`REQ-API-009`）。
+//! 审计事件验收（`REQ-API-009`）。
 //!
-//! 覆盖：稳定排序与二元组游标（同一毫秒不重复不遗漏）、五个筛选、
+//! 读端点覆盖：稳定排序与二元组游标（同一毫秒不重复不遗漏）、五个筛选、
 //! 未知参数/越界页大小/非法游标/非法 ULID/反向区间的 422、
 //! 401 先于 403 先于 422，以及历史坏 `metadata_json` 行不放大成 500。
 //!
-//! 造数据直接写 `audit_events`：读端点的职责是"忠实读出存储里的行"，
-//! 走认证路径生成每一条会让排序与同毫秒断言不可控。
+//! 排序类用例直接写 `audit_events`：读端点的职责是"忠实读出存储里的行"，
+//! 走认证路径生成每一条会让同毫秒断言不可控。写路径用例（T31 档案生命周期）
+//! 反过来必须走真实路由，因为要验证的正是"领域函数成功后落一行审计"，
+//! 并且只用 `profile_id`/`event_type` 筛选，不靠全量计数——登录与改密也写审计。
 
 use std::future::Future;
 use std::pin::Pin;
@@ -672,11 +674,10 @@ fn a_corrupt_metadata_row_does_not_break_the_page() {
     });
 }
 
-/// 导出会写 `profile:<id>` 审计；这是当前**唯一**带档案标识的写路径。
+/// 导出会写 `profile:<id>` 审计，且 `target` 能被 `profile_id` 筛出来。
 ///
-/// 档案 CRUD 与运行时生命周期尚未写审计事件（`events.schema.json` 已定义
-/// `profile.created` 等 14 种类型但未实现），因此这里用导出验证
-/// "写入侧给出的 target 能被 `profile_id` 筛出来"这条链路。
+/// 导出是档案级审计的最早实现；此处保留它作为独立回归点，确保后来加入的
+/// CRUD/生命周期事件没有改掉既有 target 约定。
 #[test]
 fn records_written_through_the_api_carry_their_profile_id() {
     let (_dir, state) = state();
@@ -747,6 +748,470 @@ fn records_written_through_the_api_carry_their_profile_id() {
             if let Some(id) = row["profile_id"].as_str() {
                 assert_eq!(id, profile_id, "unrelated profile leaked into the filter");
             }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// 档案生命周期审计（T31）
+// ---------------------------------------------------------------------------
+
+/// 固定的档案创建请求体；`notes`/`start_url` 用独特值以便做泄漏负例断言。
+fn profile_input(name: &str) -> Value {
+    json!({
+        "name": name,
+        "notes": "NOTE-LEAK-CANARY-9f3a",
+        "start_url": "https://CANARY-URL-7b21.example.com/landing",
+        "fingerprint": {
+            "schema_version": 1,
+            "platform": "macos",
+            "platform_version": "14.5",
+            "brand": "Edge",
+            "brand_version": "148.0.0.0",
+            "hardware_concurrency": 12,
+            "languages": ["en-US", "en"],
+            "timezone": "America/Los_Angeles",
+            "window": { "width": 1280, "height": 720 },
+            "webrtc": { "disable_non_proxied_udp": true },
+            "network": { "doh_mode": "disabled", "ipv6_mode": "block" },
+        },
+        "mode": "headful",
+    })
+}
+
+async fn create_profile(
+    app: axum::Router,
+    session: &Session,
+    name: &str,
+    key: Option<&str>,
+) -> Value {
+    let mut call = Call::new(Method::POST, "/api/v1/profiles")
+        .cookie(session)
+        .csrf(session)
+        .origin()
+        .json(profile_input(name));
+    if let Some(key) = key {
+        call = call.header(header::HeaderName::from_static("idempotency-key"), key);
+    }
+    let (status, body) = body_json(call.send(app).await).await;
+    assert_eq!(status, StatusCode::CREATED, "create {name}: {body}");
+    body
+}
+
+/// 一次写操作的响应断言：只关心状态，正文供失败信息使用。
+async fn send(app: axum::Router, call: Call) -> (StatusCode, Value) {
+    body_json(call.send(app).await).await
+}
+
+/// 直接读该档案的审计行：`(event_type, target, result, metadata_json)`。
+async fn rows_for(
+    pool: &sqlx::SqlitePool,
+    profile_id: &str,
+) -> Vec<(String, String, String, String)> {
+    sqlx::query_as(
+        "SELECT event_type, target, result, metadata_json FROM audit_events \
+         WHERE profile_id=?1 ORDER BY created_at, id",
+    )
+    .bind(profile_id)
+    .fetch_all(pool)
+    .await
+    .expect("audit rows")
+}
+
+fn event_types(rows: &[(String, String, String, String)]) -> Vec<&str> {
+    rows.iter().map(|row| row.0.as_str()).collect()
+}
+
+#[test]
+fn every_lifecycle_endpoint_writes_its_event_with_the_profile_target() {
+    let (_dir, state) = state();
+    let pool = state.db().expect("pool").clone();
+    let app = router(state);
+
+    runtime().block_on(async {
+        let session = login(app.clone()).await;
+        let created = create_profile(app.clone(), &session, "lifecycle", None).await;
+        let source = created["id"].as_str().expect("id").to_owned();
+
+        // update
+        let (status, body) = send(
+            app.clone(),
+            Call::new(Method::PATCH, format!("/api/v1/profiles/{source}"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin()
+                .json(json!({ "name": "lifecycle renamed" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "update: {body}");
+
+        // duplicate：新 id 是 target，来源 id 进 metadata
+        let (status, copy) = send(
+            app.clone(),
+            Call::new(Method::POST, format!("/api/v1/profiles/{source}/duplicate"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin()
+                .json(json!({ "copy_fingerprint": false, "copy_proxy": false })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "duplicate: {copy}");
+        let copy_id = copy["id"].as_str().expect("copy id").to_owned();
+        assert_ne!(copy_id, source, "duplicate must mint a new id");
+
+        let copy_rows = rows_for(&pool, &copy_id).await;
+        assert_eq!(
+            event_types(&copy_rows),
+            vec!["profile.duplicated"],
+            "only the duplicate event targets the copy: {copy_rows:?}"
+        );
+        assert_eq!(copy_rows[0].1, format!("profile:{copy_id}"));
+        let copy_metadata: Value =
+            serde_json::from_str(&copy_rows[0].3).expect("duplicate metadata");
+        assert_eq!(copy_metadata["source_id"], source.as_str());
+        assert_eq!(
+            copy_metadata.as_object().expect("object").len(),
+            1,
+            "duplicate metadata is just the source id: {copy_metadata}"
+        );
+
+        // archive，然后重复归档：领域函数是 409，不得再写事件
+        let (status, body) = send(
+            app.clone(),
+            Call::new(Method::POST, format!("/api/v1/profiles/{source}/archive"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "archive: {body}");
+        let (status, body) = send(
+            app.clone(),
+            Call::new(Method::POST, format!("/api/v1/profiles/{source}/archive"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "second archive: {body}");
+        assert_eq!(body["code"], "PROFILE_ARCHIVED");
+
+        // restore，以及对已 active 的档案再次 restore：幂等空操作，不写事件
+        let (status, body) = send(
+            app.clone(),
+            Call::new(Method::POST, format!("/api/v1/profiles/{source}/restore"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "restore: {body}");
+        let (status, _) = send(
+            app.clone(),
+            Call::new(Method::POST, format!("/api/v1/profiles/{source}/restore"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin(),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::NO_CONTENT,
+            "restoring an active profile is an idempotent no-op"
+        );
+
+        // 软删除，重复软删除：幂等空操作
+        let (status, body) = send(
+            app.clone(),
+            Call::new(Method::DELETE, format!("/api/v1/profiles/{source}"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "soft delete: {body}");
+        let (status, _) = send(
+            app.clone(),
+            Call::new(Method::DELETE, format!("/api/v1/profiles/{source}"))
+                .cookie(&session)
+                .csrf(&session)
+                .origin(),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::NO_CONTENT,
+            "deleting an already deleted profile is an idempotent no-op"
+        );
+
+        // 永久清理
+        let (status, body) = send(
+            app.clone(),
+            Call::new(
+                Method::DELETE,
+                format!("/api/v1/profiles/{source}?permanent=true"),
+            )
+            .cookie(&session)
+            .csrf(&session)
+            .origin(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "purge: {body}");
+
+        let rows = rows_for(&pool, &source).await;
+        assert_eq!(
+            event_types(&rows),
+            vec![
+                "profile.created",
+                "profile.updated",
+                "profile.archived",
+                "profile.restored",
+                "profile.deleted",
+                "profile.purged",
+            ],
+            "exactly one event per real transition: {rows:?}"
+        );
+        for row in &rows {
+            assert_eq!(row.1, format!("profile:{source}"), "target: {row:?}");
+            assert_eq!(row.2, "success", "result: {row:?}");
+        }
+
+        let soft_delete: Value = serde_json::from_str(&rows[4].3).expect("delete metadata");
+        assert_eq!(soft_delete, json!({ "permanent": false }));
+        let purge: Value = serde_json::from_str(&rows[5].3).expect("purge metadata");
+        assert_eq!(purge, json!({ "permanent": true }));
+    });
+}
+
+#[test]
+fn action_mirrors_event_type_and_the_profile_filter_finds_every_event() {
+    let (_dir, state) = state();
+    let pool = state.db().expect("pool").clone();
+    let app = router(state);
+
+    runtime().block_on(async {
+        let session = login(app.clone()).await;
+        let created = create_profile(app.clone(), &session, "filtered", None).await;
+        let id = created["id"].as_str().expect("id").to_owned();
+
+        let other = create_profile(app.clone(), &session, "bystander", None).await;
+        let other_id = other["id"].as_str().expect("id").to_owned();
+
+        for (method, path) in [
+            (Method::POST, format!("/api/v1/profiles/{id}/archive")),
+            (Method::POST, format!("/api/v1/profiles/{id}/restore")),
+        ] {
+            let (status, body) = send(
+                app.clone(),
+                Call::new(method, path)
+                    .cookie(&session)
+                    .csrf(&session)
+                    .origin(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::NO_CONTENT, "transition: {body}");
+        }
+
+        let actions: Vec<(String, String)> =
+            sqlx::query_as("SELECT event_type, action FROM audit_events WHERE profile_id=?1")
+                .bind(&id)
+                .fetch_all(&pool)
+                .await
+                .expect("event/action pairs");
+        for (event_type, action) in &actions {
+            assert_eq!(event_type, action, "action must mirror event_type");
+        }
+
+        let (status, page) =
+            list(app.clone(), &session, &format!("profile_id={id}&limit=200")).await;
+        assert_eq!(status, StatusCode::OK, "filtered page: {page}");
+        let found: Vec<&str> = items(&page)
+            .iter()
+            .map(|item| item["event_type"].as_str().expect("event_type"))
+            .collect();
+        for expected in ["profile.created", "profile.archived", "profile.restored"] {
+            assert!(
+                found.contains(&expected),
+                "`{expected}` must be filterable by profile_id: {page}"
+            );
+        }
+        for item in items(&page) {
+            assert_eq!(item["profile_id"], id.as_str(), "no foreign rows: {page}");
+        }
+
+        // 反向确认：另一个档案的筛选页里没有本档案的事件。
+        let (_, other_page) = list(
+            app,
+            &session,
+            &format!("profile_id={other_id}&event_type=profile.archived"),
+        )
+        .await;
+        assert!(
+            items(&other_page).is_empty(),
+            "the filter must not leak across profiles: {other_page}"
+        );
+    });
+}
+
+#[test]
+fn replayed_idempotent_create_writes_one_audit_row() {
+    let (_dir, state) = state();
+    let pool = state.db().expect("pool").clone();
+    let app = router(state);
+
+    runtime().block_on(async {
+        let session = login(app.clone()).await;
+        let first =
+            create_profile(app.clone(), &session, "replay", Some("audit-replay-key-1")).await;
+        let id = first["id"].as_str().expect("id").to_owned();
+
+        let (status, replay) = body_json(
+            Call::new(Method::POST, "/api/v1/profiles")
+                .cookie(&session)
+                .csrf(&session)
+                .origin()
+                .header(
+                    header::HeaderName::from_static("idempotency-key"),
+                    "audit-replay-key-1",
+                )
+                .json(profile_input("replay"))
+                .send(app.clone())
+                .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "replay: {replay}");
+        assert_eq!(
+            replay["id"],
+            id.as_str(),
+            "replay returns the first profile"
+        );
+
+        let rows = rows_for(&pool, &id).await;
+        assert_eq!(
+            event_types(&rows),
+            vec!["profile.created"],
+            "a cached replay must not append a second event: {rows:?}"
+        );
+    });
+}
+
+#[test]
+fn lifecycle_metadata_carries_no_seed_credential_notes_or_url() {
+    let (_dir, state) = state();
+    let pool = state.db().expect("pool").clone();
+    let app = router(state);
+
+    runtime().block_on(async {
+        let session = login(app.clone()).await;
+        let created = create_profile(app.clone(), &session, "canary", None).await;
+        let id = created["id"].as_str().expect("id").to_owned();
+        let seed = created["fingerprint"]["seed"]
+            .as_u64()
+            .expect("server-side seed");
+        assert!(seed > 0, "seed must exist to make the negative test real");
+
+        let (status, body) = send(
+            app.clone(),
+            Call::new(
+                Method::POST,
+                format!("/api/v1/profiles/{id}/duplicate"),
+            )
+            .cookie(&session)
+            .csrf(&session)
+            .origin(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "duplicate: {body}");
+        let copy_id = body["id"].as_str().expect("copy id");
+
+        let metadata: Vec<String> = sqlx::query_scalar(
+            "SELECT metadata_json FROM audit_events WHERE event_type LIKE 'profile.%'",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("lifecycle metadata");
+
+        for row in &metadata {
+            assert!(!row.contains("NOTE-LEAK-CANARY"), "notes leaked: {row}");
+            assert!(!row.contains("CANARY-URL-7b21"), "full URL leaked: {row}");
+            assert!(!row.contains("MIEN_"), "server config leaked: {row}");
+            let parsed: Value = serde_json::from_str(row).expect("metadata object");
+            let object = parsed.as_object().expect("object");
+            for (key, value) in object {
+                assert!(
+                    matches!(key.as_str(), "source_id" | "permanent"),
+                    "unexpected lifecycle metadata key `{key}` in {row}"
+                );
+                let forbidden = ["seed", "url", "note", "credential", "password"];
+                for term in forbidden {
+                    assert!(
+                        !key.to_ascii_lowercase().contains(term),
+                        "forbidden metadata key `{key}`: {row}"
+                    );
+                    assert!(
+                        !value
+                            .as_str()
+                            .is_some_and(|text| text.to_ascii_lowercase().contains(term)),
+                        "forbidden metadata value at `{key}`: {row}"
+                    );
+                }
+                assert!(
+                    value.as_u64() != Some(seed),
+                    "fingerprint seed leaked at `{key}`: {row}"
+                );
+            }
+        }
+
+        let copy_metadata: String = sqlx::query_scalar(
+            "SELECT metadata_json FROM audit_events WHERE profile_id=?1 AND event_type='profile.duplicated'",
+        )
+        .bind(copy_id)
+        .fetch_one(&pool)
+        .await
+        .expect("duplicate metadata");
+        assert!(
+            !copy_metadata.contains(&seed.to_string()),
+            "duplicate must record ids, not fingerprint material: {copy_metadata}"
+        );
+    });
+}
+
+#[test]
+fn export_still_writes_its_own_events_after_the_lifecycle_change() {
+    let (_dir, state) = state();
+    let pool = state.db().expect("pool").clone();
+    let app = router(state);
+
+    runtime().block_on(async {
+        let session = login(app.clone()).await;
+        let created = create_profile(app.clone(), &session, "exportable", None).await;
+        let id = created["id"].as_str().expect("id").to_owned();
+
+        for (format, expected) in [
+            ("plain", "profile.export.plain"),
+            ("encrypted", "profile.export.encrypted"),
+        ] {
+            // `passphrase` 只在加密导出时允许，明文导出带它是 422。
+            let payload = if format == "encrypted" {
+                json!({ "format": format, "passphrase": "audit-test-passphrase" })
+            } else {
+                json!({ "format": format })
+            };
+            let (status, body) = send(
+                app.clone(),
+                Call::new(Method::POST, format!("/api/v1/profiles/{id}/export"))
+                    .cookie(&session)
+                    .csrf(&session)
+                    .origin()
+                    .json(payload),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "export {format}: {body}");
+            let rows = rows_for(&pool, &id).await;
+            assert!(
+                event_types(&rows).contains(&expected),
+                "`{expected}` must still be written: {rows:?}"
+            );
         }
     });
 }
