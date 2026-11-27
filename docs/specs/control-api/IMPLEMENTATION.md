@@ -52,7 +52,7 @@ Verification Status 使用 `pending|pass|fail|blocked`。本表的 `pass` 只表
 | `VER-API-017` | `pending` | 代理 CRUD 只存在于 `mien-core` 与测试，无 HTTP 端点；分享链接解析有 `cargo test -p mien-core --test share_link` 但无 API 层。fixture 根 `fixtures/api/` |
 | `VER-API-018` | `pending` | 无登录与首次改密流程。fixture 根 `fixtures/api/` |
 | `VER-API-019` | `pending` | 日志尾部只存在于 `RuntimeSupervisor` 内存，无端点与 `limit` 校验。fixture 根 `fixtures/api/` |
-| `VER-API-020` | `pending` | 导入导出端点与信封未实现。fixture 根 `fixtures/api/` |
+| `VER-API-020` | `pass` | `cargo test -p mien-server --test export_import`（8 项）：明文载荷逐键独立校验 `profile-export.schema.json` 且无凭据值/顶层 `window`/秘密键；plain+passphrase 与 encrypted 缺 passphrase 均 422 且字段指向 `passphrase`；加密往返后指纹逐字段相等；错误口令与篡改容器只报字段名且不回显口令；`validate` 前后档案行数、`profiles/` 条目与 `runtimes/imports/` 清单数完全相等；`abort` 409 且零写入、`new_id` 两次导入两行且 `import_source_id` 相同；第二项写入失败时首行与目录全部回滚；口令不出现在 tracing 输出、审计与事件载荷。fixture 根 `fixtures/api/` |
 | `VER-API-021` | `pending` | 运行时六态不落库（`runtimes` 表无写入路径），`isolation`/`last_known_isolation` 与 `deletion_error` 无法经 API 观察；`block_start_on_check_failure` 缺失这一点可由契约检查佐证，但不足以判定整行 pass。fixture 根 `fixtures/api/` |
 
 ## M1 slice evidence
@@ -65,6 +65,15 @@ Verification Status 使用 `pending|pass|fail|blocked`。本表的 `pass` 只表
   - `cargo test -p mien-core --lib error` — 4 passed（目录双向一致、码往返、稳定码 + 人类消息）。
   - `cargo run -q -p xtask -- contracts` — OpenAPI 与 schema 可解析（`--skip-host` 全量检查的子步骤）。
 - No API row has an HTTP-level command; every VER stays `pending`.
+
+## T28 slice evidence
+
+- 导入导出端点（`POST /api/v1/profiles/{id}/export`、`/import/validate`、`/import`）：
+  - 控制面：`crates/mien-server/src/profiles/{export_import,payload,container}.rs`；领域事务与目录清理：`crates/mien-core/src/storage/profile.rs`。
+  - `cargo test -p mien-server --test export_import` — 8 passed。
+  - `cargo test -p mien-server` — 47 + 13 + 12 + 8 + 12 + 18 + 5 + 6 + 8 passed。
+  - 无新迁移：`profiles.import_source_id` 自 `0002_profile_base.sql` 起已存在。
+  - 无新 crate：加密用既有 `aes-gcm`/`argon2`/`zeroize`（`zeroize` 与 `aes-gcm` 加入 `mien-server` 的既有 workspace 依赖引用，未引入版本）。
 
 ## Related Changes
 

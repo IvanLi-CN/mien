@@ -305,7 +305,7 @@ fn is_real_directory(path: &Path) -> bool {
             .map(|m| !m.file_type().is_symlink())
             .unwrap_or(false)
 }
-fn create_profile_dirs(profile_dir: &Path) -> Result<(), CoreError> {
+pub(crate) fn create_profile_dirs(profile_dir: &Path) -> Result<(), CoreError> {
     if profile_dir.exists() {
         return Err(CoreError::PathUnsafe);
     }

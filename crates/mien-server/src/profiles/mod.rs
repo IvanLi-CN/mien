@@ -10,7 +10,10 @@
 //! `REQ-API-021` 的派生字段。`401 -> 403 -> 404 -> 409` 的顺序由认证中间件与
 //! 各处理函数里「先授权、再查存在性」的固定次序保证。
 
+pub mod container;
+pub mod export_import;
 pub mod idempotency;
+pub mod payload;
 pub mod routes;
 pub mod view;
 
@@ -297,6 +300,10 @@ fn core_message(code: ErrorCode) -> &'static str {
         ErrorCode::ProfileArchived => "The profile is archived; restore it first.",
         ErrorCode::ProfilePurgeFailed => "The profile directory could not be moved or removed.",
         ErrorCode::ProfileRestoreUnavailable => "The profile directory cannot be restored.",
+        ErrorCode::ProfileImportConflict => "An imported profile already exists.",
+        ErrorCode::ProfileImportCleanupFailed => {
+            "The import was rolled back but its directories could not be removed; retry the request."
+        }
         ErrorCode::RuntimeConflict => "A runtime is already active for this profile.",
         ErrorCode::ProxyEngineNotReady => "The shared proxy engine is not ready.",
         ErrorCode::ProxyEngineStartFailed => "The shared proxy engine could not start.",
@@ -636,7 +643,7 @@ fn parse_profile_status(value: &str) -> Result<ProfileStatus, ApiError> {
     }
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
@@ -646,7 +653,7 @@ fn hex_encode(bytes: &[u8]) -> String {
     out
 }
 
-fn hex_decode(text: &str) -> Option<Vec<u8>> {
+pub(crate) fn hex_decode(text: &str) -> Option<Vec<u8>> {
     if text.len() % 2 != 0 {
         return None;
     }

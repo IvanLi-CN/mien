@@ -496,7 +496,7 @@ impl AppState {
         let repository = SqliteProfileRepository::new(pool.clone(), data_root)
             .map_err(|_| CoreError::Storage)?;
         let supervisor = Arc::new(RuntimeSupervisor::new(data_root));
-        Ok(Self::build(
+        let state = Self::build(
             data_root.to_path_buf(),
             data_root.join(DATABASE_FILE),
             Some(pool),
@@ -510,7 +510,10 @@ impl AppState {
         )
         // 启动时解析一次：`MIEN_WEB_DIST`，否则 `<cwd>/dist`，再否则可执行文件旁的
         // `web/`。目录缺失不是启动错误，只是没有 UI。
-        .with_web_root(crate::web::WebRoot::resolve()))
+        .with_web_root(crate::web::WebRoot::resolve());
+        // 上次进程崩溃遗留的导入目录清单在这里对账：只删无档案行引用的目录。
+        reconcile_imports(&state);
+        Ok(state)
     }
 
     pub fn data_root(&self) -> &Path {
@@ -607,6 +610,38 @@ impl AppState {
     /// 内核能力清单，或无法加载时的稳定错误码。
     pub fn manifest() -> Result<&'static mien_core::fingerprint::CapabilityManifest, &'static str> {
         MANIFEST.as_ref().map_err(|code| code.as_str())
+    }
+}
+
+/// 启动对账：清理崩溃遗留的导入清单与目录。
+///
+/// 与迁移一致，用一次性运行时执行同步初始化；失败只记警告，不阻止启动
+/// （目录清单是可重试的，服务仍能正常提供端点）。
+fn reconcile_imports(state: &AppState) {
+    let Some(pool) = state.db() else {
+        return;
+    };
+    let data_root = state.data_root().to_path_buf();
+    let reconciled = std::thread::scope(|scope| {
+        let handle = scope.spawn(move || {
+            tokio::runtime::Runtime::new()
+                .map_err(|_| ())
+                .and_then(|runtime| {
+                    runtime
+                        .block_on(mien_core::storage::profile::reconcile_imports(
+                            pool, &data_root,
+                        ))
+                        .map_err(|_| ())
+                })
+        });
+        handle.join().ok()
+    });
+    match reconciled {
+        Some(Ok(0)) => {}
+        Some(Ok(count)) => tracing::info!(count, "cleaned up aborted profile imports"),
+        Some(Err(())) | None => {
+            tracing::warn!("cannot reconcile aborted profile imports; they will retry on restart")
+        }
     }
 }
 
