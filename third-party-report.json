@@ -850,6 +850,20 @@
       "policy": "linked"
     },
     {
+      "id": "cargo:argon2@0.5.3",
+      "version": "0.5.3",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/password-hashes/tree/master/argon2",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
       "id": "cargo:async-trait@0.1.92",
       "version": "0.1.92",
       "license": "MIT OR Apache-2.0",
@@ -968,6 +982,20 @@
       "distribution": "linked-dependency",
       "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
       "sourceUrl": "https://github.com/bitflags/bitflags",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:blake2@0.10.6",
+      "version": "0.10.6",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/hashes",
       "evidencePaths": [
         "Cargo.lock",
         "Cargo.toml",
@@ -2494,6 +2522,20 @@
       "distribution": "linked-dependency",
       "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
       "sourceUrl": "https://github.com/smol-rs/parking",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:password-hash@0.5.0",
+      "version": "0.5.0",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/RustCrypto/traits/tree/master/password-hash",
       "evidencePaths": [
         "Cargo.lock",
         "Cargo.toml",
