@@ -48,6 +48,46 @@ pub const LAUNCHER_FLAGS: &[&str] = &[
     "--no-first-run",
     "--no-default-browser-check",
 ];
+
+/// Host values the kernel may inherit, as fixed by `docs/SECURITY.md` §5.3.
+///
+/// The kernel never inherits the server environment: it receives only these
+/// names when the server has them, a fixed `PATH`, and its runtime id. Windows
+/// are addressed through `DISPLAY` plus the Xvfb auth cookie in `XAUTHORITY`;
+/// dropping either leaves a container headful launch without an X server.
+pub const CHILD_ENV_WHITELIST: &[&str] = &[
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "TMPDIR",
+    "DISPLAY",
+    "XAUTHORITY",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+];
+
+/// Fixed child `PATH`; the supervisor's own `PATH` is never inherited.
+pub const CHILD_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+
+/// Runtime id passed to the kernel; also embedded in argv for reconciliation.
+pub const CHILD_RUNTIME_ID_ENV: &str = "MIEN_RUNTIME_ID";
+
+/// Resolve the child environment from a lookup over the server environment.
+///
+/// Pure so the whitelist can be asserted without spawning a process.
+fn child_environment(
+    runtime_id: &str,
+    lookup: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> Vec<(String, std::ffi::OsString)> {
+    let mut environment: Vec<(String, std::ffi::OsString)> = CHILD_ENV_WHITELIST
+        .iter()
+        .filter_map(|name| lookup(name).map(|value| ((*name).to_owned(), value)))
+        .collect();
+    environment.push(("PATH".to_owned(), CHILD_PATH.into()));
+    environment.push((CHILD_RUNTIME_ID_ENV.to_owned(), runtime_id.into()));
+    environment
+}
 const START_GRACE: Duration = Duration::from_millis(100);
 const MONITOR_INTERVAL: Duration = Duration::from_millis(50);
 /// A run this long clears the crash ladder; anything shorter keeps counting.
@@ -599,7 +639,9 @@ impl RuntimeRecord {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env_clear();
-        command.env("MIEN_RUNTIME_ID", &options.runtime_id);
+        for (name, value) in child_environment(&options.runtime_id, |key| std::env::var_os(key)) {
+            command.env(name, value);
+        }
         isolate_process(&mut command);
         let mut child = command
             .spawn()
@@ -1085,5 +1127,36 @@ mod tests {
         );
         assert_eq!(supervisor.admission().active(), 0, "no slot on refusal");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn child_environment_is_limited_to_the_documented_whitelist() {
+        let environment = child_environment("rt-test", |key| match key {
+            "DISPLAY" => Some(":99".into()),
+            "XAUTHORITY" => Some("/tmp/mien-Xauthority".into()),
+            // Secrets and configuration never reach the kernel.
+            "MIEN_MASTER_KEY" | "MIEN_BIND" | "MIEN_PUBLIC_URL" => Some("leak".into()),
+            _ => None,
+        });
+        let names: Vec<&str> = environment.iter().map(|(name, _)| name.as_str()).collect();
+        assert!(names.contains(&"DISPLAY"));
+        assert!(names.contains(&"XAUTHORITY"));
+        assert!(names.contains(&CHILD_RUNTIME_ID_ENV));
+        assert!(!names.contains(&"MIEN_MASTER_KEY"));
+        assert!(!names.contains(&"MIEN_BIND"));
+        assert!(!names.contains(&"MIEN_PUBLIC_URL"));
+        let path = environment
+            .iter()
+            .find(|(name, _)| name == "PATH")
+            .map(|(_, value)| value.clone())
+            .expect("PATH is always fixed");
+        assert_eq!(path, std::ffi::OsString::from(CHILD_PATH));
+        assert_eq!(
+            environment
+                .iter()
+                .find(|(name, _)| name == CHILD_RUNTIME_ID_ENV)
+                .map(|(_, value)| value.clone()),
+            Some(std::ffi::OsString::from("rt-test"))
+        );
     }
 }

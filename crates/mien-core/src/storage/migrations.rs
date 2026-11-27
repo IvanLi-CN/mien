@@ -48,6 +48,11 @@ pub async fn apply_all(
 }
 
 /// Open a single-writer SQLite pool with the required safety pragmas.
+///
+/// The database file is created `0600` (`docs/SECURITY.md` §5.3: `/data/db` is
+/// readable only by the control-plane UID). `create_if_missing` alone yields the
+/// process umask, which is `0644` under the default `022` and would leave the
+/// database world-readable inside the container.
 pub async fn connect(database_url: &str) -> Result<sqlx::SqlitePool, CoreError> {
     let options = database_url
         .parse::<sqlx::sqlite::SqliteConnectOptions>()
@@ -56,11 +61,34 @@ pub async fn connect(database_url: &str) -> Result<sqlx::SqlitePool, CoreError> 
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
         .foreign_keys(true)
         .busy_timeout(std::time::Duration::from_secs(5));
-    sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
         .await
-        .map_err(map_sqlx_error)
+        .map_err(map_sqlx_error)?;
+    // `sqlite://` carries no permission bits; tighten the file the driver just
+    // created. WAL/SHM siblings inherit the directory mode and are covered by
+    // the `0700` data directory.
+    if let Some(path) = database_url.strip_prefix("sqlite://") {
+        restrict_database_permissions(std::path::Path::new(path));
+    }
+    Ok(pool)
+}
+
+/// Best-effort `0600` on the database file.
+///
+/// A failure is not an error: the file may live on a filesystem without POSIX
+/// modes, and the container's `0700` data directory still bounds access.
+fn restrict_database_permissions(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
 
 /// Open a database and apply its ordered embedded migrations.
@@ -171,3 +199,41 @@ mod tests {
 /// 迁移版本号；接 T9-A 后由 `schema_migrations` 读出。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct SchemaVersion(pub u32);
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    /// `SECURITY.md` §5.3: the database is readable only by the control-plane
+    /// UID. A database created under the default umask must not stay `0644`.
+    #[test]
+    fn a_created_database_is_owner_only() {
+        let dir = std::env::temp_dir().join(format!(
+            "mien-db-mode-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |value| value.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("mien.db");
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        let pool = runtime
+            .block_on(connect(&format!("sqlite://{}", path.display())))
+            .expect("connect");
+        drop(pool);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "database must be owner-only, got {mode:o}");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
