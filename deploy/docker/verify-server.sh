@@ -276,6 +276,12 @@ run_restart_check() {
     stopped | crashed | failed) pass "restart runtime_row_terminal: $row_state" ;;
     *) fail "restart runtime_row_terminal: expected stopped/crashed/failed, got '${row_state:-missing}'" ;;
   esac
+  # A graceful stop must reach `stopped`. `crashed` here means the shutdown path
+  # did not stop the kernel and only boot reconciliation settled the row, which is
+  # exactly the defect T33 fixes.
+  if [ "${MIEN_VERIFY_EXPECT_STOPPED:-0}" = '1' ]; then
+    expect_equal 'restart runtime_row_stopped' "${row_state:-missing}" 'stopped'
+  fi
   case "$api_state" in
     stopped | crashed | failed) pass "restart api_state_terminal: $api_state" ;;
     *) fail "restart api_state_terminal: expected stopped/crashed/failed, got '$api_state'" ;;

@@ -90,6 +90,7 @@ docker run -d --name mien-server \
   -v mien-server-data:/data \
   -e MIEN_BIND=0.0.0.0:8787 \
   -e MIEN_PUBLIC_URL=http://127.0.0.1:8787 \
+  --stop-timeout 20 \
   mien-server:local
 ```
 
@@ -105,6 +106,23 @@ loopback origin; override them for a real host.
 Docker default 64 MiB `/dev/shm` Chromium fails to start (spike evidence), and
 `XDG_RUNTIME_DIR`/`XAUTHORITY` live in `/tmp`.
 
+### Graceful shutdown and `docker stop`
+
+On SIGTERM/SIGINT the server runs a fixed sequence: it closes the start gate,
+stops accepting connections and drains them, stops every supervised runtime
+through `RuntimeSupervisor::stop` (`stopping` → process-group shutdown →
+`stopped`), writes each result to `runtimes` exactly as the HTTP `stop` endpoint
+does (`state=stopped`, `pid`/`pgid` cleared, `last_known_isolation` kept), closes
+the database pool, and exits. That is why a `docker restart` now leaves
+`stopped` rows instead of relying on boot reconciliation to write `crashed`.
+
+The sweep is bounded by `MIEN_SHUTDOWN_TIMEOUT_SECS` (default 10s, clamped to
+1..=60) plus a fixed 2s persistence margin. The engine's stop grace period must be
+larger than that, so the run command passes `--stop-timeout 20`; Docker's default
+is 10s, which would SIGKILL in the middle of the sweep. A second signal abandons
+the sweep and exits early — and a runtime that did not reach `stopped` is written
+with its observed state (`stopping`), never faked as `stopped`.
+
 ### AppArmor
 
 `--security-opt apparmor=unconfined` above is the documented fallback from
@@ -116,18 +134,19 @@ actually loads. Do not record the AppArmor path as verified until then.
 
 ### Environment
 
-| Variable                   | Default in image            | Meaning                                                                             |
-| -------------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
-| `MIEN_BIND`                | `0.0.0.0:8787`              | listen address                                                                      |
-| `MIEN_PUBLIC_URL`          | `http://127.0.0.1:8787`     | required for a non-loopback bind; also the Cookie `Origin`                          |
-| `MIEN_DATA_ROOT`           | `/data`                     | volume root                                                                         |
-| `MIEN_WEB_DIST`            | `/opt/mien/web`             | static UI root                                                                      |
-| `MIEN_KERNEL_BIN`          | `/opt/mien/chromium/chrome` | kernel executable                                                                   |
-| `MIEN_XRAY_BIN`            | `/opt/mien/xray/xray`       | shared engine executable                                                            |
-| `MIEN_ALLOW_DIRECT_EGRESS` | unset                       | `1` allows direct-egress profiles; otherwise start returns `DIRECT_EGRESS_DISABLED` |
-| `MIEN_ADMIN_PASSWORD_FILE` | unset                       | 0600 file with the bootstrap password                                               |
-| `MIEN_MASTER_KEY`          | unset                       | hex master key; overrides `secrets/master.key`                                      |
-| `MIEN_SCREEN_SIZE`         | `1920x1080x24`              | Xvfb geometry, shared by all profiles                                               |
+| Variable                     | Default in image            | Meaning                                                                             |
+| ---------------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
+| `MIEN_BIND`                  | `0.0.0.0:8787`              | listen address                                                                      |
+| `MIEN_PUBLIC_URL`            | `http://127.0.0.1:8787`     | required for a non-loopback bind; also the Cookie `Origin`                          |
+| `MIEN_DATA_ROOT`             | `/data`                     | volume root                                                                         |
+| `MIEN_WEB_DIST`              | `/opt/mien/web`             | static UI root                                                                      |
+| `MIEN_KERNEL_BIN`            | `/opt/mien/chromium/chrome` | kernel executable                                                                   |
+| `MIEN_XRAY_BIN`              | `/opt/mien/xray/xray`       | shared engine executable                                                            |
+| `MIEN_ALLOW_DIRECT_EGRESS`   | unset                       | `1` allows direct-egress profiles; otherwise start returns `DIRECT_EGRESS_DISABLED` |
+| `MIEN_ADMIN_PASSWORD_FILE`   | unset                       | 0600 file with the bootstrap password                                               |
+| `MIEN_MASTER_KEY`            | unset                       | hex master key; overrides `secrets/master.key`                                      |
+| `MIEN_SCREEN_SIZE`           | `1920x1080x24`              | Xvfb geometry, shared by all profiles                                               |
+| `MIEN_SHUTDOWN_TIMEOUT_SECS` | `10`                        | graceful-shutdown budget for stopping supervised kernels; clamped to `1..=60`       |
 
 ## Data volume
 

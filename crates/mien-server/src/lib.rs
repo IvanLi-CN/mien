@@ -13,13 +13,15 @@ pub mod profiles;
 pub mod proxies;
 pub mod query;
 pub mod routes;
+pub mod shutdown;
 pub mod state;
 pub mod tokens;
 pub mod web;
 
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, StatusCode, header};
@@ -271,33 +273,78 @@ fn unsupported_version(path: &str) -> Option<&str> {
     Some(segment)
 }
 
-/// SIGINT/SIGTERM 后停止接收新连接。
+/// SIGINT/SIGTERM 监听器。
 ///
-/// # Panics
-/// 信号处理器无法注册时 panic：静默继续会失去优雅关闭保证。
-pub async fn shutdown_signal() {
-    let ctrl_c = async {
+/// 一个进程只注册一次；它把每个信号累加到 [`SignalCount`]，因此「第一次」与
+/// 「第二次」是可区分的。两个独立的 `tokio::signal::unix::Signal` 不做这件事：
+/// 两者都会收到同一个信号，第二次监听会立刻完成，关闭遍历就永远被中止。
+pub struct ShutdownSignals {
+    #[cfg(unix)]
+    interrupt: tokio::signal::unix::Signal,
+    #[cfg(unix)]
+    terminate: tokio::signal::unix::Signal,
+}
+
+impl ShutdownSignals {
+    /// 注册 SIGINT 与 SIGTERM。
+    ///
+    /// # Panics
+    /// 信号处理器无法注册时 panic：静默继续会失去优雅关闭保证。
+    pub fn install() -> Self {
+        #[cfg(unix)]
+        {
+            let interrupt = || {
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+                    .expect("failed to install SIGINT handler")
+            };
+            let terminate = || {
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("failed to install SIGTERM handler")
+            };
+            Self {
+                interrupt: interrupt(),
+                terminate: terminate(),
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            Self {}
+        }
+    }
+
+    /// 等待下一个 SIGINT 或 SIGTERM。
+    ///
+    /// # Panics
+    /// 非 Unix 宿主上无法注册 Ctrl-C 处理器时 panic。
+    pub async fn recv(&mut self) {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = self.interrupt.recv() => {}
+            _ = self.terminate.recv() => {}
+        }
+        #[cfg(not(unix))]
         tokio::signal::ctrl_c()
             .await
             .expect("failed to install SIGINT handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        () = ctrl_c => {}
-        () = terminate => {}
     }
-    tracing::info!("shutdown signal received");
+}
+
+/// 已收到的关闭信号数；`watch` 让每个等待者独立判断阈值。
+type SignalCount = tokio::sync::watch::Sender<u64>;
+
+/// 等到第 `n` 个关闭信号。
+///
+/// 接收者被 drop（发送端仍在）时立刻返回，不阻塞关闭。
+async fn signal_waiter(mut signals: tokio::sync::watch::Receiver<u64>, n: u64) {
+    let _ = signals.wait_for(move |count| *count >= n).await;
+}
+
+/// 排空在途连接的上限：预算的四分之一，落在 250ms..=3s 内。
+///
+/// 上限必须小于预算：排空吃掉的每一秒都是停止内核少掉的一秒。默认 10s 预算
+/// 留 2.5s 给排空、至少 7.5s 给停止序列。
+fn drain_grace(budget: Duration) -> Duration {
+    (budget / 4).clamp(Duration::from_millis(250), Duration::from_secs(3))
 }
 
 /// 用给定监听器启动 HTTP 服务，直到收到关闭信号。
@@ -305,9 +352,148 @@ pub async fn shutdown_signal() {
 /// # Errors
 /// 接受连接失败。
 pub async fn serve(listener: tokio::net::TcpListener, state: AppState) -> std::io::Result<()> {
-    axum::serve(listener, router(state))
-        .with_graceful_shutdown(shutdown_signal())
-        .await
+    serve_with(listener, state, shutdown::shutdown_budget()).await
+}
+
+/// 生产信号接线：一个监听任务累加信号，[`serve_with_shutdown`] 消费前两个。
+///
+/// 公开是为了让测试能对真实进程发 SIGTERM：信号注册、计数与关闭触发是一整条
+/// 链路，把 `axum` 的关闭未来与真实信号拆开测就会漏掉「注册了处理器却不唤醒」
+/// 这类缺陷。
+///
+/// # Errors
+/// 接受连接失败。
+pub async fn serve_with_signals(
+    listener: tokio::net::TcpListener,
+    state: AppState,
+    budget: Duration,
+) -> std::io::Result<()> {
+    let (counts, receivers): (SignalCount, _) = tokio::sync::watch::channel(0u64);
+    let mut signals = ShutdownSignals::install();
+    tokio::spawn(async move {
+        loop {
+            signals.recv().await;
+            // `send_modify` takes the write lock; `send(*counts.borrow() + 1)`
+            // would hold the read guard across it and deadlock this task, leaving
+            // the installed handler to swallow SIGTERM silently.
+            counts.send_modify(|count| *count = count.saturating_add(1));
+        }
+    });
+    serve_with_shutdown(
+        listener,
+        state,
+        budget,
+        signal_waiter(receivers.clone(), 1),
+        signal_waiter(receivers, 2),
+    )
+    .await
+}
+
+/// 同 [`serve`]，但关闭预算显式给出。
+///
+/// 关闭顺序固定，且每一段都必须在前一段返回之后才开始：
+///
+/// 1. 信号到达 → 落下监督器闸门（拒绝新启动）→ `axum` 停止接新连接并排空；
+/// 2. 停止全部活动运行时（逐个 `RuntimeSupervisor::stop`），每个结果按 HTTP
+///    `stop` 的语义写回 `runtimes`；
+/// 3. 关闭数据库池；
+/// 4. 返回，进程退出。
+///
+/// 第二段的总预算为 `budget`；超时或单行失败不阻断其余行，最终 `warn` 报告
+/// 未停干净的行数。第二次信号立即放弃关闭遍历并返回：容器编排的 `SIGKILL`
+/// 宽限期不必被一个卡住的停止序列耗尽。
+///
+/// # Errors
+/// 接受连接失败。
+pub async fn serve_with(
+    listener: tokio::net::TcpListener,
+    state: AppState,
+    budget: Duration,
+) -> std::io::Result<()> {
+    serve_with_signals(listener, state, budget).await
+}
+
+/// [`serve_with`] 的触发接缝：`shutdown` 触发关闭，`interrupt` 放弃停止遍历。
+///
+/// 生产路径传入两个真实的信号监听器；测试传入一次性触发器，因此走的是与生产
+/// 完全相同的顺序（闸门 → 排空 → 停止 → 落库 → 关池）。
+///
+/// # Errors
+/// 接受连接失败。
+pub async fn serve_with_shutdown<F, G>(
+    listener: tokio::net::TcpListener,
+    state: AppState,
+    budget: Duration,
+    shutdown: F,
+    interrupt: G,
+) -> std::io::Result<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+    G: Future<Output = ()> + Send + 'static,
+{
+    // 预算从信号到达时开始计：排空与停止运行时共用同一份，而不是各自一份。
+    let (signal_tx, mut signal_rx) = tokio::sync::watch::channel(None::<tokio::time::Instant>);
+
+    // 闸门在排空之前落下：排空期间 keep-alive 连接仍可能送达启动请求。
+    let supervisor = state.supervisor().clone();
+    let gate = {
+        let supervisor = supervisor.clone();
+        async move {
+            shutdown.await;
+            supervisor.begin_shutdown();
+            let _ = signal_tx.send(Some(tokio::time::Instant::now()));
+            tracing::info!("shutdown signal received; draining connections");
+        }
+    };
+
+    let serving = axum::serve(listener, router(state.clone()))
+        .with_graceful_shutdown(gate)
+        .into_future();
+    let mut serving = std::pin::pin!(serving);
+    // 排空上限：一个卡住的请求不得吃掉整个关闭预算。容器编排在宽限期结束后
+    // SIGKILL 整个容器，那样连“写回真实状态”都来不及。
+    let drain_grace = drain_grace(budget);
+    let served = tokio::select! {
+        result = &mut serving => result,
+        () = async {
+            let _ = signal_rx.wait_for(Option::is_some).await;
+            tokio::time::sleep(drain_grace).await;
+        } => {
+            tracing::warn!(
+                grace_secs = drain_grace.as_secs(),
+                "shutdown: connection drain exceeded its grace; closing the listener"
+            );
+            Ok(())
+        }
+    };
+
+    // 第二段：axum 已不再接新连接。停止运行时，同时监听第二次信号。
+    //
+    // 只有真的收到过信号才扣掉排空耗时：服务因接受连接失败而返回时没有信号，
+    // 此时仍应给出完整预算（那种情况下通常也没有活动运行时）。
+    let remaining = match *signal_rx.borrow() {
+        Some(at) => budget.saturating_sub(at.elapsed()),
+        None => budget,
+    };
+    let pool = state.db().cloned();
+    let report =
+        shutdown::stop_runtimes_unless(&supervisor, pool.as_ref(), remaining, interrupt).await;
+    tracing::info!(
+        attempted = report.attempted,
+        stopped = report.stopped.len(),
+        unfinished = report.unfinished.len(),
+        aborted = report.aborted,
+        remaining_secs = remaining.as_secs(),
+        "shutdown runtime sweep finished"
+    );
+
+    // 第三段：刷新并关闭持久化。关闭池会唤醒在途查询，进程退出不必再等后台
+    // 任务超时。
+    if let Some(pool) = pool {
+        pool.close().await;
+    }
+    tracing::info!("shutdown complete");
+    served
 }
 
 #[cfg(test)]

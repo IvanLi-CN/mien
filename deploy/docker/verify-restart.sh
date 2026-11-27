@@ -181,7 +181,7 @@ fi
 wait_ready 'graceful_restart' || true
 # The phase leaves a fresh `running` row behind, so the hard kill below
 # reconciles a live claim instead of an already-terminal one.
-verify_phase check -e MIEN_VERIFY_REARM=1
+verify_phase check -e MIEN_VERIFY_REARM=1 -e MIEN_VERIFY_EXPECT_STOPPED=1
 graceful_status=$?
 if [ "$graceful_status" -eq 0 ]; then
   pass 'graceful_restart_verify: exit 0'
