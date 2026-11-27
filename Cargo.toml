@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 
-members = ["crates/mien-core", "xtask"]
+members = ["crates/mien-core", "crates/mien-server", "xtask"]
 exclude = ["src-tauri", "dist"]
 
 [workspace.package]
@@ -15,6 +15,7 @@ publish = false
 mien-core = { path = "crates/mien-core" }
 
 aes-gcm = "0.10"
+axum = "0.8"
 base64 = "0.22"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
@@ -28,6 +29,8 @@ tauri-build = "2"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "net", "time", "signal", "io-util", "sync"] }
 toml = "0.8"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["set-header", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tonic = { version = "0.14", features = ["transport"] }

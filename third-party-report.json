@@ -2222,6 +2222,20 @@
       "policy": "linked"
     },
     {
+      "id": "cargo:matchers@0.2.0",
+      "version": "0.2.0",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/hawkw/matchers",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
       "id": "cargo:matchit@0.8.4",
       "version": "0.8.4",
       "license": "MIT AND BSD-3-Clause",
@@ -2278,6 +2292,20 @@
       "policy": "linked"
     },
     {
+      "id": "cargo:mien-server@0.0.0",
+      "version": "0.0.0",
+      "license": "Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://crates.io/crates/mien-server/0.0.0",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
       "id": "cargo:mime@0.3.18",
       "version": "0.3.18",
       "license": "MIT OR Apache-2.0",
@@ -2312,6 +2340,20 @@
       "distribution": "linked-dependency",
       "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
       "sourceUrl": "https://github.com/havarnov/multimap",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:nu-ansi-term@0.50.3",
+      "version": "0.50.3",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/nushell/nu-ansi-term",
       "evidencePaths": [
         "Cargo.lock",
         "Cargo.toml",
@@ -3188,6 +3230,20 @@
       "policy": "linked"
     },
     {
+      "id": "cargo:serde_path_to_error@0.1.20",
+      "version": "0.1.20",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/dtolnay/path-to-error",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
       "id": "cargo:serde_spanned@0.6.9",
       "version": "0.6.9",
       "license": "MIT OR Apache-2.0",
@@ -3250,6 +3306,20 @@
       "distribution": "linked-dependency",
       "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
       "sourceUrl": "https://github.com/RustCrypto/hashes",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:sharded-slab@0.1.7",
+      "version": "0.1.7",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/hawkw/sharded-slab",
       "evidencePaths": [
         "Cargo.lock",
         "Cargo.toml",
@@ -3622,6 +3692,20 @@
       "policy": "linked"
     },
     {
+      "id": "cargo:thread_local@1.1.10",
+      "version": "1.1.10",
+      "license": "MIT OR Apache-2.0",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/Amanieu/thread_local-rs",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
       "id": "cargo:tinystr@0.8.5",
       "version": "0.8.5",
       "license": "Unicode-3.0",
@@ -3818,6 +3902,20 @@
       "policy": "linked"
     },
     {
+      "id": "cargo:tower-http@0.6.11",
+      "version": "0.6.11",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tower-rs/tower-http",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
       "id": "cargo:tower-layer@0.3.3",
       "version": "0.3.3",
       "license": "MIT",
@@ -3876,6 +3974,48 @@
     {
       "id": "cargo:tracing-core@0.1.36",
       "version": "0.1.36",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tracing-log@0.2.0",
+      "version": "0.2.0",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tracing-serde@0.2.0",
+      "version": "0.2.0",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/tracing",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:tracing-subscriber@0.3.23",
+      "version": "0.3.23",
       "license": "MIT",
       "distribution": "linked-dependency",
       "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
@@ -4076,6 +4216,20 @@
       "distribution": "linked-dependency",
       "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
       "sourceUrl": "https://github.com/alacritty/vte",
+      "evidencePaths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "deny.toml"
+      ],
+      "policy": "linked"
+    },
+    {
+      "id": "cargo:valuable@0.1.1",
+      "version": "0.1.1",
+      "license": "MIT",
+      "distribution": "linked-dependency",
+      "obligations": "Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.",
+      "sourceUrl": "https://github.com/tokio-rs/valuable",
       "evidencePaths": [
         "Cargo.lock",
         "Cargo.toml",
