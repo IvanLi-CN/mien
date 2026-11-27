@@ -4,8 +4,10 @@
 //! 认证、档案、代理等业务由后续任务逐个接入。路由与错误结构以
 //! `docs/contracts/openapi.yaml` 与 `docs/specs/control-api/SPEC.md` 为准。
 
+pub mod auth;
 pub mod discovery;
 pub mod health;
+pub mod routes;
 pub mod state;
 
 use std::sync::Arc;
@@ -36,8 +38,10 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(health::healthz))
         .route("/readyz", get(health::readyz))
         .route("/api/v1", get(discovery::discover))
+        .merge(routes::auth_routes())
         .fallback(not_found)
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, auth::enforce))
         .layer(middleware::from_fn(request_id))
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
@@ -64,6 +68,11 @@ pub struct RequestId(Arc<str>);
 impl RequestId {
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// 静态请求标识；仅用于中间件之外的内部构造路径。
+    pub(crate) fn from_static(value: &'static str) -> Self {
+        Self(Arc::from(value))
     }
 }
 
@@ -132,13 +141,24 @@ fn error_response(
     request_id: &str,
     details: Option<serde_json::Value>,
 ) -> Response {
+    error_response_with(status, code, message, request_id, false, details)
+}
+
+/// 同 [`error_response`]，但由调用方决定 `retryable`（例如限流 429）。
+pub(crate) fn error_response_with(
+    status: StatusCode,
+    code: mien_core::ErrorCode,
+    message: &str,
+    request_id: &str,
+    retryable: bool,
+    details: Option<serde_json::Value>,
+) -> Response {
     let body = ErrorBody {
         code: code.as_str(),
         message,
         request_id,
         request_id_camel: request_id,
-        // 骨架只产生不可重试的校验类错误；可重试码随对应业务接入。
-        retryable: false,
+        retryable,
         details,
     };
     let mut response = (status, Json(body)).into_response();

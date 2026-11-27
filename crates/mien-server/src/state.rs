@@ -7,6 +7,7 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 use mien_core::CoreError;
 use sqlx::SqlitePool;
@@ -142,6 +143,107 @@ pub fn validate_bind(bind: SocketAddr, public_url: Option<&str>) -> Result<(), C
     Ok(())
 }
 
+/// 对外来源与 Cookie 安全策略。
+///
+/// `docs/SECURITY.md` §5.4：非回环服务端必须配置 `MIEN_PUBLIC_URL`，服务端模式
+/// 一律使用 `Secure` Cookie；仅回环开发模式可省略。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SecuritySettings {
+    /// 对外 https 基址；用于 Origin 校验与 `Secure` Cookie。
+    pub public_url: Option<String>,
+    /// 会话 Cookie 是否带 `Secure`。
+    pub secure_cookies: bool,
+}
+
+impl SecuritySettings {
+    /// 回环开发模式：无对外来源，Cookie 不带 `Secure`。
+    pub fn loopback() -> Self {
+        Self::default()
+    }
+
+    /// 从启动配置派生：设置 `MIEN_PUBLIC_URL` 或非回环监听即视为服务端模式。
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            public_url: config.public_url.clone(),
+            secure_cookies: config.public_url.is_some() || !config.bind.ip().is_loopback(),
+        }
+    }
+
+    /// 从进程环境派生；环境不可解析时按回环开发模式处理（启动路径已先校验）。
+    pub fn from_env() -> Self {
+        Config::from_env()
+            .map(|config| Self::from_config(&config))
+            .unwrap_or_default()
+    }
+}
+
+/// 认证运行时状态：登录限流、会话有效期、Bearer 校验器与启动引导口令。
+///
+/// 引导口令在启动时只做文件系统层面的解析（`MIEN_ADMIN_PASSWORD`、
+/// `MIEN_ADMIN_PASSWORD_FILE` 或生成 `<root>/secrets/admin-bootstrap`），哈希写入
+/// `admin_credentials` 发生在首次登录时：这样池只在服务自己的运行时里被使用，
+/// 避免在启动阶段额外创建运行时。
+pub struct AuthState {
+    limiter: crate::auth::ratelimit::Limiter,
+    session_ttl: Duration,
+    bearer: Option<crate::auth::SharedBearerAuthenticator>,
+    bootstrap: Option<crate::auth::password::Bootstrap>,
+}
+
+impl Default for AuthState {
+    fn default() -> Self {
+        Self {
+            limiter: crate::auth::ratelimit::Limiter::new(crate::auth::ratelimit::Policy::default()),
+            session_ttl: crate::auth::session::DEFAULT_TTL,
+            bearer: None,
+            bootstrap: None,
+        }
+    }
+}
+
+impl AuthState {
+    pub fn limiter(&self) -> &crate::auth::ratelimit::Limiter {
+        &self.limiter
+    }
+
+    pub fn session_ttl(&self) -> Duration {
+        self.session_ttl
+    }
+
+    pub fn bearer(&self) -> Option<crate::auth::SharedBearerAuthenticator> {
+        self.bearer.clone()
+    }
+
+    /// 启动时解析出的引导口令；首次登录时写入哈希。
+    pub fn bootstrap(&self) -> Option<&crate::auth::password::Bootstrap> {
+        self.bootstrap.as_ref()
+    }
+
+    /// 替换登录限流参数（测试与容量规划使用）。
+    pub fn with_limiter_policy(mut self, policy: crate::auth::ratelimit::Policy) -> Self {
+        self.limiter = crate::auth::ratelimit::Limiter::new(policy);
+        self
+    }
+
+    /// 替换会话有效期。
+    pub fn with_session_ttl(mut self, ttl: Duration) -> Self {
+        self.session_ttl = ttl;
+        self
+    }
+
+    /// 挂载 Bearer 校验器；未挂载时 Bearer 请求一律 `401 AUTH_INVALID`。
+    pub fn with_bearer(mut self, verifier: crate::auth::SharedBearerAuthenticator) -> Self {
+        self.bearer = Some(verifier);
+        self
+    }
+
+    /// 指定启动引导口令。
+    pub fn with_bootstrap(mut self, bootstrap: crate::auth::password::Bootstrap) -> Self {
+        self.bootstrap = Some(bootstrap);
+        self
+    }
+}
+
 /// Shared handlers state. Cloning shares one database pool.
 #[derive(Clone)]
 pub struct AppState {
@@ -152,6 +254,8 @@ struct Inner {
     data_root: PathBuf,
     db_path: PathBuf,
     db: Option<SqlitePool>,
+    security: SecuritySettings,
+    auth: Arc<AuthState>,
 }
 
 impl AppState {
@@ -160,23 +264,86 @@ impl AppState {
     pub fn new(data_root: impl Into<PathBuf>, db: Option<SqlitePool>) -> Self {
         let data_root = data_root.into();
         let db_path = data_root.join(DATABASE_FILE);
+        Self::build(
+            data_root,
+            db_path,
+            db,
+            SecuritySettings::loopback(),
+            Arc::new(AuthState::default()),
+        )
+    }
+
+    fn build(
+        data_root: PathBuf,
+        db_path: PathBuf,
+        db: Option<SqlitePool>,
+        security: SecuritySettings,
+        auth: Arc<AuthState>,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 data_root,
                 db_path,
                 db,
+                security,
+                auth,
             }),
         }
     }
 
-    /// Create the data root and open its migrated SQLite database.
+    /// 替换安全策略（Origin 校验与 `Secure` Cookie）。
+    pub fn with_security(self, security: SecuritySettings) -> Self {
+        Self::build(
+            self.inner.data_root.clone(),
+            self.inner.db_path.clone(),
+            self.inner.db.clone(),
+            security,
+            Arc::clone(&self.inner.auth),
+        )
+    }
+
+    /// 替换认证运行时状态（限流参数、会话有效期、Bearer 校验器、引导口令）。
+    pub fn with_auth(self, auth: AuthState) -> Self {
+        Self::build(
+            self.inner.data_root.clone(),
+            self.inner.db_path.clone(),
+            self.inner.db.clone(),
+            self.inner.security.clone(),
+            Arc::new(auth),
+        )
+    }
+
+    /// Create the data root, open its migrated SQLite database and resolve the
+    /// administrator bootstrap secret (filesystem only; the hash is written on the
+    /// first successful login).
     ///
     /// # Errors
-    /// Directory creation fails, or migrations/integrity checks fail.
+    /// Directory creation fails, migrations/integrity checks fail, or the
+    /// administrator bootstrap secret is unusable.
     pub fn open(data_root: &Path) -> Result<Self, CoreError> {
+        Self::open_with(data_root, SecuritySettings::from_env())
+    }
+
+    /// 同 [`AppState::open`]，但显式给出安全策略。
+    ///
+    /// # Errors
+    /// 同 [`AppState::open`]。
+    pub fn open_with(data_root: &Path, security: SecuritySettings) -> Result<Self, CoreError> {
         std::fs::create_dir_all(data_root).map_err(|_| CoreError::Storage)?;
         let pool = mien_core::storage::open_and_migrate(&data_root.join(DATABASE_FILE))?;
-        Ok(Self::new(data_root, Some(pool)))
+        let bootstrap =
+            crate::auth::password::resolve_bootstrap(data_root, |key| std::env::var(key).ok())
+                .map_err(|_| CoreError::Storage)?;
+        if bootstrap.source() == crate::auth::password::BootstrapSource::Generated {
+            tracing::warn!(
+                path = %crate::auth::password::generated_bootstrap_path(data_root).display(),
+                "provisioned a generated administrator password; read it from this file"
+            );
+        }
+        let auth = AuthState::default().with_bootstrap(bootstrap);
+        Ok(Self::new(data_root, Some(pool))
+            .with_security(security)
+            .with_auth(auth))
     }
 
     pub fn data_root(&self) -> &Path {
@@ -191,13 +358,20 @@ impl AppState {
         self.inner.db.as_ref()
     }
 
+    pub fn security(&self) -> &SecuritySettings {
+        &self.inner.security
+    }
+
+    pub fn auth(&self) -> &AuthState {
+        &self.inner.auth
+    }
+
     /// Kernel capability manifest version, or the stable code that explains why
     /// the manifest cannot be loaded.
     pub fn kernel() -> Result<&'static str, &'static str> {
         KERNEL.as_ref().map(String::as_str).map_err(String::as_str)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

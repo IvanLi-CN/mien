@@ -586,6 +586,11 @@ mod tests {
                 "proxy_outbounds",
                 include_str!("../../../../migrations/0004_proxy_outbounds.sql"),
             ),
+            (
+                5,
+                "admin_credentials",
+                include_str!("../../../../migrations/0005_admin_credentials.sql"),
+            ),
         ];
         runtime
             .block_on(crate::storage::migrations::apply_all(&pool, &migrations))
@@ -606,7 +611,7 @@ mod tests {
                 &pool,
             ))
             .expect("version");
-        assert_eq!(version, crate::storage::migrations::SchemaVersion(4));
+        assert_eq!(version, crate::storage::migrations::SchemaVersion(5));
         drop(pool);
         let _ = std::fs::remove_dir_all(path);
     }
