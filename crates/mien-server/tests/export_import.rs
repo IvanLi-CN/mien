@@ -1704,6 +1704,90 @@ fn startup_reconciliation_removes_only_uncommitted_import_directories() {
     });
 }
 
+/// 容器头是攻击者可控输入，KDF 参数必须在**任何派生工作之前**被上限拒绝；
+/// 否则一次导入请求就能让服务端分配 GiB 级内存（无需认证即可触发的 DoS）。
+#[test]
+fn an_oversized_kdf_header_is_rejected_before_any_key_derivation() {
+    let (_dir, state) = state();
+    let pool = state.db().expect("pool").clone();
+    let app = router(state);
+
+    runtime().block_on(async {
+        let session = login(app.clone()).await;
+        // 先拿到一个真实容器，再篡改其头部参数。
+        let proxy_id = seed_proxy(&pool).await;
+        let created = create_profile(
+            app.clone(),
+            &session,
+            profile_input("kdf source", &proxy_id),
+        )
+        .await;
+        let id = created["id"].as_str().expect("id").to_owned();
+        let (status, envelope) = export(
+            app.clone(),
+            &session,
+            &id,
+            json!({"format": "encrypted", "passphrase": PASSPHRASE}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "export: {envelope}");
+        let sealed = envelope["payload"].as_str().expect("payload").to_owned();
+
+        // `profile-encrypted-v1.<hex(header)>.<hex(body)>`
+        let mut parts = sealed.split('.');
+        let prefix = parts.next().expect("prefix");
+        let header_hex = parts.next().expect("header");
+        let body_hex = parts.next().expect("body");
+        let header_bytes: Vec<u8> = (0..header_hex.len())
+            .step_by(2)
+            .map(|index| u8::from_str_radix(&header_hex[index..index + 2], 16).expect("hex"))
+            .collect();
+        let mut header: Value = serde_json::from_slice(&header_bytes).expect("header json");
+
+        // 1 GiB 内存代价：旧上限恰好放行，新上限必须拒绝。
+        header["m"] = json!(1024 * 1024);
+        let bytes = serde_json::to_vec(&header).expect("header");
+        let tampered = format!(
+            "{prefix}.{}.{body_hex}",
+            bytes
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
+
+        let started = std::time::Instant::now();
+        let (status, body) = import(
+            app.clone(),
+            &session,
+            json!({"format": "encrypted", "payload": tampered, "passphrase": PASSPHRASE}),
+        )
+        .await;
+        let elapsed = started.elapsed();
+
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "oversized KDF header must be a payload error: {body}"
+        );
+        // 拒绝必须发生在派生之前：1 GiB 的 Argon2id 单次至少要数百毫秒，
+        // 而参数校验是微秒级；2 秒余量足以区分二者。
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "rejection took {elapsed:?}, which suggests key derivation ran first"
+        );
+        // 报错只提字段名，不回显容器内容或口令。
+        let text = body.to_string();
+        assert!(
+            !text.contains(PASSPHRASE),
+            "error leaked the passphrase: {text}"
+        );
+        assert!(
+            !text.contains(header_hex),
+            "error leaked the container header"
+        );
+    });
+}
+
 #[test]
 fn passphrase_never_reaches_logs_audits_or_events() {
     static INIT: Once = Once::new();

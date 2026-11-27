@@ -43,10 +43,15 @@ const KEY_LEN: usize = 32;
 const SALT_LEN: usize = 16;
 /// AES-GCM nonce 长度。
 const NONCE_LEN: usize = 12;
-/// 解析外部容器时允许的 KDF 参数上限，避免被构造参数拖垮。
-const MAX_M_COST_KIB: u32 = 1024 * 1024;
-const MAX_T_COST: u32 = 16;
-const MAX_P_COST: u32 = 8;
+/// 解析外部容器时允许的 KDF 参数上限。
+///
+/// 头部来自**攻击者可控**的容器字符串，因此上限必须贴着本机导出参数
+/// （[`M_COST_KIB`]/[`T_COST`]/[`P_COST`]）设定：给外部容器留出迁移余量即可，
+/// 不能允许一次导入把 `argon2` 推到 GiB 级内存（那是无需认证即可触发的 DoS）。
+/// 拒绝发生在任何 KDF 工作之前。
+const MAX_M_COST_KIB: u32 = 4 * M_COST_KIB;
+const MAX_T_COST: u32 = 4 * T_COST;
+const MAX_P_COST: u32 = 4 * P_COST;
 
 /// 口令最小/最大长度，与 `ProfileExportRequest`/`ProfileImportInput` 一致。
 pub const MIN_PASSPHRASE_LEN: usize = 12;
