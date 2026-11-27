@@ -425,6 +425,22 @@ impl AppState {
         KERNEL.as_ref().map(String::as_str).map_err(String::as_str)
     }
 }
+/// 主密钥缺失时返回 `None`：Token 端点 500、Bearer 一律 401，绝不生成新密钥。
+fn token_store(
+    pool: SqlitePool,
+    data_root: &Path,
+) -> Option<Arc<crate::tokens::store::TokenStore>> {
+    match crate::tokens::store::TokenStore::load(pool, data_root) {
+        Ok(store) => Some(Arc::new(store)),
+        Err(_) => {
+            tracing::warn!(
+                "the master key is unavailable, so API tokens are disabled until it is provisioned"
+            );
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -482,21 +498,5 @@ mod tests {
         })
         .expect_err("non-loopback bind without MIEN_PUBLIC_URL must fail");
         assert!(matches!(error, ConfigError::MissingPublicUrl { .. }));
-    }
-}
-
-/// 主密钥缺失时返回 `None`：Token 端点 500、Bearer 一律 401，绝不生成新密钥。
-fn token_store(
-    pool: SqlitePool,
-    data_root: &Path,
-) -> Option<Arc<crate::tokens::store::TokenStore>> {
-    match crate::tokens::store::TokenStore::load(pool, data_root) {
-        Ok(store) => Some(Arc::new(store)),
-        Err(_) => {
-            tracing::warn!(
-                "the master key is unavailable, so API tokens are disabled until it is provisioned"
-            );
-            None
-        }
     }
 }
