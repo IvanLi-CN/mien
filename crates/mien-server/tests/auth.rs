@@ -390,7 +390,7 @@ fn a_write_before_the_password_change_is_403_with_the_required_code() {
         assert_eq!(body["code"], "AUTH_PASSWORD_CHANGE_REQUIRED");
         assert_eq!(body["retryable"], false);
 
-        // 改密后同一请求不再被强制改密拦截，落到路由的 404。
+        // 改密后同一请求不再被强制改密拦截，落到档案路由的请求体校验。
         let changed = Call::new(Method::POST, "/api/v1/auth/password")
             .cookie(&token)
             .origin("http://127.0.0.1:8787")
@@ -410,7 +410,7 @@ fn a_write_before_the_password_change_is_403_with_the_required_code() {
             .json(serde_json::json!({}))
             .send(app)
             .await;
-        assert_eq!(allowed.status(), StatusCode::NOT_FOUND);
+        assert_eq!(allowed.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(body_json(allowed).await["code"], "VALIDATION_FAILED");
     });
 }
@@ -532,7 +532,7 @@ fn bearer_requests_do_not_need_csrf_but_must_authenticate() {
             .await;
         assert_eq!(
             allowed.status(),
-            StatusCode::NOT_FOUND,
+            StatusCode::UNPROCESSABLE_ENTITY,
             "authenticated Bearer write reaches the route layer"
         );
         let _ = csrf;

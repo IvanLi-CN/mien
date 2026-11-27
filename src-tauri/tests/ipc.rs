@@ -113,7 +113,7 @@ fn authorized_commands_create_list_and_report_runtime_state() {
     assert_eq!(stopped["state"], "stopped");
 
     let info = invoke(&webview, "app_info", json!({}));
-    assert_eq!(info["schemaVersion"], 6);
+    assert_eq!(info["schemaVersion"], 7);
 }
 
 /// 未授权命令必须在 IPC 层被拒绝；错误码契约也必须在同一条链路上成立。
