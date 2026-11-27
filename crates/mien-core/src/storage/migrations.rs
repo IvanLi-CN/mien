@@ -93,6 +93,11 @@ pub fn open_and_migrate(path: &std::path::Path) -> Result<sqlx::SqlitePool, Core
             "admin_credentials",
             include_str!("../../../../migrations/0005_admin_credentials.sql"),
         ),
+        (
+            6,
+            "api_tokens",
+            include_str!("../../../../migrations/0006_api_tokens.sql"),
+        ),
     ];
     runtime.block_on(apply_all(&pool, FILES))?;
     Ok(pool)

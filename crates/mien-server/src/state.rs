@@ -256,6 +256,7 @@ struct Inner {
     db: Option<SqlitePool>,
     security: SecuritySettings,
     auth: Arc<AuthState>,
+    tokens: Option<Arc<crate::tokens::store::TokenStore>>,
 }
 
 impl AppState {
@@ -270,6 +271,7 @@ impl AppState {
             db,
             SecuritySettings::loopback(),
             Arc::new(AuthState::default()),
+            None,
         )
     }
 
@@ -279,6 +281,7 @@ impl AppState {
         db: Option<SqlitePool>,
         security: SecuritySettings,
         auth: Arc<AuthState>,
+        tokens: Option<Arc<crate::tokens::store::TokenStore>>,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -287,6 +290,7 @@ impl AppState {
                 db,
                 security,
                 auth,
+                tokens,
             }),
         }
     }
@@ -299,6 +303,7 @@ impl AppState {
             self.inner.db.clone(),
             security,
             Arc::clone(&self.inner.auth),
+            self.inner.tokens.clone(),
         )
     }
 
@@ -310,6 +315,7 @@ impl AppState {
             self.inner.db.clone(),
             self.inner.security.clone(),
             Arc::new(auth),
+            self.inner.tokens.clone(),
         )
     }
 
@@ -341,9 +347,20 @@ impl AppState {
             );
         }
         let auth = AuthState::default().with_bootstrap(bootstrap);
+        let tokens = match crate::tokens::store::TokenStore::load(pool.clone(), data_root) {
+            Ok(store) => Some(Arc::new(store)),
+            Err(_) => {
+                // 主密钥缺失或不可读：Token 端点返回 500，Bearer 一律 401；不生成新密钥。
+                tracing::warn!(
+                    "the master key is unavailable, so API tokens are disabled until it is provisioned"
+                );
+                None
+            }
+        };
         Ok(Self::new(data_root, Some(pool))
             .with_security(security)
-            .with_auth(auth))
+            .with_auth(auth)
+            .with_tokens(tokens))
     }
 
     pub fn data_root(&self) -> &Path {
@@ -364,6 +381,36 @@ impl AppState {
 
     pub fn auth(&self) -> &AuthState {
         &self.inner.auth
+    }
+
+    /// 已挂载的 Token 存储；主密钥不可用时为 `None`。
+    pub fn tokens(&self) -> Option<&Arc<crate::tokens::store::TokenStore>> {
+        self.inner.tokens.as_ref()
+    }
+
+    /// 替换 Token 存储。
+    pub fn with_tokens(self, tokens: Option<Arc<crate::tokens::store::TokenStore>>) -> Self {
+        Self::build(
+            self.inner.data_root.clone(),
+            self.inner.db_path.clone(),
+            self.inner.db.clone(),
+            self.inner.security.clone(),
+            Arc::clone(&self.inner.auth),
+            tokens,
+        )
+    }
+
+    /// Bearer 校验器：显式挂载的优先，其次是已装载的 Token 存储。
+    ///
+    /// 两者都没有时返回 `None`，认证门禁据此把所有 Bearer 请求判为
+    /// `401 AUTH_INVALID`，不存在“未校验却放行”的路径。
+    pub fn bearer_verifier(&self) -> Option<crate::auth::SharedBearerAuthenticator> {
+        self.inner.auth.bearer().or_else(|| {
+            self.inner
+                .tokens
+                .as_ref()
+                .map(|store| crate::tokens::store::shared(Arc::clone(store)))
+        })
     }
 
     /// Kernel capability manifest version, or the stable code that explains why

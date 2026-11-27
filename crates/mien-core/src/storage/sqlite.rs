@@ -591,6 +591,11 @@ mod tests {
                 "admin_credentials",
                 include_str!("../../../../migrations/0005_admin_credentials.sql"),
             ),
+            (
+                6,
+                "api_tokens",
+                include_str!("../../../../migrations/0006_api_tokens.sql"),
+            ),
         ];
         runtime
             .block_on(crate::storage::migrations::apply_all(&pool, &migrations))
@@ -611,7 +616,7 @@ mod tests {
                 &pool,
             ))
             .expect("version");
-        assert_eq!(version, crate::storage::migrations::SchemaVersion(5));
+        assert_eq!(version, crate::storage::migrations::SchemaVersion(6));
         drop(pool);
         let _ = std::fs::remove_dir_all(path);
     }

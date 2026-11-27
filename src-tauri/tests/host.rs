@@ -29,7 +29,7 @@ async fn pool(data_root: &std::path::Path) -> sqlx::SqlitePool {
 fn opens_the_database_and_reports_the_schema_version() {
     let directory = tempdir().expect("temporary directory");
     let state = state(&directory);
-    assert_eq!(state.schema_version(), 5);
+    assert_eq!(state.schema_version(), 6);
     assert!(state.data_root().join("mien.db").is_file());
 }
 

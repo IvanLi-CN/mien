@@ -9,6 +9,7 @@ pub mod discovery;
 pub mod health;
 pub mod routes;
 pub mod state;
+pub mod tokens;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -39,6 +40,7 @@ pub fn router(state: AppState) -> Router {
         .route("/readyz", get(health::readyz))
         .route("/api/v1", get(discovery::discover))
         .merge(routes::auth_routes())
+        .merge(routes::token_routes())
         .fallback(not_found)
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth::enforce))

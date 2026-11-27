@@ -320,16 +320,20 @@ pub async fn enforce(State(state): State<AppState>, mut request: Request, next: 
                 let Some(token) = bearer_token(request.headers()) else {
                     return AuthError::invalid().into_response(&request_id);
                 };
-                let Some(verifier) = state.auth().bearer() else {
+                let Some(verifier) = state.bearer_verifier() else {
                     return AuthError::invalid().into_response(&request_id);
                 };
                 let Some(identity) = verifier.authenticate(&token).await else {
                     return AuthError::invalid().into_response(&request_id);
                 };
-                request.extensions_mut().insert(Principal {
+                let principal = Principal {
                     subject: identity.subject,
                     scopes: identity.scopes,
-                });
+                };
+                if let Err(error) = authorize(&principal, &method, &path) {
+                    return error.into_response(&request_id);
+                }
+                request.extensions_mut().insert(principal);
                 return next.run(request).await;
             }
             let current = match cookie_session(&state, request.headers()).await {
@@ -339,10 +343,22 @@ pub async fn enforce(State(state): State<AppState>, mut request: Request, next: 
             if let Err(error) = write_guards(&state, &method, &path, &current, request.headers()) {
                 return error.into_response(&request_id);
             }
-            request.extensions_mut().insert(Principal::admin());
+            let principal = Principal::admin();
+            if let Err(error) = authorize(&principal, &method, &path) {
+                return error.into_response(&request_id);
+            }
+            request.extensions_mut().insert(principal);
             request.extensions_mut().insert(current);
             next.run(request).await
         }
+    }
+}
+
+/// 端点所需 scope（`x-required-scope`）；未登记的方法/路径不额外授权，由路由给 404。
+fn authorize(principal: &Principal, method: &Method, path: &str) -> Result<(), AuthError> {
+    match crate::tokens::scope::required(method, path) {
+        Some(scope) => principal.require_scope(scope.as_str()),
+        None => Ok(()),
     }
 }
 
@@ -680,12 +696,15 @@ fn insert_set_cookie(response: &mut Response, cookie: String) {
     }
 }
 
+/// 解析认证请求体：上限、未知字段与一次性秘密字段统一按 422 拒绝。
+///
+/// `REQ-API-005` 要求任何请求体都不接受 `token`/`ticket`，因此登录与改密也走同一
+/// 校验路径，而不是只依赖各自的 `deny_unknown_fields`。
 fn parse_json<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<T, AuthError> {
     if body.len() > MAX_AUTH_BODY_BYTES {
         return Err(AuthError::validation("body", "is too large"));
     }
-    serde_json::from_slice(body)
-        .map_err(|_| AuthError::validation("body", "must be a JSON object with known fields"))
+    crate::tokens::store::parse_body(body)
 }
 
 /// 账户不存在时的等价开销哈希；只用于让失败路径的耗时一致。
