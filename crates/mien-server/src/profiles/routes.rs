@@ -4,7 +4,6 @@
 //! 与幂等包装。顺序固定为：认证（中间件）→ scope（[`require_scope`]）→
 //! 资源存在性 → 状态冲突。
 
-use std::collections::BTreeMap;
 use std::future::Future;
 
 use axum::Router;
@@ -73,63 +72,6 @@ fn require_scope(principal: &Principal, scope: &str) -> Result<(), ApiError> {
     })
 }
 
-fn query_map(uri: &Uri) -> Result<BTreeMap<String, String>, ApiError> {
-    let mut out = BTreeMap::new();
-    if let Some(query) = uri.query() {
-        for pair in query.split('&') {
-            if pair.is_empty() {
-                continue;
-            }
-            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-            let name = percent_decode(name)?;
-            let value = percent_decode(value)?;
-            if out.insert(name.clone(), value).is_some() {
-                return Err(ApiError::validation(&name, "is repeated"));
-            }
-        }
-    }
-    Ok(out)
-}
-
-fn percent_decode(raw: &str) -> Result<String, ApiError> {
-    let bytes = raw.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'%' => {
-                let high = *bytes
-                    .get(index + 1)
-                    .ok_or_else(|| ApiError::validation("query", "has an invalid escape"))?;
-                let low = *bytes
-                    .get(index + 2)
-                    .ok_or_else(|| ApiError::validation("query", "has an invalid escape"))?;
-                let value = (hex_digit(high)? << 4) | hex_digit(low)?;
-                out.push(value);
-                index += 3;
-            }
-            b'+' => {
-                out.push(b' ');
-                index += 1;
-            }
-            other => {
-                out.push(other);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8(out).map_err(|_| ApiError::validation("query", "is not valid UTF-8"))
-}
-
-fn hex_digit(byte: u8) -> Result<u8, ApiError> {
-    match byte {
-        b'0'..=b'9' => Ok(byte - b'0'),
-        b'a'..=b'f' => Ok(byte - b'a' + 10),
-        b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err(ApiError::validation("query", "has an invalid escape")),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // 处理函数
 // ---------------------------------------------------------------------------
@@ -143,7 +85,7 @@ async fn list(
     if let Err(error) = require_scope(&principal, SCOPE_READ) {
         return error.into_response(&request_id);
     }
-    let query = match query_map(&uri).and_then(|params| parse_list_query(&params)) {
+    let query = match crate::query::query_map(&uri).and_then(|params| parse_list_query(&params)) {
         Ok(query) => query,
         Err(error) => return error.into_response(&request_id),
     };
@@ -250,7 +192,8 @@ async fn delete_one(
     if let Err(error) = require_scope(&principal, SCOPE_WRITE) {
         return error.into_response(&request_id);
     }
-    let permanent = match query_map(&uri).and_then(|params| parse_permanent(&params)) {
+    let permanent = match crate::query::query_map(&uri).and_then(|params| parse_permanent(&params))
+    {
         Ok(permanent) => permanent,
         Err(error) => return error.into_response(&request_id),
     };

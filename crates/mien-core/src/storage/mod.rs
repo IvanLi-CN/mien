@@ -2,11 +2,30 @@
 //!
 //! 占位归属：T9-A（仓储实现与事务）。
 
+use crate::CoreError;
+
+pub mod audit;
 pub mod migrations;
 pub mod profile;
 pub mod proxy;
 pub mod sqlite;
 pub use migrations::{current_version, open_and_migrate};
+
+/// SQLite 错误到领域错误的统一映射。
+///
+/// `5` 是 `SQLITE_BUSY`、`6` 是 `SQLITE_LOCKED`；两者都是可重试的并发冲突，
+/// 其余一律按不透明存储错误上报。此前每个存储模块各复制一份，其中一份漏了 `6`，
+/// 同一类锁冲突在档案与代理之间会映射成不同错误码。
+pub(crate) fn map_sqlx_error(error: sqlx::Error) -> CoreError {
+    match &error {
+        sqlx::Error::Database(database)
+            if matches!(database.code().as_deref(), Some("5") | Some("6")) =>
+        {
+            CoreError::StorageBusy
+        }
+        _ => CoreError::Storage,
+    }
+}
 
 pub fn now_utc() -> String {
     let duration = std::time::SystemTime::now()

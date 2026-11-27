@@ -127,62 +127,6 @@ fn require_scope(principal: &Principal, scope: &str) -> Result<(), ApiError> {
     })
 }
 
-fn query_map(uri: &Uri) -> Result<BTreeMap<String, String>, ApiError> {
-    let mut out = BTreeMap::new();
-    if let Some(query) = uri.query() {
-        for pair in query.split('&') {
-            if pair.is_empty() {
-                continue;
-            }
-            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-            let name = percent_decode(name)?;
-            let value = percent_decode(value)?;
-            if out.insert(name.clone(), value).is_some() {
-                return Err(ApiError::validation(&name, "is repeated"));
-            }
-        }
-    }
-    Ok(out)
-}
-
-fn percent_decode(raw: &str) -> Result<String, ApiError> {
-    let bytes = raw.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'%' => {
-                let high = *bytes
-                    .get(index + 1)
-                    .ok_or_else(|| ApiError::validation("query", "has an invalid escape"))?;
-                let low = *bytes
-                    .get(index + 2)
-                    .ok_or_else(|| ApiError::validation("query", "has an invalid escape"))?;
-                out.push((hex_digit(high)? << 4) | hex_digit(low)?);
-                index += 3;
-            }
-            b'+' => {
-                out.push(b' ');
-                index += 1;
-            }
-            other => {
-                out.push(other);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8(out).map_err(|_| ApiError::validation("query", "is not valid UTF-8"))
-}
-
-fn hex_digit(byte: u8) -> Result<u8, ApiError> {
-    match byte {
-        b'0'..=b'9' => Ok(byte - b'0'),
-        b'a'..=b'f' => Ok(byte - b'a' + 10),
-        b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err(ApiError::validation("query", "has an invalid escape")),
-    }
-}
-
 /// 解析列表查询：`cursor`、`limit`、`kind`；未知参数一律 422。
 fn parse_list_query(params: &BTreeMap<String, String>) -> Result<super::ListQuery, ApiError> {
     let mut unknown: Vec<&String> = params
@@ -257,7 +201,7 @@ async fn list(
     if let Err(error) = require_scope(&principal, SCOPE_READ) {
         return error.into_response(&request_id);
     }
-    let query = match query_map(&uri).and_then(|params| parse_list_query(&params)) {
+    let query = match crate::query::query_map(&uri).and_then(|params| parse_list_query(&params)) {
         Ok(query) => query,
         Err(error) => return error.into_response(&request_id),
     };

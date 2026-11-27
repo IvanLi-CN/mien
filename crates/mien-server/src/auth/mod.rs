@@ -764,6 +764,19 @@ pub(crate) struct AuditEvent<'a> {
     pub metadata: Value,
 }
 
+/// 从审计 `target`（`kind` 或 `kind:id`）解析档案标识。
+///
+/// `REQ-API-009` 要求 `AuditEvent` 同时携带 `event_type` 与 `profile_id`，
+/// 并支持按 `profile_id` 筛选；此前该列恒为 `NULL`，筛选因此永远返回空页。
+///
+/// 只有 `profile` 这一种 target 的 id 段是档案 ULID；`request`、`token`、
+/// `proxy`、`session` 等其他种类的 id 不属于档案，不能借列泄漏到档案筛选里。
+fn profile_id_of(target: &str) -> Option<&str> {
+    let (kind, id) = target.split_once(':')?;
+    (kind == "profile" && mien_core::domain::profile::ProfileId::from_string(id).is_valid())
+        .then_some(id)
+}
+
 /// 写一条审计事件；失败只记日志，不阻断已完成的认证动作。
 pub(crate) async fn record_audit(pool: &SqlitePool, event: AuditEvent<'_>) {
     let AuditEvent {
@@ -779,11 +792,12 @@ pub(crate) async fn record_audit(pool: &SqlitePool, event: AuditEvent<'_>) {
     let written = sqlx::query(
         "INSERT INTO audit_events \
          (id, actor, event_type, profile_id, action, target, result, request_id, metadata_json, created_at) \
-         VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, ?8, ?9)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
     )
     .bind(id)
     .bind(actor)
     .bind(event_type)
+    .bind(profile_id_of(target))
     .bind(action)
     .bind(target)
     .bind(result)

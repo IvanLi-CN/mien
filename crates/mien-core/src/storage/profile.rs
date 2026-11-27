@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
+use super::map_sqlx_error;
 use crate::domain::profile::{Profile, ProfileId, ProfileMode, ProfileStatus};
 use crate::error::{CoreError, ErrorCode};
 use crate::fingerprint::spec::FingerprintSpec;
@@ -598,16 +599,5 @@ async fn cleanup_import(pool: &SqlitePool, data_root: &Path, manifest: &ImportMa
         true
     } else {
         false
-    }
-}
-
-fn map_sqlx_error(error: sqlx::Error) -> CoreError {
-    match &error {
-        sqlx::Error::Database(database)
-            if matches!(database.code().as_deref(), Some("5") | Some("6")) =>
-        {
-            CoreError::StorageBusy
-        }
-        _ => CoreError::Storage,
     }
 }

@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use sqlx::{Row, SqlitePool};
 
+use super::map_sqlx_error;
 use crate::domain::profile::{
     CopyOptions, CreateProfile, DeletionError, Profile, ProfileId, ProfileMode, ProfilePage,
     ProfilePatch, ProfileQuery, ProfileStatus,
@@ -349,14 +350,6 @@ fn invalid_profile_id() -> CoreError {
     )
 }
 
-fn map_sqlx_error(error: sqlx::Error) -> CoreError {
-    match &error {
-        sqlx::Error::Database(db) if matches!(db.code().as_deref(), Some("5") | Some("6")) => {
-            CoreError::StorageBusy
-        }
-        _ => CoreError::Storage,
-    }
-}
 fn map_profile_insert_error(error: sqlx::Error, has_proxy: bool) -> CoreError {
     if has_proxy {
         if let sqlx::Error::Database(db) = &error {

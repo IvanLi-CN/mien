@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+use super::map_sqlx_error;
 use crate::error::CoreError;
 
 /// Run migration files in order, each in a transaction, and verify SQLite integrity.
@@ -164,15 +165,6 @@ mod tests {
             .block_on(connect("sqlite::memory:"))
             .expect("empty database");
         assert!(matches!(current_version(&pool), Err(CoreError::Storage)));
-    }
-}
-
-fn map_sqlx_error(error: sqlx::Error) -> CoreError {
-    match &error {
-        sqlx::Error::Database(database) if database.code().as_deref() == Some("5") => {
-            CoreError::StorageBusy
-        }
-        _ => CoreError::Storage,
     }
 }
 

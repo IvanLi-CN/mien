@@ -4,12 +4,14 @@
 //! 认证、档案、代理等业务由后续任务逐个接入。路由与错误结构以
 //! `docs/contracts/openapi.yaml` 与 `docs/specs/control-api/SPEC.md` 为准。
 
+pub mod audit;
 pub mod auth;
 pub mod discovery;
 pub mod events;
 pub mod health;
 pub mod profiles;
 pub mod proxies;
+pub mod query;
 pub mod routes;
 pub mod state;
 pub mod tokens;
@@ -48,6 +50,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::profile_routes())
         .merge(routes::proxy_routes())
         .merge(routes::event_routes())
+        .merge(audit::routes())
         // 兜底先判定 API 面，再尝试静态文件与 SPA 入口（`REQ-API-004`）。
         .fallback(web::fallback)
         .with_state(state.clone())

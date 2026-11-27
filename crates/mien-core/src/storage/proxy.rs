@@ -12,6 +12,7 @@ use serde_json::{Map, Value};
 use sqlx::{Row, SqlitePool};
 use zeroize::Zeroize;
 
+use super::map_sqlx_error;
 use crate::error::{CoreError, ErrorCode};
 use crate::ports::proxy::{
     ProxyId, ProxyInput, ProxyKind, ProxyPage, ProxyPatch, ProxyRepository, ProxySecret, ProxyView,
@@ -502,15 +503,6 @@ fn proxy_not_found() -> CoreError {
 
 fn config_invalid(message: &'static str) -> CoreError {
     CoreError::validation(ErrorCode::ProxyConfigInvalid, message)
-}
-
-fn map_sqlx_error(error: sqlx::Error) -> CoreError {
-    match &error {
-        sqlx::Error::Database(db) if matches!(db.code().as_deref(), Some("5") | Some("6")) => {
-            CoreError::StorageBusy
-        }
-        _ => CoreError::Storage,
-    }
 }
 
 /// 删除时区分「被档案引用」与「不存在」：`787` 是 SQLite `FOREIGN KEY constraint failed`。
