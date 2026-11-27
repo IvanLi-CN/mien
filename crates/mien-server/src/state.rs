@@ -10,6 +10,8 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use mien_core::CoreError;
+use mien_core::runtime::RuntimeSupervisor;
+use mien_core::storage::sqlite::SqliteProfileRepository;
 use sqlx::SqlitePool;
 
 /// 监听地址默认值：回环开发模式。
@@ -20,6 +22,12 @@ pub const BIND_ENV: &str = "MIEN_BIND";
 pub const PUBLIC_URL_ENV: &str = "MIEN_PUBLIC_URL";
 /// 数据根环境变量；默认 `<cwd>/data`。
 pub const DATA_ROOT_ENV: &str = "MIEN_DATA_ROOT";
+/// 内核可执行文件覆盖；未设置时按 `<data-root>/kernels/<version>/<platform>/` 解析。
+pub const KERNEL_BIN_ENV: &str = "MIEN_KERNEL_BIN";
+/// 共享代理引擎可执行文件覆盖；未设置时按 `<data-root>/xray/xray` 解析。
+pub const XRAY_BIN_ENV: &str = "MIEN_XRAY_BIN";
+/// 服务端直连出口开关；未设置时直连档案启动返回 `DIRECT_EGRESS_DISABLED`。
+pub const ALLOW_DIRECT_EGRESS_ENV: &str = "MIEN_ALLOW_DIRECT_EGRESS";
 
 /// 数据库文件名，位于数据根下。
 const DATABASE_FILE: &str = "mien.db";
@@ -30,6 +38,13 @@ static KERNEL: LazyLock<Result<String, String>> = LazyLock::new(|| {
         .map(|manifest| manifest.kernel_version)
         .map_err(|error| error.code().as_str().to_owned())
 });
+
+/// 内核能力清单：进程内只解析一次，失败缓存为稳定错误码。
+static MANIFEST: LazyLock<Result<mien_core::fingerprint::CapabilityManifest, String>> =
+    LazyLock::new(|| {
+        mien_core::fingerprint::load_pinned_manifest()
+            .map_err(|error| error.code().as_str().to_owned())
+    });
 
 /// 服务端启动配置。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -250,6 +265,7 @@ pub struct AppState {
     inner: Arc<Inner>,
 }
 
+#[derive(Clone)]
 struct Inner {
     data_root: PathBuf,
     db_path: PathBuf,
@@ -257,6 +273,16 @@ struct Inner {
     security: SecuritySettings,
     auth: Arc<AuthState>,
     tokens: Option<Arc<crate::tokens::store::TokenStore>>,
+    /// 档案仓储；数据根不可写时为 `None`，档案端点返回内部错误。
+    profiles: Option<SqliteProfileRepository>,
+    /// 受监督运行时；与服务端进程同寿命。
+    supervisor: Arc<RuntimeSupervisor>,
+    /// `MIEN_KERNEL_BIN` 显式覆盖；否则按档案绑定版本解析安装目录。
+    kernel_bin: Option<PathBuf>,
+    /// 服务端是否允许直连档案（`MIEN_ALLOW_DIRECT_EGRESS=1`）。
+    allow_direct_egress: bool,
+    /// 共享代理引擎槽；首次代理启动时填充，进程存活期间复用。
+    engine: Arc<tokio::sync::Mutex<Option<Arc<crate::profiles::SharedEngine>>>>,
 }
 
 impl AppState {
@@ -265,6 +291,10 @@ impl AppState {
     pub fn new(data_root: impl Into<PathBuf>, db: Option<SqlitePool>) -> Self {
         let data_root = data_root.into();
         let db_path = data_root.join(DATABASE_FILE);
+        let profiles = db
+            .as_ref()
+            .and_then(|pool| SqliteProfileRepository::new(pool.clone(), &data_root).ok());
+        let supervisor = Arc::new(RuntimeSupervisor::new(&data_root));
         Self::build(
             data_root,
             db_path,
@@ -272,9 +302,14 @@ impl AppState {
             SecuritySettings::loopback(),
             Arc::new(AuthState::default()),
             None,
+            profiles,
+            supervisor,
+            std::env::var_os(KERNEL_BIN_ENV).map(PathBuf::from),
+            allow_direct_egress_from_env(),
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build(
         data_root: PathBuf,
         db_path: PathBuf,
@@ -282,6 +317,10 @@ impl AppState {
         security: SecuritySettings,
         auth: Arc<AuthState>,
         tokens: Option<Arc<crate::tokens::store::TokenStore>>,
+        profiles: Option<SqliteProfileRepository>,
+        supervisor: Arc<RuntimeSupervisor>,
+        kernel_bin: Option<PathBuf>,
+        allow_direct_egress: bool,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -291,32 +330,42 @@ impl AppState {
                 security,
                 auth,
                 tokens,
+                profiles,
+                supervisor,
+                kernel_bin,
+                allow_direct_egress,
+                engine: Arc::new(tokio::sync::Mutex::new(None)),
             }),
+        }
+    }
+
+    /// 复制共享状态并就地替换一个字段；克隆只复制 `Arc` 与轻量值。
+    fn with_mut(self, update: impl FnOnce(&mut Inner)) -> Self {
+        let mut inner = (*self.inner).clone();
+        update(&mut inner);
+        Self {
+            inner: Arc::new(inner),
         }
     }
 
     /// 替换安全策略（Origin 校验与 `Secure` Cookie）。
     pub fn with_security(self, security: SecuritySettings) -> Self {
-        Self::build(
-            self.inner.data_root.clone(),
-            self.inner.db_path.clone(),
-            self.inner.db.clone(),
-            security,
-            Arc::clone(&self.inner.auth),
-            self.inner.tokens.clone(),
-        )
+        self.with_mut(|inner| inner.security = security)
     }
 
     /// 替换认证运行时状态（限流参数、会话有效期、Bearer 校验器、引导口令）。
     pub fn with_auth(self, auth: AuthState) -> Self {
-        Self::build(
-            self.inner.data_root.clone(),
-            self.inner.db_path.clone(),
-            self.inner.db.clone(),
-            self.inner.security.clone(),
-            Arc::new(auth),
-            self.inner.tokens.clone(),
-        )
+        self.with_mut(|inner| inner.auth = Arc::new(auth))
+    }
+
+    /// 显式内核可执行文件（验收与受限宿主使用）。
+    pub fn with_kernel_bin(self, kernel_bin: Option<PathBuf>) -> Self {
+        self.with_mut(|inner| inner.kernel_bin = kernel_bin)
+    }
+
+    /// 服务端直连出口策略；生产由 [`ALLOW_DIRECT_EGRESS_ENV`] 决定。
+    pub fn with_allow_direct_egress(self, allow: bool) -> Self {
+        self.with_mut(|inner| inner.allow_direct_egress = allow)
     }
 
     /// Create the data root, open its migrated SQLite database and resolve the
@@ -363,10 +412,21 @@ impl AppState {
             None => AuthState::default(),
         };
 
-        Ok(Self::new(data_root, Some(pool))
-            .with_security(security)
-            .with_auth(auth)
-            .with_tokens(token_store(token_pool, data_root)))
+        let repository = SqliteProfileRepository::new(pool.clone(), data_root)
+            .map_err(|_| CoreError::Storage)?;
+        let supervisor = Arc::new(RuntimeSupervisor::new(data_root));
+        Ok(Self::build(
+            data_root.to_path_buf(),
+            data_root.join(DATABASE_FILE),
+            Some(pool),
+            security,
+            Arc::new(auth),
+            token_store(token_pool, data_root),
+            Some(repository),
+            supervisor,
+            std::env::var_os(KERNEL_BIN_ENV).map(PathBuf::from),
+            allow_direct_egress_from_env(),
+        ))
     }
 
     pub fn data_root(&self) -> &Path {
@@ -396,14 +456,34 @@ impl AppState {
 
     /// 替换 Token 存储。
     pub fn with_tokens(self, tokens: Option<Arc<crate::tokens::store::TokenStore>>) -> Self {
-        Self::build(
-            self.inner.data_root.clone(),
-            self.inner.db_path.clone(),
-            self.inner.db.clone(),
-            self.inner.security.clone(),
-            Arc::clone(&self.inner.auth),
-            tokens,
-        )
+        self.with_mut(|inner| inner.tokens = tokens)
+    }
+
+    /// 档案仓储；数据根不可写时为 `None`。
+    pub fn profiles(&self) -> Option<&SqliteProfileRepository> {
+        self.inner.profiles.as_ref()
+    }
+
+    /// 受监督运行时。
+    pub fn supervisor(&self) -> &Arc<RuntimeSupervisor> {
+        &self.inner.supervisor
+    }
+
+    /// 显式内核覆盖。
+    pub fn kernel_bin(&self) -> Option<&Path> {
+        self.inner.kernel_bin.as_deref()
+    }
+
+    /// 服务端直连出口是否被显式允许。
+    pub fn allow_direct_egress(&self) -> bool {
+        self.inner.allow_direct_egress
+    }
+
+    /// 共享代理引擎槽。
+    pub fn engine_slot(
+        &self,
+    ) -> &Arc<tokio::sync::Mutex<Option<Arc<crate::profiles::SharedEngine>>>> {
+        &self.inner.engine
     }
 
     /// Bearer 校验器：显式挂载的优先，其次是已装载的 Token 存储。
@@ -424,6 +504,16 @@ impl AppState {
     pub fn kernel() -> Result<&'static str, &'static str> {
         KERNEL.as_ref().map(String::as_str).map_err(String::as_str)
     }
+
+    /// 内核能力清单，或无法加载时的稳定错误码。
+    pub fn manifest() -> Result<&'static mien_core::fingerprint::CapabilityManifest, &'static str> {
+        MANIFEST.as_ref().map_err(|code| code.as_str())
+    }
+}
+
+/// 服务端直连出口策略：只有显式 `1` 才允许。
+fn allow_direct_egress_from_env() -> bool {
+    std::env::var(ALLOW_DIRECT_EGRESS_ENV).is_ok_and(|value| value.trim() == "1")
 }
 /// 主密钥缺失时返回 `None`：Token 端点 500、Bearer 一律 401，绝不生成新密钥。
 fn token_store(

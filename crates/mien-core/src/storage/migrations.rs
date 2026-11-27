@@ -98,6 +98,11 @@ pub fn open_and_migrate(path: &std::path::Path) -> Result<sqlx::SqlitePool, Core
             "api_tokens",
             include_str!("../../../../migrations/0006_api_tokens.sql"),
         ),
+        (
+            7,
+            "idempotency_columns",
+            include_str!("../../../../migrations/0007_idempotency_columns.sql"),
+        ),
     ];
     runtime.block_on(apply_all(&pool, FILES))?;
     Ok(pool)

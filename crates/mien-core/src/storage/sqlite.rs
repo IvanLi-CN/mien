@@ -596,6 +596,11 @@ mod tests {
                 "api_tokens",
                 include_str!("../../../../migrations/0006_api_tokens.sql"),
             ),
+            (
+                7,
+                "idempotency_columns",
+                include_str!("../../../../migrations/0007_idempotency_columns.sql"),
+            ),
         ];
         runtime
             .block_on(crate::storage::migrations::apply_all(&pool, &migrations))
@@ -616,7 +621,7 @@ mod tests {
                 &pool,
             ))
             .expect("version");
-        assert_eq!(version, crate::storage::migrations::SchemaVersion(6));
+        assert_eq!(version, crate::storage::migrations::SchemaVersion(7));
         drop(pool);
         let _ = std::fs::remove_dir_all(path);
     }

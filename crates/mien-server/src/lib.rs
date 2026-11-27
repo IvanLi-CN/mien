@@ -7,6 +7,7 @@
 pub mod auth;
 pub mod discovery;
 pub mod health;
+pub mod profiles;
 pub mod routes;
 pub mod state;
 pub mod tokens;
@@ -41,6 +42,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1", get(discovery::discover))
         .merge(routes::auth_routes())
         .merge(routes::token_routes())
+        .merge(routes::profile_routes())
         .fallback(not_found)
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth::enforce))

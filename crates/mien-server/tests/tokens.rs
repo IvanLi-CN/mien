@@ -351,7 +351,7 @@ fn scopes_are_enforced_before_existence_and_cannot_escalate() {
             .await;
         assert_eq!(create_denied.status(), StatusCode::FORBIDDEN);
 
-        // 持有 profiles.write 的 Token 可以到达路由层（未实现的档案端点给 404）。
+        // 持有 profiles.write 的 Token 可以到达档案路由层（请求体校验返回 422）。
         let writer = body_json(
             create_with_session(
                 app.clone(),
@@ -370,7 +370,7 @@ fn scopes_are_enforced_before_existence_and_cannot_escalate() {
             .await;
         assert_eq!(
             reached.status(),
-            StatusCode::NOT_FOUND,
+            StatusCode::UNPROCESSABLE_ENTITY,
             "authorized bearer request reaches routing"
         );
 

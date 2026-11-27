@@ -27,3 +27,8 @@ pub fn token_routes() -> Router<AppState> {
         )
         .route("/api/v1/tokens/{token_id}", delete(crate::tokens::revoke))
 }
+
+/// 档案与运行时端点（T24）。认证与授权由全局门禁与处理函数共同保证。
+pub fn profile_routes() -> Router<AppState> {
+    crate::profiles::routes::routes()
+}
