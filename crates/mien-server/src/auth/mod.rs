@@ -418,7 +418,7 @@ pub async fn login(
         Ok(input) => input,
         Err(error) => return error.into_response(&request_id),
     };
-    if input.password.is_empty() || input.password.len() > 1024 {
+    if input.password.is_empty() || input.password.chars().count() > 1024 {
         return AuthError::validation("password", "must be 1..=1024 characters")
             .into_response(&request_id);
     }
@@ -560,12 +560,12 @@ pub async fn change_password(
         Ok(input) => input,
         Err(error) => return error.into_response(&request_id),
     };
-    if input.current_password.is_empty() || input.current_password.len() > 1024 {
+    if input.current_password.is_empty() || input.current_password.chars().count() > 1024 {
         return AuthError::validation("current_password", "must be 1..=1024 characters")
             .into_response(&request_id);
     }
     if input.new_password.chars().count() < password::MIN_NEW_PASSWORD_LEN
-        || input.new_password.len() > 1024
+        || input.new_password.chars().count() > 1024
     {
         return AuthError::validation("new_password", "must be at least 12 characters")
             .into_response(&request_id);
@@ -594,23 +594,19 @@ pub async fn change_password(
     let revoked = session::revoke_others(pool, &current.id)
         .await
         .unwrap_or_default();
-    let could_be_generated = credential.bootstrap_pending
-        || credential.source.is_none()
-        || credential.source == Some(password::BootstrapSource::Generated);
-    let removed = if could_be_generated {
-        password::remove_generated_bootstrap(state.data_root(), credential.source)
-    } else {
-        Ok(())
-    };
-    let bootstrap_file_removed = removed.is_ok()
-        && password::generated_bootstrap_path(state.data_root()).exists()
-        && credential.source == Some(password::BootstrapSource::Generated);
-    if let Err(error) = removed {
+    // 只删除应用自己生成的引导文件；环境变量与外部 Secret 由部署者撤销。
+    let bootstrap_file = password::generated_bootstrap_path(state.data_root());
+    let bootstrap_file_existed =
+        credential.source == Some(password::BootstrapSource::Generated) && bootstrap_file.exists();
+    let mut bootstrap_file_removed = false;
+    if let Err(error) = password::remove_generated_bootstrap(state.data_root(), credential.source) {
         tracing::warn!(
             request_id = request_id.as_str(),
             error = %error,
             "failed to remove the generated bootstrap secret"
         );
+    } else {
+        bootstrap_file_removed = bootstrap_file_existed && !bootstrap_file.exists();
     }
     record_audit(
         pool,
