@@ -1575,6 +1575,134 @@ fn runtime_state_str(state: RuntimeState) -> &'static str {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Control-plane restart reconciliation
+// ---------------------------------------------------------------------------
+
+/// Settle runtime rows left non-terminal by the previous control plane.
+///
+/// The supervisor only knows `runtime.json` under the data root: it stops the
+/// leftovers it can attribute and reports a snapshot per row. Nothing wrote
+/// those outcomes into `runtimes`, so a container restart used to leave a
+/// phantom `running` row until a user touched the profile. This pass runs before
+/// the listener binds and writes the reconciled state back.
+///
+/// `last_known_isolation` is deliberately untouched: it is the last successful
+/// `running` verdict (`REQ-API-021`), and a restart must not erase history. A row
+/// whose metadata disappeared entirely is settled as `crashed` rather than left
+/// claiming `running`; the profile id is logged so an operator can tell that
+/// apart from an observed kernel exit.
+///
+/// `AppState::open` is synchronous by contract (see `reconcile_imports`), so this
+/// uses a one-shot runtime on a scoped thread instead of changing that contract.
+pub fn reconcile_runtimes_on_boot(state: &AppState) {
+    let Some(pool) = state.db().cloned() else {
+        return;
+    };
+    let supervisor = state.supervisor().clone();
+    let outcome = std::thread::scope(|scope| {
+        scope
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|_| ())?;
+                runtime.block_on(async { reconcile_and_persist(&supervisor, &pool).await })
+            })
+            .join()
+    });
+    match outcome {
+        Ok(Ok(count)) => tracing::info!(count, "runtime reconciliation finished"),
+        Ok(Err(())) => {
+            tracing::warn!("runtime reconciliation failed; runtime rows may still claim running")
+        }
+        Err(_) => tracing::warn!("runtime reconciliation panicked; runtime rows may be stale"),
+    }
+}
+
+/// Reconcile, then persist. Returns the number of rows settled.
+async fn reconcile_and_persist(
+    supervisor: &mien_core::runtime::RuntimeSupervisor,
+    pool: &SqlitePool,
+) -> Result<usize, ()> {
+    let outcomes = supervisor.reconcile().await.map_err(|_| ())?;
+    let mut settled = 0usize;
+    let mut covered: Vec<&str> = Vec::with_capacity(outcomes.len());
+    for snapshot in &outcomes {
+        covered.push(snapshot.profile_id.as_str());
+        persist_reconciled(pool, snapshot).await?;
+        settled += 1;
+    }
+    settled += persist_rows_without_metadata(pool, &covered).await?;
+    Ok(settled)
+}
+
+/// Write one reconciled snapshot. Only a still-live, unattributable group keeps
+/// `stopping`; it also keeps `pid`/`pgid`/`proxy_port` so the lease is not lost.
+async fn persist_reconciled(pool: &SqlitePool, snapshot: &RuntimeSnapshot) -> Result<(), ()> {
+    let updated = if snapshot.state.is_terminal() {
+        sqlx::query(
+            "UPDATE runtimes SET state=?1, pid=NULL, pgid=NULL, isolation=?2, updated_at=?3 \
+             WHERE profile_id=?4",
+        )
+        .bind(runtime_state_str(snapshot.state))
+        .bind(isolation_str(snapshot.isolation))
+        .bind(mien_server_timestamp())
+        .bind(&snapshot.profile_id)
+        .execute(pool)
+        .await
+    } else {
+        sqlx::query("UPDATE runtimes SET state=?1, isolation=?2, updated_at=?3 WHERE profile_id=?4")
+            .bind(runtime_state_str(snapshot.state))
+            .bind(isolation_str(snapshot.isolation))
+            .bind(mien_server_timestamp())
+            .bind(&snapshot.profile_id)
+            .execute(pool)
+            .await
+    };
+    updated.map(|_| ()).map_err(|error| {
+        tracing::warn!(profile_id = %snapshot.profile_id, %error, "cannot persist reconciled runtime");
+    })
+}
+
+/// Rows that are still non-terminal but produced no reconciliation outcome: the
+/// kernel cannot be claimed as running, and leaving `running` would be a false
+/// readiness claim. List them so the operator sees a different cause from a
+/// kernel the supervisor actually observed exiting.
+async fn persist_rows_without_metadata(pool: &SqlitePool, covered: &[&str]) -> Result<usize, ()> {
+    let rows: Vec<String> = sqlx::query_scalar(
+        "SELECT profile_id FROM runtimes WHERE state NOT IN ('stopped','crashed','failed')",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| {
+        tracing::warn!(%error, "cannot read runtime rows for reconciliation");
+    })?;
+    let mut settled = 0usize;
+    for profile_id in rows {
+        if covered.contains(&profile_id.as_str()) {
+            continue;
+        }
+        tracing::warn!(
+            profile_id = %profile_id,
+            "runtime row has no runtime metadata after restart; settling it as crashed"
+        );
+        sqlx::query(
+            "UPDATE runtimes SET state='crashed', pid=NULL, pgid=NULL, updated_at=?1 \
+             WHERE profile_id=?2",
+        )
+        .bind(mien_server_timestamp())
+        .bind(&profile_id)
+        .execute(pool)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, %profile_id, "cannot settle runtime row");
+        })?;
+        settled += 1;
+    }
+    Ok(settled)
+}
+
 fn profile_status_str(status: ProfileStatus) -> &'static str {
     match status {
         ProfileStatus::Active => "active",

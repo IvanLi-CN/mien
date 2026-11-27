@@ -170,7 +170,36 @@ the container user and prints one `PASS`/`FAIL` line per assertion: health,
 login, forced password change, profile creation with a complete fingerprint,
 headful start to `running` with the reported `isolation`, the kernel process and
 its seccomp/user-namespace evidence from `/proc`, stop, relaunch, final stop, no
-root processes, data permissions, and the migration version.
+root processes, data permissions, the migration version, a `headless` profile
+whose real `/proc/<pid>/cmdline` carries `--headless=new` and no headful window
+flags, and a `running` probe left behind for the restart phases.
+
+Restart reconciliation cannot be asserted from inside the container that is
+restarted, so `verify-restart.sh` drives it from the Docker host. It starts the
+container with the run shape above, runs the in-container acceptance, then:
+
+1. `docker restart`, re-checks `/healthz` and `/readyz` `200`, that the profile
+   survives, that the runtime row is terminal, that `last_known_isolation` is
+   retained, and that no kernel process remains;
+2. `docker kill` (SIGKILL, so the entrypoint's cleanup never runs) and
+   `docker start`, then asserts the new process logged
+   `runtime reconciliation finished`, the leftover `running` row settled to a
+   terminal state, orphan kernel processes are `0`, and both probes answer
+   `200`.
+
+```sh
+deploy/docker/verify-restart.sh mien-server:local
+```
+
+The driver removes its own container and volume on exit. It requires `curl` and
+`docker` on the host, and reads `MIEN_VERIFY_PASSWORD` / `MIEN_VERIFY_NEW_PASSWORD`
+only to keep a reused volume usable; a clean volume needs neither.
+
+`verify-server.sh` takes a phase from `MIEN_VERIFY_PHASE`: `full` (default)
+runs the acceptance, `check` asserts only the post-restart state and reads the
+profile id from `/data/verify-restart.state`. The driver suppresses nothing:
+each phase prints its own `PASS`/`FAIL`/`BLOCKED` lines and the driver's exit
+status is `0` only when every phase and every driver-side assertion passed.
 
 The image does not include noVNC or x11vnc: the viewer needs one-time tokens
 (`REQ-API-019`), which are not implemented, so a `MIEN_VIEWER_TOKEN` request is
@@ -196,6 +225,12 @@ start1 kernel_process pid=160 comm=chrome exe=/opt/mien/chromium/chrome
 start2 kernel_process pid=265
 no_root_processes_besides_init
 schema_version: 8
+headless_isolation_actual=enforced
+headless kernel_pid=343 cmdline=/opt/mien/chromium/chrome ... --window-size=1280,720 --headless=new ... --mien-runtime-id=rt-...
+restart pre_restart_state=running runtime_row_state=crashed api_state=crashed
+restart orphan_kernel_processes: 0
+hard_restart_orphan_kernel_processes: 0
+hard_restart_reconcile_log: runtime reconciliation finished
 ```
 
 `isolation=enforced` came from the API and was cross-checked against `/proc`:
@@ -205,12 +240,21 @@ failure rather than downgrading the claim.
 
 Restarting the container on the same volume kept the profile row, skipped
 re-migration (`schema_migrations` still `8`) and served `200` on both
-`/healthz` and `/readyz`.
+`/healthz` and `/readyz`. Both the graceful restart and the SIGKILL restart
+settled the leftover runtime row to `crashed` with `pid`/`pgid` cleared and
+`last_known_isolation=enforced` retained, and left zero kernel processes behind.
 
 `apparmor=unconfined` above is the documented fallback, **not** a verified
 hardened path: the `mien-chromium` profile has not been loaded on any available
 host because `securityfs` cannot be mounted there. The acceptance run above
 therefore says nothing about AppArmor; do not record it as verified.
+
+The headless profile is proven headless from the kernel's own argv, not from the
+API: `--headless=new` is an exact token in `/proc/<pid>/cmdline`, and
+`--window-size=W,H` is the only window-shaped argument left, which is viewport
+geometry rather than display evidence. `reduced_assurance=true` and
+`direct=true` are printed as the API returns them, and `isolation` is printed
+unmodified even when it is not `enforced`.
 
 The build needs network access to Docker Hub for the base image. When a registry
 returns `429`, point `BASE_IMAGE` at a mirror that serves the _same_ digest

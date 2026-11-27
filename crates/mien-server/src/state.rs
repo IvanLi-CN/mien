@@ -513,6 +513,9 @@ impl AppState {
         .with_web_root(crate::web::WebRoot::resolve());
         // 上次进程崩溃遗留的导入目录清单在这里对账：只删无档案行引用的目录。
         reconcile_imports(&state);
+        // 上次控制面遗留的运行时行在这里落定：可归属的残留内核被终止，行写回终态,
+        // 否则重启后会留下一个声称 `running` 的幻影行（REQ-RUNTIME-012）。
+        crate::profiles::reconcile_runtimes_on_boot(&state);
         Ok(state)
     }
 
