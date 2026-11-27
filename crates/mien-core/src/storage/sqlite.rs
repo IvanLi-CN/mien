@@ -601,6 +601,11 @@ mod tests {
                 "idempotency_columns",
                 include_str!("../../../../migrations/0007_idempotency_columns.sql"),
             ),
+            (
+                8,
+                "event_log",
+                include_str!("../../../../migrations/0008_event_log.sql"),
+            ),
         ];
         runtime
             .block_on(crate::storage::migrations::apply_all(&pool, &migrations))
@@ -621,7 +626,7 @@ mod tests {
                 &pool,
             ))
             .expect("version");
-        assert_eq!(version, crate::storage::migrations::SchemaVersion(7));
+        assert_eq!(version, crate::storage::migrations::SchemaVersion(8));
         drop(pool);
         let _ = std::fs::remove_dir_all(path);
     }

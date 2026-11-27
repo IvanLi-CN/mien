@@ -283,6 +283,8 @@ struct Inner {
     allow_direct_egress: bool,
     /// 共享代理引擎槽；首次代理启动时填充，进程存活期间复用。
     engine: Arc<tokio::sync::Mutex<Option<Arc<crate::profiles::SharedEngine>>>>,
+    /// 事件频道参数：保留窗口、票据 TTL、心跳与实时轮询间隔。
+    events: Arc<crate::events::EventRuntime>,
 }
 
 impl AppState {
@@ -335,6 +337,7 @@ impl AppState {
                 kernel_bin,
                 allow_direct_egress,
                 engine: Arc::new(tokio::sync::Mutex::new(None)),
+                events: Arc::new(crate::events::EventRuntime::default()),
             }),
         }
     }
@@ -356,6 +359,11 @@ impl AppState {
     /// 替换认证运行时状态（限流参数、会话有效期、Bearer 校验器、引导口令）。
     pub fn with_auth(self, auth: AuthState) -> Self {
         self.with_mut(|inner| inner.auth = Arc::new(auth))
+    }
+
+    /// 替换事件频道参数（保留窗口、票据 TTL、心跳与轮询）。
+    pub fn with_events(self, events: crate::events::EventRuntime) -> Self {
+        self.with_mut(|inner| inner.events = Arc::new(events))
     }
 
     /// 显式内核可执行文件（验收与受限宿主使用）。
@@ -477,6 +485,11 @@ impl AppState {
     /// 服务端直连出口是否被显式允许。
     pub fn allow_direct_egress(&self) -> bool {
         self.inner.allow_direct_egress
+    }
+
+    /// 事件频道参数。
+    pub fn events(&self) -> &crate::events::EventRuntime {
+        &self.inner.events
     }
 
     /// 共享代理引擎槽。

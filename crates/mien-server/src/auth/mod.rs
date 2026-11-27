@@ -105,6 +105,15 @@ impl AuthError {
         )
     }
 
+    /// 一次性票据缺失、过期或已使用：`401 EVENT_TICKET_INVALID`。
+    pub fn event_ticket_invalid(message: &'static str) -> Self {
+        Self::new(
+            StatusCode::UNAUTHORIZED,
+            ErrorCode::EventTicketInvalid,
+            message,
+        )
+    }
+
     /// 跨源写请求：`403 AUTH_ORIGIN_INVALID`。
     pub fn origin_invalid() -> Self {
         Self::new(
@@ -278,6 +287,9 @@ fn requirement(method: &Method, path: &str) -> Requirement {
         }
         (&Method::POST, "/api/v1/auth/login") => Requirement::Public,
         (&Method::GET, "/api/v1/openapi.json") => Requirement::Public,
+        // `eventsWebSocket` 在 handler 内自校验 Origin 与一次性票据/Cookie：它不能走
+        // Cookie 写守卫（GET 无 CSRF 头），也不能接受 Bearer 长效 Token。
+        (&Method::GET, "/api/v1/events") => Requirement::Public,
         _ if path != "/api/v1" && !path.starts_with("/api/v1/") => Requirement::Public,
         (_, "/api/v1/auth/session") | (_, "/api/v1/auth/password") | (_, "/api/v1/auth/logout") => {
             Requirement::SessionOnly
@@ -808,6 +820,11 @@ mod tests {
         );
         assert_eq!(
             requirement(&Method::GET, "/api/v1/openapi.json"),
+            Requirement::Public
+        );
+        // 事件升级在 handler 内自校验 Origin 与票据/Cookie，不能走 Cookie 写守卫。
+        assert_eq!(
+            requirement(&Method::GET, "/api/v1/events"),
             Requirement::Public
         );
         assert_eq!(
