@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod discovery;
+pub mod events;
 pub mod health;
 pub mod profiles;
 pub mod routes;
@@ -43,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::auth_routes())
         .merge(routes::token_routes())
         .merge(routes::profile_routes())
+        .merge(routes::event_routes())
         .fallback(not_found)
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth::enforce))
@@ -98,12 +100,15 @@ fn next_request_id() -> RequestId {
 }
 
 /// 补请求标识并记录一行访问日志；不记录请求体与任何请求头。
+///
+/// 日志目标会先脱敏：`ticket` 与任何 URL 长效 Token 参数都替换为 `redacted`
+/// （`docs/SECURITY.md` §5.2、`REQ-API-011`），因此票据值不会进入访问日志。
 async fn request_id(mut request: Request, next: Next) -> Response {
     let id = next_request_id();
     request.extensions_mut().insert(id.clone());
 
     let method = request.method().clone();
-    let path = request.uri().path().to_owned();
+    let target = redacted_request_target(request.uri());
     let mut response = next.run(request).await;
 
     if let Ok(value) = HeaderValue::from_str(id.as_str()) {
@@ -114,11 +119,56 @@ async fn request_id(mut request: Request, next: Next) -> Response {
     tracing::info!(
         request_id = id.as_str(),
         method = %method,
-        path = %path,
+        path = %target,
         status = response.status().as_u16(),
         "request"
     );
     response
+}
+
+/// 查询串中不得进入日志的参数名；命中时只保留名称。
+const SENSITIVE_QUERY_PARAMS: &[&str] = &[
+    "ticket",
+    "token",
+    "access_token",
+    "id_token",
+    "api_token",
+    "api_key",
+    "apikey",
+    "authorization",
+    "bearer",
+    "session",
+    "cookie",
+    "password",
+    "passphrase",
+];
+
+/// 访问日志与诊断使用的请求目标：路径不变，敏感查询值替换为 `redacted`。
+pub(crate) fn redacted_request_target(uri: &axum::http::Uri) -> String {
+    let path = uri.path();
+    let Some(query) = uri.query() else {
+        return path.to_owned();
+    };
+    let mut kept = Vec::new();
+    for pair in query.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let (name, _) = pair.split_once('=').unwrap_or((pair, ""));
+        if SENSITIVE_QUERY_PARAMS
+            .iter()
+            .any(|sensitive| name.eq_ignore_ascii_case(sensitive))
+        {
+            kept.push(format!("{name}=redacted"));
+        } else {
+            kept.push(pair.to_owned());
+        }
+    }
+    if kept.is_empty() {
+        path.to_owned()
+    } else {
+        format!("{path}?{}", kept.join("&"))
+    }
 }
 
 /// 统一错误信封。

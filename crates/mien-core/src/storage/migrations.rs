@@ -103,6 +103,11 @@ pub fn open_and_migrate(path: &std::path::Path) -> Result<sqlx::SqlitePool, Core
             "idempotency_columns",
             include_str!("../../../../migrations/0007_idempotency_columns.sql"),
         ),
+        (
+            8,
+            "event_log",
+            include_str!("../../../../migrations/0008_event_log.sql"),
+        ),
     ];
     runtime.block_on(apply_all(&pool, FILES))?;
     Ok(pool)

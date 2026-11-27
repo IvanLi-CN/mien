@@ -32,3 +32,11 @@ pub fn token_routes() -> Router<AppState> {
 pub fn profile_routes() -> Router<AppState> {
     crate::profiles::routes::routes()
 }
+
+/// 事件频道（T25）：一次性票据与 WebSocket 升级。
+///
+/// 升级端点在认证门禁中属于公开白名单，因为它自己校验 Origin 与票据/Cookie，
+/// 且不能接受 Bearer 长效 Token；票据端点仍按 `events.read` scope 授权。
+pub fn event_routes() -> Router<AppState> {
+    crate::events::routes()
+}
