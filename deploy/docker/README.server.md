@@ -7,14 +7,14 @@ the spike's `sleep infinity` for the real server and keeps everything else.
 
 ## What is in the image
 
-| Path | Content |
-| --- | --- |
-| `/usr/local/bin/mien-server` | release server binary, built outside the image |
-| `/opt/mien/web` | `dist/` static UI, served by `MIEN_WEB_DIST` |
-| `/opt/mien/chromium/chrome` | pinned fingerprint kernel, `MIEN_KERNEL_BIN` |
-| `/opt/mien/xray/xray` | pinned proxy engine, `MIEN_XRAY_BIN` |
-| `/opt/mien/seccomp/chromium.json` | audit copy only; Docker loads the host-side file |
-| `/data` | volume: `mien.db`, `secrets/master.key`, per-profile browser dirs |
+| Path                              | Content                                                           |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `/usr/local/bin/mien-server`      | release server binary, built outside the image                    |
+| `/opt/mien/web`                   | `dist/` static UI, served by `MIEN_WEB_DIST`                      |
+| `/opt/mien/chromium/chrome`       | pinned fingerprint kernel, `MIEN_KERNEL_BIN`                      |
+| `/opt/mien/xray/xray`             | pinned proxy engine, `MIEN_XRAY_BIN`                              |
+| `/opt/mien/seccomp/chromium.json` | audit copy only; Docker loads the host-side file                  |
+| `/data`                           | volume: `mien.db`, `secrets/master.key`, per-profile browser dirs |
 
 The base image is `debian@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e`,
 the same digest `Dockerfile.spike` and `docs/spikes/docker/evidence/run.log`
@@ -27,13 +27,13 @@ Neither the kernel nor Xray is downloaded inside the image: both are staged in a
 already-verified archives and the build re-checks their SHA-256, so a wrong or
 tampered file fails the build.
 
-| Build arg | Default | Digest source |
-| --- | --- | --- |
-| `CHROMIUM_ARCHIVE` | `chromium.tar.xz` | `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-linux-x86_64.json` → `sha256` |
-| `CHROMIUM_SHA256` | `70d23983…bda717f4` | same manifest; the digest the spike recorded as matched |
-| `XRAY_ARCHIVE` | `xray.zip` | `docs/contracts/manifests/xray-core-v26.11.9-linux-x86_64.json` → `sha256` |
-| `XRAY_SHA256` | `b651f7e1…ed95f82` | same manifest |
-| `SERVER_BINARY` | `mien-server` | build artifact, see below |
+| Build arg          | Default             | Digest source                                                                               |
+| ------------------ | ------------------- | ------------------------------------------------------------------------------------------- |
+| `CHROMIUM_ARCHIVE` | `chromium.tar.xz`   | `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-linux-x86_64.json` → `sha256` |
+| `CHROMIUM_SHA256`  | `70d23983…bda717f4` | same manifest; the digest the spike recorded as matched                                     |
+| `XRAY_ARCHIVE`     | `xray.zip`          | `docs/contracts/manifests/xray-core-v26.11.9-linux-x86_64.json` → `sha256`                  |
+| `XRAY_SHA256`      | `b651f7e1…ed95f82`  | same manifest                                                                               |
+| `SERVER_BINARY`    | `mien-server`       | build artifact, see below                                                                   |
 
 Both manifests are frozen in `docs/contracts/FREEZE.md`; their own digests are
 checked by `contracts:check`. The release URLs the spike uses are
@@ -116,18 +116,18 @@ actually loads. Do not record the AppArmor path as verified until then.
 
 ### Environment
 
-| Variable | Default in image | Meaning |
-| --- | --- | --- |
-| `MIEN_BIND` | `0.0.0.0:8787` | listen address |
-| `MIEN_PUBLIC_URL` | `http://127.0.0.1:8787` | required for a non-loopback bind; also the Cookie `Origin` |
-| `MIEN_DATA_ROOT` | `/data` | volume root |
-| `MIEN_WEB_DIST` | `/opt/mien/web` | static UI root |
-| `MIEN_KERNEL_BIN` | `/opt/mien/chromium/chrome` | kernel executable |
-| `MIEN_XRAY_BIN` | `/opt/mien/xray/xray` | shared engine executable |
-| `MIEN_ALLOW_DIRECT_EGRESS` | unset | `1` allows direct-egress profiles; otherwise start returns `DIRECT_EGRESS_DISABLED` |
-| `MIEN_ADMIN_PASSWORD_FILE` | unset | 0600 file with the bootstrap password |
-| `MIEN_MASTER_KEY` | unset | hex master key; overrides `secrets/master.key` |
-| `MIEN_SCREEN_SIZE` | `1920x1080x24` | Xvfb geometry, shared by all profiles |
+| Variable                   | Default in image            | Meaning                                                                             |
+| -------------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
+| `MIEN_BIND`                | `0.0.0.0:8787`              | listen address                                                                      |
+| `MIEN_PUBLIC_URL`          | `http://127.0.0.1:8787`     | required for a non-loopback bind; also the Cookie `Origin`                          |
+| `MIEN_DATA_ROOT`           | `/data`                     | volume root                                                                         |
+| `MIEN_WEB_DIST`            | `/opt/mien/web`             | static UI root                                                                      |
+| `MIEN_KERNEL_BIN`          | `/opt/mien/chromium/chrome` | kernel executable                                                                   |
+| `MIEN_XRAY_BIN`            | `/opt/mien/xray/xray`       | shared engine executable                                                            |
+| `MIEN_ALLOW_DIRECT_EGRESS` | unset                       | `1` allows direct-egress profiles; otherwise start returns `DIRECT_EGRESS_DISABLED` |
+| `MIEN_ADMIN_PASSWORD_FILE` | unset                       | 0600 file with the bootstrap password                                               |
+| `MIEN_MASTER_KEY`          | unset                       | hex master key; overrides `secrets/master.key`                                      |
+| `MIEN_SCREEN_SIZE`         | `1920x1080x24`              | Xvfb geometry, shared by all profiles                                               |
 
 ## Data volume
 
@@ -150,11 +150,11 @@ entrypoint stops with `data_root_unusable=permissions`.
 
 `HEALTHCHECK` runs `healthcheck.sh`, whose exit codes are contractual:
 
-| Exit | Meaning |
-| --- | --- |
-| `0` | `/healthz` 200 and `/readyz` 200 |
-| `1` | `/healthz` 200 and `/readyz` 503 — a documented not-ready answer, not a probe fault |
-| `2` | `/healthz` not 200, or `/readyz` answered anything else, or no response |
+| Exit | Meaning                                                                             |
+| ---- | ----------------------------------------------------------------------------------- |
+| `0`  | `/healthz` 200 and `/readyz` 200                                                    |
+| `1`  | `/healthz` 200 and `/readyz` 503 — a documented not-ready answer, not a probe fault |
+| `2`  | `/healthz` not 200, or `/readyz` answered anything else, or no response             |
 
 `--start-period=90s` covers first-start migration to `0008` plus Xvfb and
 openbox startup.
@@ -213,7 +213,7 @@ host because `securityfs` cannot be mounted there. The acceptance run above
 therefore says nothing about AppArmor; do not record it as verified.
 
 The build needs network access to Docker Hub for the base image. When a registry
-returns `429`, point `BASE_IMAGE` at a mirror that serves the *same* digest
+returns `429`, point `BASE_IMAGE` at a mirror that serves the _same_ digest
 (`--build-arg BASE_IMAGE=docker.m.daocloud.io/library/debian:bookworm-slim`,
 which resolved to the pinned `sha256:e67ee…` above); the digest pin, not the
 tag, is what the build verifies.
