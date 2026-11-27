@@ -42,7 +42,7 @@ export XRAY=/opt/homebrew/bin/xray
 
 | VER | 状态 | 计划命令与 fixture |
 | --- | --- | --- |
-| `VER-RUNTIME-001` | `pending` | `Command::args` 按数组传递、`env_clear` 后只注入 `MIEN_RUNTIME_ID`、`process_group(0)` 有实现（`--test runtime_integration`）;缺含空格/引号/Unicode 的路径用例与“数据目录唯一”的断言。fixture 根 `fixtures/runtime/` |
+| `VER-RUNTIME-001` | `pending` | `Command::args` 按数组传递、`env_clear` 后按 `SECURITY.md` §5.3 白名单注入（`HOME`/`XDG_CONFIG_HOME`/`XDG_CACHE_HOME`/`TMPDIR`/`DISPLAY`/`XAUTHORITY`/`LANG`/`LC_ALL`/`TZ` 加固定 `PATH` 与 `MIEN_RUNTIME_ID`；`--lib runtime::supervisor` 的 `child_environment_is_limited_to_the_documented_whitelist` 断言秘密与配置变量不外泄）、`process_group(0)` 有实现（`--test runtime_integration`）；缺含空格/引号/Unicode 的路径用例与“数据目录唯一”的断言。fixture 根 `fixtures/runtime/` |
 | `VER-RUNTIME-002` | `pending` | `MIEN_KERNEL_BIN="$KERNEL" cargo test -p mien-core --test runtime_integration --test reconcile`（2 + 6 passed）覆盖启动/停止/崩溃/控制面重启；缺取消、就绪前退出、pre-resource 与 post-resource `failed` 的完整事件序列，且无数据库一致性断言（运行时不落库）。fixture 根 `fixtures/runtime/` |
 | `VER-RUNTIME-003` | `pending` | 同 id 重复启动返回既有快照（`--lib runtime::supervisor`），重复停止在 `stopped` 上为空操作；但“并发 10 次启动请求只产生一个内核”没有用例（现有并发用例是 10 个不同 id）。fixture 根 `fixtures/runtime/` |
 | `VER-RUNTIME-004` | `pending` | `KERNEL_NOT_FOUND` 有单测与 IPC 测试（`--lib runtime::probe`、`src-tauri` 的 `runtime_start_with_a_missing_kernel_bin_fails_closed`）；`KERNEL_CHECKSUM_MISMATCH` 无任何用例，`kernel::registry::verify_binary` 仍是 `todo!()`。fixture 根 `fixtures/runtime/` |
