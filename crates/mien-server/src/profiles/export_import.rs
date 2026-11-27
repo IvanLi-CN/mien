@@ -42,7 +42,7 @@ use super::{
     validate_start_url,
 };
 use crate::RequestId;
-use crate::auth::{AuditEvent, Principal, record_audit};
+use crate::auth::Principal;
 use crate::state::AppState;
 
 /// 单次导入的档案上限：防止一次事务拖垮服务。
@@ -205,7 +205,7 @@ pub async fn export(
             }
         }
     };
-    audit(
+    super::audit(
         state,
         match request.format {
             Format::Plain => "profile.export.plain",
@@ -457,7 +457,7 @@ pub async fn commit_import(
             errors: Vec::new(),
         });
     }
-    audit(
+    super::audit(
         state,
         "profile.import",
         "profiles",
@@ -684,32 +684,6 @@ fn draft(profile: &PayloadProfile) -> Value {
             "credential_fields": proxy.credential_fields,
         })),
     })
-}
-
-/// 审计只记非敏感元数据；口令、载荷正文与凭据都不进入。
-async fn audit(
-    state: &AppState,
-    event_type: &str,
-    target: &str,
-    request_id: &str,
-    metadata: Value,
-) {
-    let Some(pool) = state.db() else {
-        return;
-    };
-    record_audit(
-        pool,
-        AuditEvent {
-            actor: crate::auth::ADMIN_ACCOUNT,
-            event_type,
-            action: event_type,
-            target,
-            result: "success",
-            request_id,
-            metadata,
-        },
-    )
-    .await;
 }
 
 // ---------------------------------------------------------------------------

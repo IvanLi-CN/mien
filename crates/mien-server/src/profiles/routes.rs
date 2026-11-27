@@ -12,6 +12,7 @@ use axum::extract::{Extension, Path, State};
 use axum::http::{HeaderMap, StatusCode, Uri};
 use axum::response::Response;
 use axum::routing::{get, post};
+use serde_json::{Value, json};
 
 use super::idempotency::{self, Key, Outcome, RequestFingerprint};
 use super::{
@@ -72,6 +73,26 @@ fn require_scope(principal: &Principal, scope: &str) -> Result<(), ApiError> {
     })
 }
 
+/// 写一条档案生命周期审计：`target` 固定为 `profile:<ULID>`（`REQ-API-009`）。
+///
+/// 只在领域函数成功后调用；`metadata` 只放非秘密标量。
+async fn audit_profile(
+    state: &AppState,
+    event_type: &str,
+    profile_id: &str,
+    request_id: &RequestId,
+    metadata: Value,
+) {
+    super::audit(
+        state,
+        event_type,
+        &format!("profile:{profile_id}"),
+        request_id.as_str(),
+        metadata,
+    )
+    .await;
+}
+
 // ---------------------------------------------------------------------------
 // 处理函数
 // ---------------------------------------------------------------------------
@@ -114,16 +135,24 @@ async fn create(
         Err(error) => return error.into_response(&request_id),
     };
     let fingerprint = RequestFingerprint::new("POST", "/api/v1/profiles", &body);
+    let audit_request_id = request_id.clone();
     execute_idempotent(
         &state,
         &principal,
         key,
         fingerprint,
         &request_id,
-        |state| async move {
-            super::create(&state, input)
-                .await
-                .map(|view| created(&view))
+        move |state| async move {
+            let view = super::create(&state, input).await?;
+            audit_profile(
+                &state,
+                "profile.created",
+                &view.profile.id.0,
+                &audit_request_id,
+                json!({}),
+            )
+            .await;
+            Ok(created(&view))
         },
     )
     .await
@@ -166,6 +195,7 @@ async fn update(
     };
     let path = format!("/api/v1/profiles/{profile_id}");
     let fingerprint = RequestFingerprint::new("PATCH", &path, &body);
+    let audit_request_id = request_id.clone();
     execute_idempotent(
         &state,
         &principal,
@@ -173,9 +203,16 @@ async fn update(
         fingerprint,
         &request_id,
         |state| async move {
-            super::update(&state, &profile_id, patch)
-                .await
-                .map(|view| ok(&view))
+            let view = super::update(&state, &profile_id, patch).await?;
+            audit_profile(
+                &state,
+                "profile.updated",
+                &view.profile.id.0,
+                &audit_request_id,
+                json!({}),
+            )
+            .await;
+            Ok(ok(&view))
         },
     )
     .await
@@ -206,6 +243,7 @@ async fn delete_one(
         if permanent { "?permanent=true" } else { "" }
     );
     let fingerprint = RequestFingerprint::new("DELETE", &path, b"");
+    let audit_request_id = request_id.clone();
     execute_idempotent(
         &state,
         &principal,
@@ -213,9 +251,16 @@ async fn delete_one(
         fingerprint,
         &request_id,
         |state| async move {
-            super::delete(&state, &profile_id, permanent)
-                .await
-                .map(|()| no_content())
+            let changed = super::delete(&state, &profile_id, permanent).await?;
+            if changed {
+                let (event_type, metadata) = if permanent {
+                    ("profile.purged", json!({ "permanent": true }))
+                } else {
+                    ("profile.deleted", json!({ "permanent": false }))
+                };
+                audit_profile(&state, event_type, &profile_id, &audit_request_id, metadata).await;
+            }
+            Ok(no_content())
         },
     )
     .await
@@ -249,6 +294,8 @@ async fn duplicate(
     };
     let path = format!("/api/v1/profiles/{profile_id}/duplicate");
     let fingerprint = RequestFingerprint::new("POST", &path, &body);
+    let audit_request_id = request_id.clone();
+    let audit_source_id = profile_id.clone();
     execute_idempotent(
         &state,
         &principal,
@@ -256,9 +303,16 @@ async fn duplicate(
         fingerprint,
         &request_id,
         |state| async move {
-            super::duplicate(&state, &profile_id, input)
-                .await
-                .map(|view| created(&view))
+            let view = super::duplicate(&state, &profile_id, input).await?;
+            audit_profile(
+                &state,
+                "profile.duplicated",
+                &view.profile.id.0,
+                &audit_request_id,
+                json!({ "source_id": audit_source_id }),
+            )
+            .await;
+            Ok(created(&view))
         },
     )
     .await
@@ -274,7 +328,17 @@ async fn archive(
         return error.into_response(&request_id);
     }
     match super::archive(&state, &profile_id).await {
-        Ok(()) => no_content(),
+        Ok(()) => {
+            audit_profile(
+                &state,
+                "profile.archived",
+                &profile_id,
+                &request_id,
+                json!({}),
+            )
+            .await;
+            no_content()
+        }
         Err(error) => error.into_response(&request_id),
     }
 }
@@ -289,7 +353,19 @@ async fn restore(
         return error.into_response(&request_id);
     }
     match super::restore(&state, &profile_id).await {
-        Ok(()) => no_content(),
+        Ok(changed) => {
+            if changed {
+                audit_profile(
+                    &state,
+                    "profile.restored",
+                    &profile_id,
+                    &request_id,
+                    json!({}),
+                )
+                .await;
+            }
+            no_content()
+        }
         Err(error) => error.into_response(&request_id),
     }
 }
