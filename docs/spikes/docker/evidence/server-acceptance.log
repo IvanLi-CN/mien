@@ -69,3 +69,89 @@ SIGTERM path only makes `axum::serve` return; it never stops supervised kernels
 and never writes `stopped`, so `crashed` is the only observable outcome. This
 deviates from REQ-RUNTIME-012 (stop via `stopping`, then write `stopped`) and is
 tracked separately.
+
+# ---------------------------------------------------------------------------
+# T33 re-run: graceful shutdown stops supervised kernels (2026-11-27)
+# ---------------------------------------------------------------------------
+#
+# Same host and run shape as the M3 run above, plus `--stop-timeout 20` so the
+# engine's grace period exceeds `MIEN_SHUTDOWN_TIMEOUT_SECS` (10s) + the 2s
+# persistence margin. The engine's default 10s would SIGKILL mid-sweep.
+#
+# Image: mien-server:t33final, built from the T33 worktree with
+#   cargo zigbuild --release -p mien-server --target x86_64-unknown-linux-gnu
+#   server binary sha256=21d9348a511f510a72f8408f4e6d16594655072b3faf1cb1e3643dc3b581a824
+# Staging digests re-checked by the Dockerfile: chromium 70d23983…bda717f4,
+# xray b651f7e1…ed95f82 (both confirmed inside the guest before the build).
+#
+# Provenance: quoted from the worker's terminal output for this image; nothing
+# reconstructed. An earlier image built from an intermediate revision showed the
+# same row outcomes but a broken signal task (see "Defect found while verifying"
+# below); its run is superseded and not quoted as evidence.
+
+## Phase: graceful restart (docker restart), before this change
+
+restart pre_restart_state=running runtime_row_state=crashed api_state=crashed
+restart runtime_row_terminal: crashed
+restart api_state_terminal: crashed
+restart last_known_isolation_retained: enforced
+restart orphan_kernel_processes: 0
+
+# `runtime_row_stopped` is the new assertion; before this change it failed with
+# `expected 'stopped', got 'crashed'`.
+
+## Phase: graceful restart (docker restart), after this change
+
+restart pre_restart_state=running runtime_row_state=stopped api_state=stopped
+PASS restart runtime_row_terminal: stopped
+PASS restart runtime_row_stopped: stopped
+PASS restart api_state_terminal: stopped
+PASS restart last_known_isolation_retained: enforced
+PASS restart orphan_kernel_processes: 0
+PASS graceful_restart_verify: exit 0
+
+# The control plane's own log for that restart, verbatim: the signal path now
+# runs the ordered shutdown (gate → drain → stop each runtime → persist → close).
+shutdown_log_1=INFO mien_server: shutdown signal received; draining connections
+shutdown_log_2=INFO mien_server::shutdown: shutdown: runtime stopped profile_id=01M8F7XQJF000000000000400X runtime_id=rt-01M8F7XQJF000000000000400X
+shutdown_log_3=INFO mien_server::shutdown: shutdown: all active runtimes stopped stopped=1
+shutdown_log_4=INFO mien_server: shutdown runtime sweep finished attempted=1 stopped=1 unfinished=0 aborted=false remaining_secs=9
+shutdown_log_5=INFO mien_server: shutdown complete
+
+## Phase: hard restart (docker kill, SIGKILL -> docker start), re-run
+
+orphan_count=0
+PASS hard_restart_orphan_kernel_processes: 0
+PASS hard_restart_reconcile_log: runtime reconciliation finished
+hard_restart_reconcile_log_line=2026-11-27T19:32:23.969813Z  INFO mien_server::profiles: runtime reconciliation finished count=1
+restart pre_restart_state=running runtime_row_state=crashed api_state=crashed
+PASS restart runtime_row_terminal: crashed
+
+# SIGKILL still has no shutdown code to run, so boot reconciliation still settles
+# that row as `crashed` — unchanged and expected.
+
+## Run totals (driver `deploy/docker/verify-restart.sh`)
+
+result=PASS, 92 PASS, 0 FAIL, 0 BLOCKED
+verify_phase_full: exit 0
+graceful_restart_verify: exit 0
+hard_restart_verify: exit 0
+
+## Defect found while verifying (fixed before this run)
+
+The first T33 image (binary c857de46) still wrote `crashed` on `docker restart`,
+and its log showed only `shutdown=requested` from the entrypoint: the server
+never observed SIGTERM and was SIGKILLed at the stop timeout. Cause: the signal
+task updated the watch channel with `send(*counts.borrow() + 1)`, holding the
+read guard across `send`'s write lock. `tokio::signal` had already taken over
+SIGTERM, so the process neither exited nor logged. Fixed with
+`watch::Sender::send_modify`, and pinned by
+`crates/mien-server/tests/shutdown_stop.rs::real_sigterm_drives_the_whole_shutdown_path`,
+which runs a real server in a child process and sends it SIGTERM: it passes in
+~0.2s with the fix and hangs past 60s with the old expression.
+
+## Superseded
+
+The "Known deviation (not fixed here)" section above no longer applies: a
+graceful `docker restart` now settles the row to `stopped`. That older section
+is kept unchanged as the record of what the M3 run observed.

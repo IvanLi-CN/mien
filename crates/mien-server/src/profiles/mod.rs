@@ -1266,7 +1266,7 @@ pub async fn stop(state: &AppState, id: &str) -> Result<view::RuntimeView, ApiEr
     }
     match snapshot {
         Some(snapshot) => {
-            persist_stopped(pool, &profile, &snapshot).await?;
+            persist_stopped(pool, &profile.id.0, &snapshot).await?;
             match view::runtime_row(pool, &profile.id.0).await? {
                 Some(row) => Ok(view::RuntimeView::from_row(
                     &row,
@@ -1280,7 +1280,7 @@ pub async fn stop(state: &AppState, id: &str) -> Result<view::RuntimeView, ApiEr
             }
         }
         None => {
-            persist_stopped_no_snapshot(pool, &profile).await?;
+            persist_stopped_without_snapshot(pool, &profile.id.0).await?;
             match view::runtime_row(pool, &profile.id.0).await? {
                 Some(row) => Ok(view::RuntimeView::from_row(
                     &row,
@@ -1531,33 +1531,48 @@ async fn persist_failed(
     Ok(())
 }
 
-async fn persist_stopped(
+/// 写入一次停止结果。HTTP `stop` 与控制面优雅关闭共用这一份实现。
+///
+/// 只有确认停止（`stopped`）时才清空 `pid`/`pgid`；进程组未能确认退出时
+/// （`stopping`）只写入观测到的状态与诊断，保留进程字段与端口租约，由启动
+/// 对账继续处理。`last_known_isolation` 两条分支都不改写：它是上一次成功
+/// `running` 的结论（`REQ-API-021`）。
+pub(crate) async fn persist_stopped(
     pool: &SqlitePool,
-    profile: &Profile,
+    profile_id: &str,
     snapshot: &RuntimeSnapshot,
 ) -> Result<(), ApiError> {
-    sqlx::query(
+    let settled = snapshot.state == RuntimeState::Stopped;
+    let statement = if settled {
         "UPDATE runtimes SET state=?1, isolation=?2, pid=NULL, pgid=NULL, exit_code=?3, \
-         last_error=?4, updated_at=?5 WHERE profile_id=?6",
-    )
-    .bind(runtime_state_str(snapshot.state))
-    .bind(isolation_str(snapshot.isolation))
-    .bind(snapshot.exit_code.map(i64::from))
-    .bind(snapshot.error_code.clone())
-    .bind(mien_server_timestamp())
-    .bind(&profile.id.0)
-    .execute(pool)
-    .await
-    .map_err(|error| ApiError::storage(&error))?;
+         last_error=?4, updated_at=?5 WHERE profile_id=?6"
+    } else {
+        "UPDATE runtimes SET state=?1, isolation=?2, exit_code=?3, last_error=?4, \
+         updated_at=?5 WHERE profile_id=?6"
+    };
+    sqlx::query(statement)
+        .bind(runtime_state_str(snapshot.state))
+        .bind(isolation_str(snapshot.isolation))
+        .bind(snapshot.exit_code.map(i64::from))
+        .bind(snapshot.error_code.clone())
+        .bind(mien_server_timestamp())
+        .bind(profile_id)
+        .execute(pool)
+        .await
+        .map_err(|error| ApiError::storage(&error))?;
     Ok(())
 }
 
-async fn persist_stopped_no_snapshot(pool: &SqlitePool, profile: &Profile) -> Result<(), ApiError> {
+/// 没有进程内快照时的幂等停止写入：行本来就是 `stopped`。
+pub(crate) async fn persist_stopped_without_snapshot(
+    pool: &SqlitePool,
+    profile_id: &str,
+) -> Result<(), ApiError> {
     sqlx::query(
         "UPDATE runtimes SET state='stopped', pid=NULL, pgid=NULL, updated_at=?1 WHERE profile_id=?2",
     )
     .bind(mien_server_timestamp())
-    .bind(&profile.id.0)
+    .bind(profile_id)
     .execute(pool)
     .await
     .map_err(|error| ApiError::storage(&error))?;

@@ -4,7 +4,10 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     process::Stdio,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -298,6 +301,8 @@ pub(crate) struct RuntimeRecord {
     /// Start of the current process; a run past `stable_after` clears the ladder.
     started_at: Mutex<Option<Instant>>,
     events: Arc<Mutex<Vec<RuntimeEvent>>>,
+    /// 关闭闸门；与监督器共享，落下后不再拉起内核。
+    shutting_down: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone)]
@@ -316,6 +321,7 @@ impl RuntimeRecord {
         options: RuntimeOptions,
         events: Arc<Mutex<Vec<RuntimeEvent>>>,
         mode_args: ModeArgs,
+        shutting_down: Arc<AtomicBool>,
     ) -> Result<Self, CoreError> {
         let logs = Arc::new(
             RuntimeLogs::new(options.data_dir.join("logs"))
@@ -341,6 +347,7 @@ impl RuntimeRecord {
             mode_args,
             started_at: Mutex::new(None),
             events,
+            shutting_down,
         })
     }
 
@@ -487,6 +494,10 @@ impl RuntimeRecord {
 
     fn stop_requested(&self) -> bool {
         *self.stop_requested.lock().expect("stop lock")
+    }
+
+    fn shutting_down(&self) -> bool {
+        self.shutting_down.load(Ordering::SeqCst)
     }
 
     fn clear_process(&self) {
@@ -663,6 +674,9 @@ impl RuntimeRecord {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            // 最后一道防线：记录被异常丢弃时，直接子进程不会变成孤儿。
+            // 它只覆盖直接子进程；进程组由 `stop_process` 与关闭遍历负责。
+            .kill_on_drop(true)
             .env_clear();
         for (name, value) in child_environment(&options.runtime_id, |key| std::env::var_os(key)) {
             command.env(name, value);
@@ -722,6 +736,8 @@ pub struct RuntimeSupervisor {
     root: PathBuf,
     /// 并发准入闸门；默认 `max_concurrent_runtimes = 10`。
     admission: Arc<RuntimeAdmission>,
+    /// 关闭闸门；与全部记录共享，落下后拒绝新启动。
+    shutting_down: Arc<AtomicBool>,
 }
 
 impl RuntimeSupervisor {
@@ -731,6 +747,7 @@ impl RuntimeSupervisor {
             events: Arc::new(Mutex::new(Vec::new())),
             root: root.into(),
             admission: RuntimeAdmission::default_limit(),
+            shutting_down: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -766,6 +783,35 @@ impl RuntimeSupervisor {
             .map(|record| record.snapshot())
     }
 
+    /// 活动记录快照（`starting`/`running`/`stopping`），按 runtime id 排序。
+    ///
+    /// 控制面优雅关闭用它枚举要停止的行；只读访问器，不改变状态机，也不
+    /// 复制任何停止逻辑。
+    pub fn active_runtimes(&self) -> Vec<RuntimeSnapshot> {
+        let mut snapshots: Vec<RuntimeSnapshot> = self
+            .records
+            .lock()
+            .expect("records lock")
+            .values()
+            .map(|record| record.snapshot())
+            .filter(|snapshot| !snapshot.state.is_terminal())
+            .collect();
+        snapshots.sort_by(|left, right| left.runtime_id.cmp(&right.runtime_id));
+        snapshots
+    }
+
+    /// 落下关闭闸门：拒绝新启动，并让等待重启的记录不再拉起内核。
+    ///
+    /// 必须在 [`Self::stop`] 之前调用，且要早于 HTTP 排空：排空期间仍可能有
+    /// keep-alive 连接送达启动请求，闸门是它们唯一的拒绝点。
+    pub fn begin_shutdown(&self) {
+        self.shutting_down.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_shutting_down(&self) -> bool {
+        self.shutting_down.load(Ordering::SeqCst)
+    }
+
     pub fn logs_tail(&self, runtime_id: &str, limit: usize) -> Result<Vec<String>, CoreError> {
         self.records
             .lock()
@@ -781,9 +827,18 @@ impl RuntimeSupervisor {
     /// `RUNTIME_MODE_UNSUPPORTED`，且不会创建运行时记录或进程。超出并发上限时返回
     /// `RUNTIME_CONFLICT`，同样不创建记录、进程或代理绑定。
     pub async fn start(&self, options: RuntimeOptions) -> Result<RuntimeSnapshot, CoreError> {
+        // 关闭闸门先于一切：不得在退出途中拉起新内核，也不得创建记录。
+        if self.is_shutting_down() {
+            return Err(CoreError::RuntimeConflict);
+        }
         let mode_args = ModeArgs::resolve(options.mode, options.headless_chrome_ua_patch)?;
         let runtime_id = options.runtime_id.clone();
-        let record = Arc::new(RuntimeRecord::new(options, self.events.clone(), mode_args)?);
+        let record = Arc::new(RuntimeRecord::new(
+            options,
+            self.events.clone(),
+            mode_args,
+            self.shutting_down.clone(),
+        )?);
         {
             let mut records = self.records.lock().expect("records lock");
             if let Some(existing) = records.get(&record.options.runtime_id) {
@@ -997,6 +1052,10 @@ fn reconciled_snapshot(metadata: RuntimeMetadata, state: RuntimeState) -> Runtim
 /// 因此 `runtime.crashed` 仍是一次转移一条事件。
 async fn respawn(record: Arc<RuntimeRecord>, delay: Duration) {
     tokio::time::sleep(delay).await;
+    // 关闭闸门落下后不再拉起任何内核：`crashed` 已是终态，记录保持真实结论。
+    if record.shutting_down() {
+        return;
+    }
     // A user stop during the wait wins and never restarts.
     if record.persistable_state() != RuntimeState::Crashed {
         return;
