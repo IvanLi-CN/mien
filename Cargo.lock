@@ -1121,6 +1121,7 @@ dependencies = [
 name = "mien-server"
 version = "0.0.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "argon2",
  "axum",
@@ -1139,6 +1140,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "zeroize",
 ]
 
 [[package]]

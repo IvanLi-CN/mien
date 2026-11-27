@@ -44,6 +44,18 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profiles/{profile_id}/start", post(start))
         .route("/api/v1/profiles/{profile_id}/stop", post(stop))
         .route("/api/v1/profiles/{profile_id}/runtime", get(runtime))
+        .route(
+            "/api/v1/profiles/{profile_id}/export",
+            post(super::export_import::export_handler),
+        )
+        .route(
+            "/api/v1/profiles/import",
+            post(super::export_import::import_handler),
+        )
+        .route(
+            "/api/v1/profiles/import/validate",
+            post(super::export_import::validate_handler),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +441,7 @@ fn idempotency_header(headers: &HeaderMap) -> Option<&str> {
 }
 
 /// 带 `Idempotency-Key` 时缓存成功响应；无键时直接执行。
-async fn execute_idempotent<F, Fut>(
+pub(super) async fn execute_idempotent<F, Fut>(
     state: &AppState,
     principal: &Principal,
     key: Option<Key>,

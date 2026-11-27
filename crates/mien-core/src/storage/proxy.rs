@@ -243,6 +243,61 @@ struct StoredProxy {
     credentials: BTreeMap<String, String>,
 }
 
+/// 导入时重建的代理全局行：只有非秘密配置，没有凭据。
+///
+/// 导出已移除凭据（`credentials_removed=true`），导入因此不能恢复凭据值；
+/// `credential_fields_json` 写入空数组，界面按「凭据需重新输入」提示。
+pub struct RedactedProxy {
+    pub name: String,
+    pub kind: ProxyKind,
+    pub server: String,
+    pub port: u16,
+    pub options: BTreeMap<String, Value>,
+}
+
+/// 在调用方事务内插入一条无凭据的代理行。
+///
+/// 选项仍走同一字段级加密（AAD 绑定新 `proxy_id` 与 `options`），因此不出现
+/// 明文 options 列；`credential_fields_json` 固定为 `[]`。
+///
+/// # Errors
+/// 字段非法或存储失败。
+pub async fn insert_redacted(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    key: &MasterKey,
+    id: &ProxyId,
+    proxy: &RedactedProxy,
+) -> Result<(), CoreError> {
+    let state = Validated {
+        name: proxy.name.trim().to_owned(),
+        kind: proxy.kind,
+        server: proxy.server.trim().to_owned(),
+        port: proxy.port,
+        options: proxy.options.clone(),
+        credentials: BTreeMap::new(),
+    };
+    state.validate()?;
+    let ciphertext = seal(key, id.as_str(), &state)?;
+    let fields =
+        serde_json::to_string(&state.credential_fields()).map_err(|_| CoreError::Storage)?;
+    let now = crate::storage::now_utc();
+    sqlx::query(
+        "INSERT INTO proxies (id,name,kind,server,port,config_ciphertext,credential_fields_json,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?8)",
+    )
+    .bind(id.as_str())
+    .bind(&state.name)
+    .bind(state.kind.as_str())
+    .bind(&state.server)
+    .bind(i64::from(state.port))
+    .bind(&ciphertext)
+    .bind(fields)
+    .bind(&now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(map_sqlx_error)?;
+    Ok(())
+}
+
 /// 已校验、待加密写入的状态。
 struct Validated {
     name: String,
