@@ -1139,6 +1139,14 @@ Source: https://github.com/rust-lang/log
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
+Component: cargo:matchers@0.2.0
+Version: 0.2.0
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/hawkw/matchers
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
 Component: cargo:matchit@0.8.4
 Version: 0.8.4
 License: MIT AND BSD-3-Clause
@@ -1171,6 +1179,14 @@ Source: https://crates.io/crates/mien-core/0.0.0
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
+Component: cargo:mien-server@0.0.0
+Version: 0.0.0
+License: Apache-2.0
+Distribution: linked-dependency
+Source: https://crates.io/crates/mien-server/0.0.0
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
 Component: cargo:mime@0.3.18
 Version: 0.3.18
 License: MIT OR Apache-2.0
@@ -1192,6 +1208,14 @@ Version: 0.10.1
 License: MIT OR Apache-2.0
 Distribution: linked-dependency
 Source: https://github.com/havarnov/multimap
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
+Component: cargo:nu-ansi-term@0.50.3
+Version: 0.50.3
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/nushell/nu-ansi-term
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
@@ -1691,6 +1715,14 @@ Source: https://github.com/serde-rs/json
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
+Component: cargo:serde_path_to_error@0.1.20
+Version: 0.1.20
+License: MIT OR Apache-2.0
+Distribution: linked-dependency
+Source: https://github.com/dtolnay/path-to-error
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
 Component: cargo:serde_spanned@0.6.9
 Version: 0.6.9
 License: MIT OR Apache-2.0
@@ -1728,6 +1760,14 @@ Version: 0.10.9
 License: MIT OR Apache-2.0
 Distribution: linked-dependency
 Source: https://github.com/RustCrypto/hashes
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
+Component: cargo:sharded-slab@0.1.7
+Version: 0.1.7
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/hawkw/sharded-slab
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
@@ -1939,6 +1979,14 @@ Source: https://github.com/dtolnay/thiserror
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
+Component: cargo:thread_local@1.1.10
+Version: 1.1.10
+License: MIT OR Apache-2.0
+Distribution: linked-dependency
+Source: https://github.com/Amanieu/thread_local-rs
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
 Component: cargo:tinystr@0.8.5
 Version: 0.8.5
 License: Unicode-3.0
@@ -2051,6 +2099,14 @@ Source: https://github.com/hyperium/tonic
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
+Component: cargo:tower-http@0.6.11
+Version: 0.6.11
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/tower-rs/tower-http
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
 Component: cargo:tower-layer@0.3.3
 Version: 0.3.3
 License: MIT
@@ -2085,6 +2141,30 @@ Evidence: Cargo.lock, Cargo.toml, deny.toml
 
 Component: cargo:tracing-core@0.1.36
 Version: 0.1.36
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/tokio-rs/tracing
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
+Component: cargo:tracing-log@0.2.0
+Version: 0.2.0
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/tokio-rs/tracing
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
+Component: cargo:tracing-serde@0.2.0
+Version: 0.2.0
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/tokio-rs/tracing
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
+Component: cargo:tracing-subscriber@0.3.23
+Version: 0.3.23
 License: MIT
 Distribution: linked-dependency
 Source: https://github.com/tokio-rs/tracing
@@ -2200,6 +2280,14 @@ Version: 0.2.2
 License: Apache-2.0 OR MIT
 Distribution: linked-dependency
 Source: https://github.com/alacritty/vte
+Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
+Evidence: Cargo.lock, Cargo.toml, deny.toml
+
+Component: cargo:valuable@0.1.1
+Version: 0.1.1
+License: MIT
+Distribution: linked-dependency
+Source: https://github.com/tokio-rs/valuable
 Obligations: Retain the selected license notice in the release license bundle; GPL/AGPL/SSPL and unknown expressions are not permitted in the linked dependency graph.
 Evidence: Cargo.lock, Cargo.toml, deny.toml
 
