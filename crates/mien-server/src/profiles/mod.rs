@@ -1311,6 +1311,7 @@ pub async fn runtime(state: &AppState, id: &str) -> Result<view::RuntimeView, Ap
 /// 这里保留它，直到服务端进程退出。
 pub struct SharedEngine {
     controller: Arc<EngineController<GrpcXrayApi>>,
+    api: Arc<GrpcXrayApi>,
     _process: tokio::sync::Mutex<Option<EngineProcess>>,
     binary: PathBuf,
     sha256: String,
@@ -1333,6 +1334,13 @@ impl SharedEngine {
     /// 引用计数与绑定不一致时返回 `PROXY_OUTBOUND_REFCOUNT_MISMATCH`。
     pub fn detach(&self, runtime_id: &str) -> Result<(), CoreError> {
         self.controller.release(runtime_id).map(|_| ())
+    }
+
+    /// 共享引擎的管理 API 客户端；代理检查用它创建与回收 `chk:*` 临时资源。
+    ///
+    /// 复用同一进程与同一控制器：调用方不得借此再起第二个引擎。
+    pub fn api(&self) -> Arc<GrpcXrayApi> {
+        self.api.clone()
     }
 }
 
@@ -1408,7 +1416,7 @@ fn proxy_not_ready() -> ApiError {
 }
 
 /// 首次代理启动时拉起共享引擎；此后复用同一进程与控制器。
-async fn ensure_engine(state: &AppState) -> Result<Arc<SharedEngine>, ApiError> {
+pub(crate) async fn ensure_engine(state: &AppState) -> Result<Arc<SharedEngine>, ApiError> {
     let mut slot = state.engine_slot().lock().await;
     if let Some(engine) = slot.as_ref() {
         return Ok(engine.clone());
@@ -1420,7 +1428,7 @@ async fn ensure_engine(state: &AppState) -> Result<Arc<SharedEngine>, ApiError> 
         .await
         .map_err(|_| proxy_not_ready())?;
     let api = process.api();
-    let controller = Arc::new(EngineController::with_fallback(api, false));
+    let controller = Arc::new(EngineController::with_fallback(Arc::clone(&api), false));
     controller.set_state(EngineState::Running);
     controller.register_binary(EngineBinary {
         path: binary.clone(),
@@ -1428,6 +1436,7 @@ async fn ensure_engine(state: &AppState) -> Result<Arc<SharedEngine>, ApiError> 
     });
     let shared = Arc::new(SharedEngine {
         controller,
+        api,
         _process: tokio::sync::Mutex::new(Some(process)),
         binary,
         sha256,

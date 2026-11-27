@@ -33,6 +33,11 @@ pub fn profile_routes() -> Router<AppState> {
     crate::profiles::routes::routes()
 }
 
+/// 代理配置端点（T26）：CRUD、分享链接导入与代理检查。
+pub fn proxy_routes() -> Router<AppState> {
+    crate::proxies::routes::routes()
+}
+
 /// 事件频道（T25）：一次性票据与 WebSocket 升级。
 ///
 /// 升级端点在认证门禁中属于公开白名单，因为它自己校验 Origin 与票据/Cookie，
