@@ -333,6 +333,8 @@ struct Inner {
     proxy_check: Arc<ProxyCheckRuntime>,
     /// 事件频道参数：保留窗口、票据 TTL、心跳与实时轮询间隔。
     events: Arc<crate::events::EventRuntime>,
+    /// 静态 Web UI 根目录；启动时解析一次，目录缺失时为 `None`。
+    web_dist: Option<crate::web::WebRoot>,
 }
 
 impl AppState {
@@ -387,6 +389,9 @@ impl AppState {
                 engine: Arc::new(tokio::sync::Mutex::new(None)),
                 proxy_check: Arc::new(ProxyCheckRuntime::default()),
                 events: Arc::new(crate::events::EventRuntime::default()),
+                // 默认目录只在启动路径（[`AppState::open`]）解析；直接从池构造的
+                // 宿主与测试不隐式依赖工作目录里是否存在 `dist/`。
+                web_dist: None,
             }),
         }
     }
@@ -413,6 +418,25 @@ impl AppState {
     /// 替换事件频道参数（保留窗口、票据 TTL、心跳与轮询）。
     pub fn with_events(self, events: crate::events::EventRuntime) -> Self {
         self.with_mut(|inner| inner.events = Arc::new(events))
+    }
+
+    /// 静态 Web UI 根目录；`None` 表示不提供 UI，`/api/*` 与健康检查不受影响。
+    ///
+    /// 路径在这里规范化并固定下来，请求期不再探测候选目录。
+    pub fn with_web_dist(self, web_dist: Option<PathBuf>) -> Self {
+        self.with_mut(|inner| {
+            inner.web_dist = web_dist.as_deref().and_then(crate::web::WebRoot::new);
+        })
+    }
+
+    /// 直接挂已解析的静态根；启动路径用它避免重复规范化。
+    fn with_web_root(self, web_root: Option<crate::web::WebRoot>) -> Self {
+        self.with_mut(|inner| inner.web_dist = web_root)
+    }
+
+    /// 已解析的静态根；未配置或目录不存在时为 `None`。
+    pub fn web_dist(&self) -> Option<&crate::web::WebRoot> {
+        self.inner.web_dist.as_ref()
     }
 
     /// 显式内核可执行文件（验收与受限宿主使用）。
@@ -483,7 +507,10 @@ impl AppState {
             supervisor,
             std::env::var_os(KERNEL_BIN_ENV).map(PathBuf::from),
             allow_direct_egress_from_env(),
-        ))
+        )
+        // 启动时解析一次：`MIEN_WEB_DIST`，否则 `<cwd>/dist`，再否则可执行文件旁的
+        // `web/`。目录缺失不是启动错误，只是没有 UI。
+        .with_web_root(crate::web::WebRoot::resolve()))
     }
 
     pub fn data_root(&self) -> &Path {
