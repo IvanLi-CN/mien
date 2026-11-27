@@ -93,6 +93,16 @@ const MONITOR_INTERVAL: Duration = Duration::from_millis(50);
 /// A run this long clears the crash ladder; anything shorter keeps counting.
 const STABLE_RUN: Duration = Duration::from_secs(30);
 
+/// Whether the manifest itself says the artifact cannot sandbox.
+///
+/// Only `none` qualifies. A real kernel manifest never declares it (linux is
+/// `namespace`, macOS `seatbelt`, Windows `win32-restricted-token`), so a kernel
+/// that promises a mechanism still gets that mechanism verified; an empty or
+/// unknown kind is not a licence either.
+fn declares_no_sandbox(sandbox_kind: &str) -> bool {
+    sandbox_kind == "none"
+}
+
 fn spawn_failed(message: &str) -> CoreError {
     CoreError::validation(ErrorCode::RuntimeSpawnFailed, message)
 }
@@ -598,10 +608,25 @@ impl RuntimeRecord {
                 "shared proxy engine is not ready",
             ));
         }
+        // `sandbox_kind: none` is the manifest's own statement that this artifact
+        // cannot sandbox (`docs/contracts/kernel-manifest.schema.json`). Requiring
+        // seatbelt or a namespace tree from such a kernel would reject it on every
+        // host, so it is reported as `unsandboxed` up front instead. Every other
+        // kind stays fail-closed: the platform-specific check below must confirm
+        // the mechanism the manifest promises, and an unknown kind is not a licence.
+        let declared_unsandboxed = declares_no_sandbox(&options.manifest_sandbox_kind);
         #[cfg(target_os = "linux")]
-        let isolation = Isolation::Unknown;
+        let isolation = if declared_unsandboxed {
+            Isolation::Unsandboxed
+        } else {
+            Isolation::Unknown
+        };
         #[cfg(not(target_os = "linux"))]
-        let isolation = probe::probe_macos_sandbox(&options.manifest_sandbox_kind)?;
+        let isolation = if declared_unsandboxed {
+            Isolation::Unsandboxed
+        } else {
+            probe::probe_macos_sandbox(&options.manifest_sandbox_kind)?
+        };
         probe::verify_kernel(&options.binary, &options.binary_sha256)?;
         std::fs::create_dir_all(options.data_dir.join("chrome"))
             .map_err(|_| spawn_failed("kernel process could not be created"))?;
@@ -672,11 +697,17 @@ impl RuntimeRecord {
         }
         #[cfg(target_os = "linux")]
         {
-            match probe::require_linux_isolation(pid).await {
-                Ok(isolation) => self.set_isolation(isolation),
-                Err(error) => {
-                    let _ = self.stop_process(Duration::from_secs(2)).await;
-                    return Err(error);
+            // The declared-`none` case already skipped the check above; everything
+            // else must show a sandboxed tree here or the launch is refused.
+            if declared_unsandboxed {
+                self.set_isolation(Isolation::Unsandboxed);
+            } else {
+                match probe::require_linux_isolation(pid).await {
+                    Ok(isolation) => self.set_isolation(isolation),
+                    Err(error) => {
+                        let _ = self.stop_process(Duration::from_secs(2)).await;
+                        return Err(error);
+                    }
                 }
             }
         }
@@ -1127,6 +1158,21 @@ mod tests {
         );
         assert_eq!(supervisor.admission().active(), 0, "no slot on refusal");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Only the manifest's own `none` skips the platform sandbox check.
+    #[test]
+    fn only_a_declared_none_manifest_skips_sandbox_verification() {
+        assert!(declares_no_sandbox("none"));
+        for kind in [
+            "namespace",
+            "seatbelt",
+            "win32-restricted-token",
+            "unknown",
+            "",
+        ] {
+            assert!(!declares_no_sandbox(kind), "`{kind}` must stay fail-closed");
+        }
     }
 
     #[test]

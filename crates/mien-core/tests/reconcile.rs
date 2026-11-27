@@ -41,6 +41,11 @@ fn digest(path: &Path) -> String {
 /// 清单可解析的选项；`/bin/true` 等假内核也能走完整启动流程直到进程退出。
 fn options(binary: &Path, sha: &str, data_dir: &Path, runtime_id: &str) -> RuntimeOptions {
     let mut options = RuntimeOptions::new(runtime_id, ProfileId::new(), binary, sha, data_dir);
+    // `/bin/sh` stand-ins cannot sandbox, and they say so: `sandbox_kind: none`
+    // is the manifest value for an artifact without a sandbox. Declaring it keeps
+    // the Linux namespace gate fail-closed for real kernels while these tests
+    // exercise restart and reconciliation instead of the sandbox.
+    options.manifest_sandbox_kind = "none".into();
     options.launch_args = vec![
         "--no-first-run".into(),
         "--no-default-browser-check".into(),
