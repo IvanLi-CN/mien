@@ -614,8 +614,9 @@ fn the_generated_bootstrap_file_is_removed_after_the_password_change() {
     // 没有 MIEN_ADMIN_PASSWORD/_FILE 时启动引导生成 0600 文件。
     let dir = TempDir::new().expect("temp dir");
     let pool = mien_core::storage::open_and_migrate(&dir.path().join("mien.db")).expect("migrate");
-    let bootstrap = mien_server::auth::password::resolve_bootstrap(dir.path(), |_| None)
-        .expect("generated bootstrap");
+    let bootstrap = mien_server::auth::password::resolve_bootstrap(dir.path(), true, |_| None)
+        .expect("generated bootstrap")
+        .expect("bootstrap");
     assert_eq!(bootstrap.source(), BootstrapSource::Generated);
     let password = bootstrap.expose().to_owned();
     let state = AppState::new(dir.path(), Some(pool))
@@ -739,12 +740,14 @@ fn authentication_precedes_authorization_and_existence() {
 fn the_bootstrap_environment_variables_are_honoured() {
     // MIEN_ADMIN_PASSWORD 优先于 MIEN_ADMIN_PASSWORD_FILE。
     let dir = TempDir::new().expect("temp dir");
-    let bootstrap = mien_server::auth::password::resolve_bootstrap(dir.path(), |key| match key {
-        ADMIN_PASSWORD_ENV => Some("env-secret".to_owned()),
-        ADMIN_PASSWORD_FILE_ENV => Some("/nonexistent".to_owned()),
-        _ => None,
-    })
-    .expect("inline bootstrap");
+    let bootstrap =
+        mien_server::auth::password::resolve_bootstrap(dir.path(), true, |key| match key {
+            ADMIN_PASSWORD_ENV => Some("env-secret".to_owned()),
+            ADMIN_PASSWORD_FILE_ENV => Some("/nonexistent".to_owned()),
+            _ => None,
+        })
+        .expect("inline bootstrap")
+        .expect("bootstrap");
     assert_eq!(bootstrap.source(), BootstrapSource::Environment);
     assert_eq!(bootstrap.expose(), "env-secret");
 
@@ -756,11 +759,13 @@ fn the_bootstrap_environment_variables_are_honoured() {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).expect("chmod");
     }
-    let from_file = mien_server::auth::password::resolve_bootstrap(dir.path(), |key| match key {
-        ADMIN_PASSWORD_FILE_ENV => Some(file.display().to_string()),
-        _ => None,
-    })
-    .expect("file bootstrap");
+    let from_file =
+        mien_server::auth::password::resolve_bootstrap(dir.path(), true, |key| match key {
+            ADMIN_PASSWORD_FILE_ENV => Some(file.display().to_string()),
+            _ => None,
+        })
+        .expect("file bootstrap")
+        .expect("bootstrap");
     assert_eq!(from_file.source(), BootstrapSource::File);
     assert_eq!(from_file.expose(), "file-secret");
 }

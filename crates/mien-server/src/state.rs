@@ -330,20 +330,27 @@ impl AppState {
     /// 同 [`AppState::open`]。
     pub fn open_with(data_root: &Path, security: SecuritySettings) -> Result<Self, CoreError> {
         std::fs::create_dir_all(data_root).map_err(|_| CoreError::Storage)?;
-        let pool = mien_core::storage::open_and_migrate(&data_root.join(DATABASE_FILE))?;
+        // 打开迁移会创建数据库；先记住它此前是否存在，用来判断这是不是一个全新
+        // 数据根（只有全新数据根才允许生成引导口令，已有凭据时不得覆盖）。
+        let database_path = data_root.join(DATABASE_FILE);
+        let fresh_data_root = !database_path.exists();
+        let pool = mien_core::storage::open_and_migrate(&database_path)?;
+        let state = Self::new(data_root, Some(pool)).with_security(security);
         let bootstrap =
-            crate::auth::password::resolve_bootstrap(data_root, |key| std::env::var(key).ok())
-                .map_err(|_| CoreError::Storage)?;
+            crate::auth::password::resolve_bootstrap(data_root, fresh_data_root, |key| {
+                std::env::var(key).ok()
+            })
+            .map_err(|_| CoreError::Storage)?;
+        let Some(bootstrap) = bootstrap else {
+            return Ok(state);
+        };
         if bootstrap.source() == crate::auth::password::BootstrapSource::Generated {
             tracing::warn!(
                 path = %crate::auth::password::generated_bootstrap_path(data_root).display(),
                 "provisioned a generated administrator password; read it from this file"
             );
         }
-        let auth = AuthState::default().with_bootstrap(bootstrap);
-        Ok(Self::new(data_root, Some(pool))
-            .with_security(security)
-            .with_auth(auth))
+        Ok(state.with_auth(AuthState::default().with_bootstrap(bootstrap)))
     }
 
     pub fn data_root(&self) -> &Path {

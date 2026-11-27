@@ -122,34 +122,41 @@ pub struct Credential {
 
 /// 按契约顺序解析引导口令：内联环境变量、0600 文件、生成。
 ///
-/// 生成路径会创建 `<root>/secrets` 并写入 0600 文件；已存在的生成文件会被复用，
-/// 避免每次启动都重置管理员口令。
+/// `allow_generate` 决定是否允许在两者都缺失时生成新口令：只有数据根是全新的
+/// （数据库中必然没有管理员凭据）才应传 `true`。否则返回 `Ok(None)`，避免在
+/// 已有凭据的库上重新生成一个与真实口令无关的引导文件。
+///
+/// 生成路径会创建 `<root>/secrets` 并写入 0600 文件；已存在的生成文件会被复用。
 ///
 /// # Errors
 /// 文件不可读、权限过宽、内容为空，或生成文件写入失败。
 pub fn resolve_bootstrap(
     root: &Path,
+    allow_generate: bool,
     lookup: impl Fn(&str) -> Option<String>,
-) -> Result<Bootstrap, AuthError> {
+) -> Result<Option<Bootstrap>, AuthError> {
     if let Some(value) = lookup(ADMIN_PASSWORD_ENV) {
         if !value.is_empty() {
-            return Ok(Bootstrap::new(value, BootstrapSource::Environment));
+            return Ok(Some(Bootstrap::new(value, BootstrapSource::Environment)));
         }
     }
     if let Some(path) = lookup(ADMIN_PASSWORD_FILE_ENV) {
         let path = PathBuf::from(path);
         let secret = read_private_secret(&path)?;
-        return Ok(Bootstrap::new(secret, BootstrapSource::File));
+        return Ok(Some(Bootstrap::new(secret, BootstrapSource::File)));
     }
 
     let path = root.join(BOOTSTRAP_FILE);
     if path.is_file() {
         let secret = read_private_secret(&path)?;
-        return Ok(Bootstrap::new(secret, BootstrapSource::Generated));
+        return Ok(Some(Bootstrap::new(secret, BootstrapSource::Generated)));
+    }
+    if !allow_generate {
+        return Ok(None);
     }
     let secret = generate_password();
     write_private_secret(&path, &secret)?;
-    Ok(Bootstrap::new(secret, BootstrapSource::Generated))
+    Ok(Some(Bootstrap::new(secret, BootstrapSource::Generated)))
 }
 
 /// 64 个十六进制字符的高熵口令（32 字节 CSPRNG 输出）。
@@ -421,12 +428,13 @@ mod tests {
     #[test]
     fn bootstrap_prefers_the_inline_environment_variable() {
         let dir = tempfile::TempDir::new().expect("temp dir");
-        let bootstrap = resolve_bootstrap(dir.path(), |key| match key {
+        let bootstrap = resolve_bootstrap(dir.path(), true, |key| match key {
             ADMIN_PASSWORD_ENV => Some("inline-secret".to_owned()),
             ADMIN_PASSWORD_FILE_ENV => Some("/nonexistent".to_owned()),
             _ => None,
         })
-        .expect("inline bootstrap");
+        .expect("inline bootstrap")
+        .expect("bootstrap");
         assert_eq!(bootstrap.source(), BootstrapSource::Environment);
         assert_eq!(bootstrap.expose(), "inline-secret");
     }
@@ -434,7 +442,8 @@ mod tests {
     #[test]
     fn bootstrap_generates_a_private_file_when_no_source_is_configured() {
         let dir = tempfile::TempDir::new().expect("temp dir");
-        let bootstrap = resolve_bootstrap(dir.path(), |_| None).expect("generated bootstrap");
+        let bootstrap = resolve_bootstrap(dir.path(), true, |_| None).expect("generated bootstrap");
+        let bootstrap = bootstrap.expect("bootstrap");
         assert_eq!(bootstrap.source(), BootstrapSource::Generated);
         assert_eq!(bootstrap.expose().len(), GENERATED_PASSWORD_BYTES * 2);
         let path = generated_bootstrap_path(dir.path());
@@ -447,7 +456,8 @@ mod tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o600, "bootstrap file must be 0600");
         }
-        let again = resolve_bootstrap(dir.path(), |_| None).expect("reused bootstrap");
+        let again = resolve_bootstrap(dir.path(), true, |_| None).expect("reused bootstrap");
+        let again = again.expect("bootstrap");
         assert_eq!(again.expose(), bootstrap.expose());
     }
 
@@ -460,7 +470,7 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
-            let error = resolve_bootstrap(dir.path(), |key| match key {
+            let error = resolve_bootstrap(dir.path(), true, |key| match key {
                 ADMIN_PASSWORD_FILE_ENV => Some(path.display().to_string()),
                 _ => None,
             })
