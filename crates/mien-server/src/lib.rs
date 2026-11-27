@@ -13,12 +13,13 @@ pub mod proxies;
 pub mod routes;
 pub mod state;
 pub mod tokens;
+pub mod web;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Extension, Request, State};
+use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -47,7 +48,8 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::profile_routes())
         .merge(routes::proxy_routes())
         .merge(routes::event_routes())
-        .fallback(not_found)
+        // 兜底先判定 API 面，再尝试静态文件与 SPA 入口（`REQ-API-004`）。
+        .fallback(web::fallback)
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth::enforce))
         .layer(middleware::from_fn(request_id))
@@ -226,13 +228,12 @@ pub(crate) fn error_response_with(
     response
 }
 
-/// 未知路由与未知 API 版本统一返回 404 + 错误信封。
-async fn not_found(
-    State(_state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    request: Request,
-) -> Response {
-    let requested = unsupported_version(request.uri().path());
+/// 未命中路由的 JSON 404；未知 API 版本额外给出请求的版本段。
+///
+/// 静态 fallback 与 API 兜底共用这一实现，保证 `/api/*` 的未知路径永远不会
+/// 变成 HTML。
+pub(crate) fn not_found_response(request_id: &RequestId, path: &str) -> Response {
+    let requested = unsupported_version(path);
     let (message, details) = match requested {
         Some(version) => (
             "That API version is not served.",
@@ -250,6 +251,11 @@ async fn not_found(
         request_id.as_str(),
         details,
     )
+}
+
+/// API 面：健康检查与 `/api` 前缀由 API 独占，静态 fallback 不得接管。
+pub(crate) fn is_api_surface(path: &str) -> bool {
+    matches!(path, "/healthz" | "/readyz" | "/api") || path.starts_with("/api/")
 }
 
 /// `/api/<segment>` 中不受支持的数字版本段，例如 `v2`。
@@ -313,5 +319,22 @@ mod tests {
         assert_eq!(unsupported_version("/api/vX"), None);
         assert_eq!(unsupported_version("/api/"), None);
         assert_eq!(unsupported_version("/healthz"), None);
+    }
+
+    #[test]
+    fn api_surface_is_reserved_before_static_files() {
+        for path in [
+            "/api",
+            "/api/",
+            "/api/v1",
+            "/api/v1/nope",
+            "/healthz",
+            "/readyz",
+        ] {
+            assert!(is_api_surface(path), "{path} must stay on the API side");
+        }
+        for path in ["/", "/apiary", "/api-docs", "/profiles/abc", "/healthzz"] {
+            assert!(!is_api_surface(path), "{path} may be served by the UI");
+        }
     }
 }
