@@ -33,20 +33,36 @@ draws on. A file can serve several families, so the column sums past 205.
 | `RT-001..026` | 26 | runtime | `tests/runtime_integration.rs`, `tests/reconcile.rs`, `tests/admission.rs`, `tests/slice_e2e.rs`, `tests/shutdown_stop.rs` | 24 |
 | `API-001..020` | 20 | control API | `tests/http.rs`, `tests/profiles_api.rs`, `tests/auth.rs`, `tests/tokens.rs`, `tests/events.rs`, `tests/audit_api.rs`, `tests/static_ui.rs` | 85 |
 | `SEC-001..009` | 9 | security baseline | `tests/auth.rs`, `src/runtime/probe.rs`, `docs/SECURITY.md` | 16 |
-| `PKG-001..009` | 9 | packaging | `scripts/release/`, `.github/workflows/` | **0** |
+| `PKG-001..009` | 9 | packaging | `scripts/release/`, `.github/workflows/` | 2 |
 | `PERF-001..007` | 7 | performance | — | **0** |
 | `PRD-ACC-001..010` | 10 | end-to-end acceptance | — | **0** |
 
 ## The three empty families
 
-**25 of 169 IDs have no test source whatsoever.** They are not "probably
+**23 of 169 IDs have no test source whatsoever.** They are not "probably
 covered somewhere"; there is nothing to point at.
 
-- `PKG-001..009`: release packaging. `scripts/release/` has the AdHoc signer and
-  the gate checker, but no test asserts release-workflow behaviour (draft
-  reservation, promote/release idempotency, rollback). The new
-  `scripts/release/gate.test.mjs` covers the checker, not the release
-  procedure.
+- `PKG-001..009`: release packaging. Two IDs now have a real assertion and seven
+  do not:
+  - `PKG-003` (updater signature): `scripts/release/updater-signature.test.mjs`
+    plus `macos-adhoc.sh --updater-public-key`. The verifier parses minisign
+    keys and signatures, distinguishes `Ed` (raw) from `ED` (BLAKE2b-512
+    prehash), and rejects unsigned, tampered, wrong-key and downgrade
+    manifests. Verified end to end against a real `tauri signer` key and a real
+    `.app.tar.gz`. **What it does not cover**: nothing has been signed by a
+    production key, because no key is configured yet.
+  - `PKG-008` (release notes): `scripts/release/release-notes.test.mjs` and
+    `docs/KNOWN-LIMITATIONS.md`. The checker rejects a missing category or a
+    category with no substance, and the repository documents are asserted to
+    pass. **What it does not cover**: the text itself is documentation; nothing
+    proves a shipped release contains it.
+  - `PKG-001`, `PKG-002`, `PKG-004`, `PKG-005`, `PKG-006`, `PKG-007` and
+    `PKG-009` remain without a test source. `PKG-001`/`PKG-002` need a real
+    signed `.app` and DMG; `PKG-005` needs Docker, which is disabled on this
+    host; `PKG-007` is currently a **failure**, not a gap: 12 distinct
+    HIGH/CRITICAL CVEs in the pinned base image (see
+    `deploy/docker/security-exceptions.yaml`), and the list is deliberately
+    empty.
 - `PERF-001..007`: no benchmark or load test exists in the repository.
   `PRD-ACC-009` also requires these to pass, so it cannot pass either.
 - `PRD-ACC-001..010`: the end-to-end acceptance runs. Some *parts* are covered

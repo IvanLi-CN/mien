@@ -22,6 +22,7 @@ DMG_NAME=""
 UPDATE_URL=""
 UPDATE_SIGNATURE="${MIEN_UPDATE_SIGNATURE:-}"
 UPDATE_SIGNATURE_FILE="${MIEN_UPDATE_SIGNATURE_FILE:-}"
+UPDATER_PUBLIC_KEY="${MIEN_UPDATER_PUBLIC_KEY:-}"
 
 usage() {
   cat >&2 <<'EOF'
@@ -38,6 +39,8 @@ Options:
   --dmg-name NAME            DMG filename (default: Mien-VERSION-macos-arm64.dmg)
   --update-url URL            URL placed in the Tauri update manifest
   --update-signature-file P  read the updater signature from a file
+  --updater-public-key P     minisign public key used to verify that signature;
+                             when given, an unverifiable manifest fails the run
   --help
 EOF
 }
@@ -57,6 +60,7 @@ while [ "$#" -gt 0 ]; do
     --dmg-name) [ "$#" -ge 2 ] || fail "--dmg-name needs a value"; DMG_NAME=$2; shift 2 ;;
     --update-url) [ "$#" -ge 2 ] || fail "--update-url needs a value"; UPDATE_URL=$2; shift 2 ;;
     --update-signature-file) [ "$#" -ge 2 ] || fail "--update-signature-file needs a value"; UPDATE_SIGNATURE_FILE=$2; shift 2 ;;
+    --updater-public-key) [ "$#" -ge 2 ] || fail "--updater-public-key needs a value"; UPDATER_PUBLIC_KEY=$2; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) fail "unknown argument: $1" ;;
   esac
@@ -238,6 +242,15 @@ hdiutil create -volname "Mien $VERSION" -srcfolder "$APP" -ov -format UDZO "$DMG
 [ -f "$DMG_PATH" ] || fail "hdiutil did not create DMG: $DMG_PATH"
 cp "$ENTITLEMENTS" "$OUT_DIR/entitlements.plist"
 
+# Tauri 的 updater 分发的不是 DMG，而是 `.app.tar.gz`；签名也签在归档上。
+# 没有这个归档，`latest.json` 里的签名就没有可对应的字节流，验证与更新都无法成立。
+# 归档必须可复现：固定 mtime 与属主，避免同一 .app 打出不同字节。
+UPDATE_ARCHIVE="$OUT_DIR/$(basename "$APP").tar.gz"
+tar --no-xattrs --uid 0 --gid 0 --numeric-owner \
+  -czf "$UPDATE_ARCHIVE" -C "$(dirname "$APP")" "$(basename "$APP")" 2>/dev/null \
+  || tar -czf "$UPDATE_ARCHIVE" -C "$(dirname "$APP")" "$(basename "$APP")"
+[ -f "$UPDATE_ARCHIVE" ] || fail "failed to create the updater archive: $UPDATE_ARCHIVE"
+
 if [ -n "$UPDATE_SIGNATURE_FILE" ]; then
   [ -f "$UPDATE_SIGNATURE_FILE" ] || fail "update signature file does not exist: $UPDATE_SIGNATURE_FILE"
   UPDATE_SIGNATURE=$(cat "$UPDATE_SIGNATURE_FILE")
@@ -276,5 +289,23 @@ sha256_file() {
 
 printf 'AdHoc package ready: %s\n' "$OUT_DIR"
 printf 'Update manifest: %s/latest.json\n' "$OUT_DIR"
-printf 'Updater signature is %s; CI must sign latest.json before publication.\n' \
-  "$([ -n "$UPDATE_SIGNATURE" ] && printf 'present' || printf 'not present')"
+
+# PKG-003：给了公钥就必须验证通过，否则这次打包直接失败。没有公钥时只允许在
+# 本地构建出现（发布流水线必须传 `--updater-public-key`），并把状态如实打出来，
+# 而不是让一个未验证的清单悄悄流到发布环节。
+if [ -n "$UPDATER_PUBLIC_KEY" ]; then
+  [ -f "$UPDATER_PUBLIC_KEY" ] || fail "updater public key does not exist: $UPDATER_PUBLIC_KEY"
+  [ -n "$UPDATE_SIGNATURE" ] || fail "updater public key given but latest.json has no signature"
+  # 被签名的是 updater 分发的 `.app.tar.gz`，不是 DMG。
+  node "$SCRIPT_DIR/updater-signature.mjs" \
+    --manifest "$OUT_DIR/latest.json" \
+    --public-key "$UPDATER_PUBLIC_KEY" \
+    --payload "$UPDATE_ARCHIVE" \
+    --platform darwin-aarch64 \
+    || fail "update manifest signature verification failed"
+  printf 'Updater signature verified against %s.\n' "$(basename "$UPDATER_PUBLIC_KEY")"
+elif [ -n "$UPDATE_SIGNATURE" ]; then
+  printf 'warning: updater signature present but unverified; pass --updater-public-key before publishing.\n' >&2
+else
+  printf 'warning: latest.json has no updater signature; this artifact is not publishable.\n' >&2
+fi
