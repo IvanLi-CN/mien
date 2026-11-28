@@ -19,7 +19,24 @@ jobs:
     continue-on-error: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Container and packaging smoke
+      # The container build has exactly one entry point. Its absence is a failure,
+      # not a skip: the previous `[[ -f deploy/docker/Dockerfile ]]` guard tested a
+      # path that never existed, so this job printed SKIP on every run.
+      - name: Verify the container build entry point
         shell: bash
         run: |
-          if [[ -f deploy/docker/Dockerfile ]]; then docker build --platform linux/amd64 -f deploy/docker/Dockerfile -t mien:main .; else echo 'SKIP packaging smoke: deploy/docker/Dockerfile not present (T3 container scaffold pending)'; fi
+          test -x deploy/docker/build.sh || {
+            echo 'deploy/docker/build.sh is missing or not executable; the container build has no entry point' >&2
+            exit 1
+          }
+          deploy/docker/build.sh --help >/dev/null
+      # Builds Dockerfile.server --target runtime-base (pinned Debian base plus
+      # every apt package the final image installs), then writes SPDX, CycloneDX,
+      # trivy JSON and the exception-filtered summary to artifacts/. The complete
+      # image is not built here: its final stage needs the 141 MiB Chromium and the
+      # Xray archives. artifacts/image/chromium-not-built.txt states that in the
+      # uploaded evidence instead of substituting a fake asset.
+      - name: Container packaging smoke, SBOM and vulnerability scan
+        uses: ./.github/actions/container-evidence
+        with:
+          retention-days: "14"

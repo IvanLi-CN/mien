@@ -21,8 +21,8 @@
 | --- | --- | --- | --- |
 | `.github/workflows/ci-reusable.yml` | `workflow_call` | 由调用方决定 | 共享 lint、Rust、Web、契约、集成和 e2e smoke |
 | `.github/workflows/ci-pr.yml` | `pull_request` 的 `opened`、`synchronize`、`reopened`、`ready_for_review`；`merge_group` | `ci-pr-${{ github.event.pull_request.number || github.ref }}`，取消过期 candidate | PR candidate gate；`CI PR / required` 是唯一 required check |
-| `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与打包 smoke |
-| `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、容器和已知漏洞复查 |
+| `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与镜像 SBOM/漏洞扫描 smoke |
+| `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、镜像 SBOM 与已知漏洞复查 |
 | `.github/workflows/release.yml` | `workflow_dispatch`，输入 `release_target` | `release`，不取消 | target 解析、reservation、全量验证、macOS/Docker 构建（Docker 双构建比对）、attestation、镜像提升、tag 与 GitHub Release、发布后验证 |
 
 `ci-pr.yml` 不监听 `pull_request.edited`；只有代码或 review-ready 状态变化才重新评估 required gate。`ci-main.yml` 与 `release.yml` 使用独立并发 namespace，不能被 PR 的取消策略误伤。
@@ -56,7 +56,19 @@ flowchart TD
 
 PR 初始阶段不按路径过滤。等基线稳定后可以引入 classifier 减少无关 workload，但 required 聚合 job 必须始终存在并覆盖实际改动域；不能用 paths filter 让 required check 缺席。
 
-`ci-main.yml` 复用同一套验证，但增加完整 e2e、容器矩阵、容量 smoke 和 macOS 打包 smoke。main 失败不回滚已合并代码，但阻断后续 release。
+`ci-main.yml` 复用同一套验证，但增加完整 e2e、镜像证据（SBOM + 漏洞扫描）、容量 smoke 和 macOS 打包 smoke。main 失败不回滚已合并代码，但阻断后续 release。
+
+### 3.1 镜像 SBOM 与漏洞扫描
+
+`ci-main.yml` 的 `package-smoke` 与 `security.yml` 的 `container` 都调用同一个复合 action `.github/actions/container-evidence/action.yml`，因此原先恒跳过的两处容器检查收敛成一个实现；PR 的 `lint` job 另外静态校验该实现（`test:container` 与 `dockerfile.mjs check`）：
+
+1. `deploy/docker/install-scanners.sh` 下载固定版本的 syft 1.57.2 与 trivy 0.76.2，逐个校验 SHA-256 后才解包；
+2. `deploy/docker/build.sh --target runtime-base` 真正构建 `Dockerfile.server` 的 OS 层（固定 digest 的 Debian 基础镜像 + 全部 apt 包），把上下文组装、apt 清单、COPY 源与资产摘要的校验放进 `scripts/release/dockerfile.mjs`；
+3. `docker save` 导出该镜像，`deploy/docker/scan-image.sh` 用 syft 生成 SPDX 2.3 与 CycloneDX 1.7 JSON 到 `artifacts/sbom/`，用 trivy 以 `severity: HIGH,CRITICAL`、`exit-code: 1` 生成 `artifacts/scan/<name>.trivy.json`；
+4. `scripts/release/scan-report.mjs` 校验 SBOM 非空、`spdxVersion`/`bomFormat` 存在、包数 > 0，并要求 `dpkg` 与 Dockerfile 里每个 apt 包都在 SBOM 中；然后应用 `deploy/docker/security-exceptions.yaml`，把每条命中的例外打印出来，未过期且未命中的例外会被标为 `unmatched`，过期例外直接失败。剩余 HIGH/CRITICAL 非零即失败；
+5. 结论写入 `artifacts/scan/<name>.summary.json`，其 `release_gate_evidence` 是 `{path, sha256}` 数组，形状与 `docs/contracts/release-gate.schema.json` 的 evidence 一致，可直接被 `release-gate.json` 引用。
+
+`container-evidence` 只构建 `runtime-base` 阶段，**不构建完整镜像**：最终阶段需要 141 MiB 的 fingerprint Chromium 归档与 Xray 归档，CI 不下载它们，也不用假资产绕过 Dockerfile 的摘要校验。该事实写入随 artifact 上传的 `artifacts/image/chromium-not-built.txt`，扫描结论只覆盖 OS 层；Rust/Bun 依赖层由 dependabot、`cargo audit` 与 `bun audit` 覆盖。完整镜像必须在有资产的宿主执行 `deploy/docker/build.sh --assets-dir <dir>`，再 `deploy/docker/scan-image.sh --image mien-server:local`。
 
 ## 4. 发布流水线
 

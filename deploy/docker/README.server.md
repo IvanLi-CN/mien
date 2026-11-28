@@ -58,23 +58,51 @@ The binary is dynamically linked only against `libc`, `libm`, `libdl` and
 
 ### Build the image
 
-Stage the artifacts beside the Dockerfile, then build:
+`deploy/docker/build.sh` is the only build entry point. It validates the
+Dockerfile against the frozen manifests, stages every file the Dockerfile COPYs,
+re-checks the two asset digests, and then calls `docker build`. CI uses the same
+script, so a local build and a CI build cannot drift into different shapes.
 
 ```sh
-mkdir -p /tmp/mien-server-image/context
-cp deploy/docker/Dockerfile.server deploy/docker/entrypoint.sh \
-   deploy/docker/healthcheck.sh /tmp/mien-server-image/context/
-mkdir -p /tmp/mien-server-image/context/seccomp
-cp deploy/docker/seccomp/chromium.json /tmp/mien-server-image/context/seccomp/
-cp -r dist /tmp/mien-server-image/context/dist
-cp target/x86_64-unknown-linux-gnu/release/mien-server /tmp/mien-server-image/context/mien-server
-cp chromium.tar.xz xray.zip /tmp/mien-server-image/context/
-
-docker build \
-  -f /tmp/mien-server-image/context/Dockerfile.server \
-  -t mien-server:local \
-  /tmp/mien-server-image/context
+MIEN_ASSET_CACHE=/path/to/assets deploy/docker/build.sh   # assets: chromium.tar.xz, xray.zip
 ```
+
+Options that matter:
+
+| Flag | Meaning |
+| --- | --- |
+| `--tag NAME` | image tag, default `mien-server:local` |
+| `--platform P` | default `linux/amd64` |
+| `--target runtime-base` | build only the pinned Debian base plus every apt package; no server binary, no `dist/`, no kernel/Xray archives |
+| `--context-dir DIR` | staging directory, default `target/docker-context/mien-server` |
+| `--assets-dir DIR` | directory holding `chromium.tar.xz` and `xray.zip` (or `MIEN_ASSET_CACHE`) |
+| `--prepare-only` | stage the context, print the exact `docker build` command, build nothing |
+
+`--target runtime-base` exists because the final stage needs the 141 MiB kernel
+archive; CI builds and scans the OS layer without inventing a substitute asset.
+The Dockerfile validates the real digests, so a placeholder would simply fail.
+
+## SBOM and vulnerability scan
+
+```sh
+deploy/docker/install-scanners.sh                 # pinned syft 1.57.2 + trivy 0.76.2, digests verified
+deploy/docker/scan-image.sh --image mien-server:local
+```
+
+Outputs land in `artifacts/`: `sbom/<name>.spdx.json` (SPDX 2.3),
+`sbom/<name>.cdx.json` (CycloneDX 1.7), `scan/<name>.trivy.json` (HIGH,CRITICAL,
+`--exit-code 1`) and `scan/<name>.summary.json`, the machine-readable conclusion
+whose `release_gate_evidence` array carries the SBOM paths and SHA-256 digests in
+the shape `docs/contracts/release-gate.schema.json` accepts. Syft scans the image
+filesystem, so the base image's `dpkg` database and every apt package are in the
+SBOM; `scan-report.mjs` fails the run if `dpkg` or any package from the apt list
+in `Dockerfile.server` is missing.
+
+Exceptions live in `deploy/docker/security-exceptions.yaml` and start empty. An
+entry needs `id` (CVE or package), `reason`, `expires` (YYYY-MM-DD) and `owner`;
+an expired entry fails the scan, and an entry that matches nothing is printed as
+`unmatched` so stale entries surface. There is no `ignore-unfixed` and no
+severity downgrade.
 
 ## Run
 
