@@ -127,6 +127,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes sqlite3
       - name: Validate frozen contracts
         run: bun run contracts:check
+      - name: Contract field parity tests
+        run: bun run test:field-parity
   integration:
     name: integration
     runs-on: ubuntu-latest

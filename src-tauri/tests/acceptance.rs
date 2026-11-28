@@ -69,6 +69,7 @@ fn create_start_stop_start_through_the_host_state() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");

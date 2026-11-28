@@ -95,6 +95,7 @@ fn create_start_status_stop_start_through_the_command_layer() {
                     group_id: None,
                     tags: Vec::new(),
                     proxy_id: None,
+                    kernel_version: None,
                 },
             )
             .await
@@ -256,6 +257,7 @@ fn automation_api_exposes_a_reachable_cdp_port() {
                     group_id: None,
                     tags: Vec::new(),
                     proxy_id: None,
+                    kernel_version: None,
                 },
             )
             .await
@@ -398,6 +400,7 @@ fn create_persists_group_tags_and_proxy() {
                     group_id: Some("01M8G7P1Y4000000000000GRP".into()),
                     tags: vec!["acceptance-tag".into()],
                     proxy_id: None,
+                    kernel_version: None,
                 },
             )
             .await
@@ -486,6 +489,36 @@ fn create_persists_group_tags_and_proxy() {
             "tags must survive a group-only update"
         );
 
+        // 契约 `ProfileInput.kernel_version` 必须真的被接收：指定了就落库，
+        // 不指定才回落到清单版本。
+        let pinned = json(
+            &commands::profiles_create(
+                host.clone(),
+                state::CreateProfileInput {
+                    name: "pinned-kernel".into(),
+                    fingerprint: None,
+                    mode: Some(ProfileMode::Headful),
+                    start_url: None,
+                    notes: None,
+                    automation_api: None,
+                    group_id: None,
+                    tags: Vec::new(),
+                    proxy_id: None,
+                    kernel_version: Some("149.0.8000.100".into()),
+                },
+            )
+            .await
+            .expect("create with pinned kernel"),
+        );
+        assert_eq!(
+            pinned["kernel_version"], "149.0.8000.100",
+            "a given kernel_version must be stored: {pinned:?}"
+        );
+        assert_ne!(
+            pinned["kernel_version"], created["kernel_version"],
+            "the pinned version must differ from the manifest default"
+        );
+
         // 列表视图同样要带关系字段，否则刷新后 UI 又变回空值。
         let listed = json(
             &commands::profiles_list(host.clone(), 10, None, None)
@@ -493,17 +526,18 @@ fn create_persists_group_tags_and_proxy() {
                 .expect("list"),
         );
         let items = listed["items"].as_array().expect("items");
-        assert_eq!(items.len(), 1);
+        let relations = items
+            .iter()
+            .find(|item| item["name"] == "relations")
+            .expect("the relations profile is listed");
         assert!(
-            items[0]["group_id"].is_null(),
-            "the list reflects the cleared group: {:?}",
-            items[0]
+            relations["group_id"].is_null(),
+            "the list reflects the cleared group: {relations:?}"
         );
         assert_eq!(
-            items[0]["tags"].as_array().expect("tags").len(),
+            relations["tags"].as_array().expect("tags").len(),
             1,
-            "the list carries tags: {:?}",
-            items[0]
+            "the list carries tags: {relations:?}"
         );
     });
 }

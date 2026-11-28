@@ -50,6 +50,7 @@ fn creates_lists_and_updates_profiles() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");
@@ -104,6 +105,7 @@ fn status_filter_hides_archived_profiles() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");
@@ -118,6 +120,7 @@ fn status_filter_hides_archived_profiles() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");
@@ -159,6 +162,7 @@ fn runtime_status_and_stop_are_safe_before_any_start() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");
@@ -202,6 +206,7 @@ fn runtime_start_without_a_kernel_reports_kernel_not_found() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");
@@ -238,6 +243,7 @@ fn runtime_start_with_a_missing_kernel_bin_fails_closed() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");
@@ -267,6 +273,7 @@ fn proxy_bound_profiles_are_refused_until_the_engine_exists() {
                 group_id: None,
                 tags: Vec::new(),
                 proxy_id: None,
+                kernel_version: None,
             })
             .await
             .expect("create");

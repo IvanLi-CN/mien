@@ -170,6 +170,9 @@ pub struct CreateProfileInput {
     /// 代理绑定；`None` 表示直连模式。契约 `ProfileInput.proxy_id`。
     #[serde(default)]
     pub proxy_id: Option<String>,
+    /// 目标内核版本；`None` 时用清单锁定的版本。契约 `ProfileInput.kernel_version`。
+    #[serde(default)]
+    pub kernel_version: Option<String>,
     /// 自动化 API（CDP）。契约 `ProfileInput.automation_api` 默认 false；
     /// 开启后运行中的内核才会暴露可连接的 CDP 端口。
     #[serde(default)]
@@ -488,7 +491,10 @@ impl AppState {
             start_url: input.start_url.clone(),
             proxy_id: input.proxy_id.clone(),
             notes: input.notes,
-            kernel_version: self.manifest.kernel_version.clone(),
+            kernel_version: input
+                .kernel_version
+                .clone()
+                .unwrap_or_else(|| self.manifest.kernel_version.clone()),
             mode: input.mode.unwrap_or_default(),
             // 创建时给定的自动化开关必须原样落库：硬编码 false 会让用户勾选后
             // 永远拿不到 CDP 端口，PRD-ACC-001 的"访问探针页"因此无法完成。
