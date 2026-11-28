@@ -1,0 +1,71 @@
+# Docker 双构建可复现性证据
+
+格式说明：本文件是 Markdown 形式的证据记录，不是原始命令输出；`.log` 后缀沿用本目录 `run.log` 的命名约定。每条 digest 与 run id 都可以用文中给出的 GitHub run 与 artifact 复核。原始 build record 由 workflow 上传为 `repro-build-a`/`repro-build-b` artifact。
+
+本文件记录 `.github/workflows/reproducibility.yml` 的真实 GitHub Actions 结果。它证明的是**构建机制**：同一 commit、同一套固定参数，在两个独立 runner 上、各自新建 builder、互不共享缓存，能得到同一个 OCI manifest digest。
+
+它**不**证明 `Dockerfile.server`（生产镜像）可复现。生产镜像需要 141 MB fingerprint-chromium 与 Xray 资产，本 workflow 不下载它们也不使用替代资产，所以探针构建的是 `deploy/docker/Dockerfile.repro-probe`。生产镜像的双构建证据必须由 release 的 `docker-amd64` 在具备真实资产时取得；本文件的结论不得被引用为生产镜像可复现的证明。
+
+## 结果
+
+两次成功 run，都来自两个独立 builder：
+
+| 项 | run A | run B（含本文件的那次提交） |
+| --- | --- | --- |
+| workflow run | [`46098420899`](https://github.com/IvanLi-CN/mien/actions/runs/46098420899) | [`46098745568`](https://github.com/IvanLi-CN/mien/actions/runs/46098745568) |
+| run 结论 | `success`；`build-a`、`build-b`、`compare`、`result` 全部 success | 同上，四个 job 全部 success |
+| source_sha | `2de96c8a5a77dc61f94593036ee78c275e553bcf` | `dd403176a1f6caabfd2fd4d81711f4bf5bc4e207` |
+| SOURCE_DATE_EPOCH | `1795833018` | `1795833252` |
+| builder A digest | `sha256:9784ed8190b9f525d538368d7bf47135b04d1afbd35c9f7f803edda424efdacb` | `sha256:4dfe25850f44c1f5724759301ea8f36b2fb5905003ffe6bf68962479c9a3e981` |
+| builder B digest | `sha256:9784ed8190b9f525d538368d7bf47135b04d1afbd35c9f7f803edda424efdacb` | `sha256:4dfe25850f44c1f5724759301ea8f36b2fb5905003ffe6bf68962479c9a3e981` |
+| 是否相等 | **是** | **是** |
+| 比对项 | 14/14 通过，两份 `record.json` 字节相同 | 14/14 通过 |
+
+同一 run 内两个 builder 的 digest 相等；两次 run 之间的 digest 不同，这是预期且必要的：`SOURCE_DATE_EPOCH` 取自各自 commit 的提交时间（相差 234 秒），config 的 `created` 与 history 时间戳随之改变，manifest digest 必须跟着变。如果两次 run 的 digest 相同，反而说明 epoch 没有生效。`repro-record.py` 用"最后一个 history 条目的 `created` 必须等于 `SOURCE_DATE_EPOCH`"把这一点变成硬断言。
+
+还有一个必须说明的自指问题：每次修改本文件都会产生新的 commit 与新的提交时间，因此携带本文件的那个 commit 构建出的 digest 必然不同于本表记录的值。这不是缺陷——结论是"同一 commit 的两个 builder 得到同一个 digest"，不是"某个 digest 恒定"。截至 run `46099006647`（`7e7ee1b8…`）第三次双构建仍相等（`sha256:6029307680054dcbc8aee59a4904658e1d53a19836c749231c117e111de5fffa`），也印证了这一点。
+
+平台为 `linux/amd64`，config digest 在 run A 为 `sha256:932827084c9a87346b5c7687f72b976d03ec2114a9cbee939b1cbac34c8f428c`，层数为 6（index 1 + 一次 install + 3 个后续 step）。`compare` job 的 `repro-compare.mjs` 输出 `repro-compare: PASS`，报告中 `verdict: equal`。
+
+## 固定参数
+
+| 项 | 值 | 为什么固定 |
+| --- | --- | --- |
+| Dockerfile frontend | `docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183` | `docker/dockerfile:1` 是移动 tag，会在两次构建之间换语法实现。`1`、`1.29`、`1.29.0` 三个 tag 当前解析到同一 index digest（直接对 registry 取 manifest 并算 SHA-256 核对过）。 |
+| 基础镜像 | `debian@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e` | 与 `Dockerfile.server`、`Dockerfile.spike` 同一 digest。 |
+| apt 源 | `snapshot.debian.org` / `snapshot-cloudflare.debian.org` 的 `20261123T000000Z` | Debian snapshot 不可变且 Release/InRelease 有签名与校验和，所以每个 `.deb` 由快照本身锁定，不需要在 Dockerfile 里重复版本号（重复会形成第二个可能与归档矛盾的事实源）。两个域名的 `Release` 与 `Packages.xz` 逐字节相同，已核对。 |
+| `Check-Valid-Until=false` | `apt-get` 参数 | snapshot 的 security suite 保留原始 `Valid-Until`（`bookworm-security` 为 `2026-11-29T19:58:56Z`，构建时已过期）。关掉的是"发布是否新鲜"的检查，不是签名或校验和检查；快照本身不可变，所以这是正确取舍而不是放宽安全边界。 |
+| BuildKit | `moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c` | 通过 `driver-opts: image=` 固定，不用 runner 自带 buildkitd。 |
+| buildx | `v0.39.1` | 由 `docker/setup-buildx-action` 固定安装；两个 job 都断言实际版本等于该值。 |
+| exporter | `type=oci,dest=…,rewrite-timestamp=true,compression=gzip` | `rewrite-timestamp` 是 exporter 属性，不是 buildx CLI flag。 |
+| attestation | `--provenance=false`、`--sbom=false` | 否则 index 里会多出 attestation manifest，digest 依赖 buildx 版本与构建元数据。 |
+| 缓存 | `--no-cache`、每个 job 新建 builder、无 `cache-from`/`cache-to` | 两个 builder 互为独立干净实例。 |
+
+## 为什么删这些文件
+
+`rewrite-timestamp` 只重写 tar header 的 mtime，**不能改写文件内容**。任何在安装期写入墙钟时间的文件都会让第二次构建产生逐字节不同的层：
+
+- `/var/log/apt`（`history.log`、`term.log`、`eipp.log.xz`）：apt 的时间戳。
+- `/var/log/dpkg.log`：dpkg 动作日志。
+- `/var/log/alternatives.log`：`less` 的 postinst 运行 `update-alternatives` 时写入当前时间。
+- `/var/cache/ldconfig/aux-cache`：记录本次构建文件系统的目录 mtime。
+- `/var/lib/apt/lists/*`：构建期抓取的索引。
+
+Dockerfile 的最后一个 RUN 断言这些内容确实不存在（`/var/lib/apt/lists` 允许存在但必须为空目录，因为 apt 会重建它，空目录没有带时间戳的内容）。
+
+## 验证范围与限制
+
+- 本证据来自 `pull_request` 触发的 run；`source_sha` 是该 PR 的 head commit（`2de96c8a…`、`dd403176…`），不是 GitHub 合成的 merge commit，也不是发布 SHA。workflow 对 `pull_request` 使用 `github.event.pull_request.head.sha || github.sha`，对 `workflow_dispatch` 使用所 dispatch ref 的 commit。
+- 两次构建都由同一个 workflow 的 `build` job 矩阵产生，矩阵两个实例落在不同 runner，各自 `docker/setup-buildx-action` 新建 `repro-a` / `repro-b` builder。GitHub Actions 不保证复用同一物理机，但也不能证明一定不是同一物理机；本证据能确定的是两个 builder 实例互相看不到对方的缓存，且都从零拉取基础镜像与全部 `.deb`。
+- `compare` job 的输入是两份 `record.json`，其 digest 由 `repro-record.py` 从导出归档的 `index.json` 与 blob 字节重新计算，并与 buildx `--metadata-file` 报告的 `containerimage.digest` 交叉核对（`repro-compare.mjs` 的 14 项检查里含 2 项这样的交叉核对）。归档中带 `org.opencontainers.image.ref.name` 注释、manifest 数量不为 1、或 blob 哈希与 digest 不符时脚本失败。
+- 探针镜像只装 `jq`、`less`、`tini` 与依赖，不包含 Chromium、Xray、Xvfb 或服务端二进制。它的层数与生产镜像无关。
+- 生产镜像的双构建仍未验证；`docs/RELEASE.md` §7 与 `docs/PRD.md` §12.2 已把这一缺口写明。
+
+## 复现
+
+```sh
+gh workflow run reproducibility.yml --ref <branch-or-sha>
+gh run watch <run-id> --exit-status
+```
+
+或让任何改动 `deploy/docker/**` 的 PR 自动触发。两份 build record 与比对报告作为 `repro-build-a`、`repro-build-b`、`repro-report` artifact 保留 14 天。

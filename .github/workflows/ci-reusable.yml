@@ -45,13 +45,19 @@ jobs:
       - name: Frontend license policy
         run: bun run license:check
       - name: Biome
-        run: bunx biome check scripts/contracts/check.mjs scripts/license-check.mjs scripts/release/gate.mjs scripts/release/gate.test.mjs scripts/release/dockerfile.mjs scripts/release/dockerfile.test.mjs scripts/release/scan-report.mjs scripts/release/scan-report.test.mjs scripts/release/build-context.test.mjs --formatter-enabled=false
+        run: bunx biome check scripts/contracts/check.mjs scripts/license-check.mjs scripts/release/gate.mjs scripts/release/gate.test.mjs scripts/release/dockerfile.mjs scripts/release/dockerfile.test.mjs scripts/release/scan-report.mjs scripts/release/scan-report.test.mjs scripts/release/build-context.test.mjs scripts/release/repro-compare.mjs scripts/release/repro-compare.test.mjs --formatter-enabled=false
       - name: Release gate checker tests
         run: bun run test:release-gate
       - name: Container contract and SBOM report tests
         run: bun run test:container
       - name: Dockerfile contract
         run: node scripts/release/dockerfile.mjs check
+      - name: Reproducibility comparison tests
+        run: bun run test:repro-compare
+      - name: Reproducibility record extractor syntax
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
+        run: python3 -m py_compile scripts/release/repro-record.py
       - name: TypeScript
         run: bunx tsc --noEmit
       - name: actionlint

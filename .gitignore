@@ -36,3 +36,7 @@ coverage/
 test-results/
 playwright-report/
 /.impeccable/
+
+# Python bytecode from scripts run in CI
+__pycache__/
+*.pyc
