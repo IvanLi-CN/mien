@@ -21,7 +21,10 @@
     "test:repro-compare": "node --test scripts/release/repro-compare.test.mjs",
     "contracts:check": "bun scripts/contracts/check.mjs",
     "contracts:generate": "bunx openapi-typescript docs/contracts/openapi.yaml -o docs/contracts/generated/openapi.d.ts",
-    "test:container": "node --test scripts/release/dockerfile.test.mjs scripts/release/scan-report.test.mjs scripts/release/build-context.test.mjs"
+    "test:container": "node --test scripts/release/dockerfile.test.mjs scripts/release/scan-report.test.mjs scripts/release/build-context.test.mjs",
+    "test:release-notes": "node --test scripts/release/release-notes.test.mjs",
+    "notes:check": "node scripts/release/release-notes.mjs check && node scripts/release/release-notes.mjs coverage",
+    "test:updater": "node --test scripts/release/updater-signature.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5",

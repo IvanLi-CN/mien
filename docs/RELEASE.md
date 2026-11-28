@@ -14,7 +14,7 @@
 | 许可包 | 项目 Apache-2.0、BSD-3-Clause、MPL-2.0、容器组件许可、NOTICE、LICENSES/、源码/来源链接 | 必须 |
 | SBOM | macOS 应用与 Docker 镜像 | 必须 |
 | 测试报告 | 内核、代理、生命周期、安全、UI、性能、镜像 | 必须 |
-| 已知限制 | 内核缺陷、伪有头、TUIC、bootstrap、共享引擎故障域、Gatekeeper 行为 | 必须 |
+| 已知限制 | 六类必须逐项列出：内核缺陷、伪有头、TUIC、节点 bootstrap 泄漏、跨系统限制、共享引擎故障域。事实源见 [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md)，`release-notes.mjs check` 强制齐全。Gatekeeper 行为属独立校验项（PKG-002），不在此表 | 必须 |
 
 版本轴独立：
 
@@ -112,7 +112,35 @@ resolve-target 读取 draft 并解析 source_sha，reserve 复核绑定后通过
 - 被标记无效的版本仍占用其版本号；修复不能重发同版本，必须选择新的 `release_target` 产生新版本。
 - 安全公告包含影响范围、缓解措施和已知限制，不包含利用细节。
 
-## 7. 当前缺口
+## 7. 发布说明必须列出的已知限制
+
+PKG-008 要求发布说明逐类列出下列限制。每类的事实来源、现象与用户可见影响见 [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md)；这里只列发布说明必须出现的标题，`scripts/release/release-notes.mjs check` 会拒绝漏项或写空的类别。
+
+### 1. 内核缺陷
+
+fingerprint-chromium 不是上游 Chrome：版本不再同步，部分 Chromium 上游缺陷在本构建中存在且不会通过升级 Chrome 修复，也不提供 Chrome 官方渠道的安全更新。依赖精确版本或上游补丁状态的站点可能把该环境判为非 Chrome。
+
+### 2. 伪有头
+
+伪有头是无头进程加“有窗口”声明，属于显式降级选项。没有真实窗口，`window.open` 行为、窗口尺寸约束与依赖真实合成器或 GPU 输出的信号（部分 WebGL 细节、`requestAnimationFrame` 节奏）都与有头不同，显示类指纹只能声明而不能由真实窗口兑现。
+
+### 3. TUIC
+
+TUIC 不进入 v1。导入 TUIC 分享链接必须被明确拒绝，不得静默降级到其他协议或直连；引用 TUIC 的配置启动时必须失败并给出稳定错误码。这是产品边界，不是缺陷。
+
+### 4. 节点 bootstrap 泄漏
+
+只有代理节点主机名允许本地解析；目标域名必须由节点远程解析。本地解析节点主机名会向本机网络与上游 DNS 解析器暴露该主机名及“有人正在连接它”。被访问的目标域名不因此泄漏。
+
+### 5. 跨系统限制
+
+宿主绑定的显示属性、字体枚举、时区与语言都来自宿主，不能虚构为另一种系统。跨系统画像不是 v1 能力：`platform` 类指纹与宿主不一致时必须显式标注不支持，不得静默改成宿主值，否则会产生互相矛盾的信号。
+
+### 6. 共享引擎故障域
+
+Xray-core 以共享出站方式运行，多档案复用同一引擎进程与出站池。引擎崩溃或重启会影响全部引用它的档案，连接瞬断后需要重建；引用计数归零才回收，单个档案停止不会让引擎退出。
+
+## 8. 当前缺口
 
 - 项目许可已定为 Apache-2.0，仓库根 `LICENSE` 与 `README` 链接已就位；正式法律评审、`NOTICE` 与 `LICENSES/` 的实际构建仍未完成。
 - `.github/workflows/` 的实际 YAML、branch protection、merge queue、`release` environment、draft reservation、仅允许 release App 绕过 creations 的 tag ruleset、Docker 双构建比对和强制 attestation 尚未落地。
@@ -123,7 +151,7 @@ resolve-target 读取 draft 并解析 source_sha，reserve 复核绑定后通过
 - 许可闭合脚本已落地并会生成结构化报告；但容器镜像 digest、包级许可证证据、精确上游许可证文本及现有安全例外仍记录为发布阻断，详见 [`THIRD-PARTY.md`](THIRD-PARTY.md) §6.5。
 - M0 Xray、内核、Docker 与代理矩阵 spike 尚未执行。
 
-## 8. 参考
+## 9. 参考
 
 - [`CI.md`](CI.md)
 - [`RELEASE-POLICY.md`](RELEASE-POLICY.md)
@@ -135,7 +163,7 @@ resolve-target 读取 draft 并解析 source_sha，reserve 复核绑定后通过
 - [`adr/0011-manual-release-identity.md`](adr/0011-manual-release-identity.md)
 - [`contracts/manifests/`](contracts/manifests/)
 
-## 9. 本仓库待配置项
+## 10. 本仓库待配置项
 
 以下项目是发布入口可用前的人工配置或 CI 约束；在全部完成前，不得把 release workflow 当作公开发布入口。
 
