@@ -31,8 +31,8 @@
 
 | Topic | Lifecycle | Implementation | Spec | Successor | Notes |
 | - | - | - | - | - | - |
-| 环境档案管理 | active | 未开始 | `profile-management/SPEC.md` | - | 档案 CRUD、隔离与下载目录、回收站生命周期、导入导出校验与路径安全 |
-| 指纹规格与启动参数 | active | 未开始 | `fingerprint-engine/SPEC.md` | - | 规格、种子、一致性、能力清单与 argv |
-| 浏览器运行时与显示环境 | active | 未开始 | `browser-runtime/SPEC.md` | - | 状态机、隔离结论、监督、有头/无头、Xvfb、沙箱与日志尾部 |
-| 正向代理协议与网络泄漏防护 | active | 未开始 | `proxy-gateway/SPEC.md` | - | VLESS/VMess/SS/Trojan/Hysteria2/WireGuard、basic HTTP(S)/SOCKS5、共享引擎、分享链接、远程 DNS 与失败关闭 |
-| 控制面 API 与鉴权 | active | 未开始 | `control-api/SPEC.md` | - | REST/WS、会话、Token、CSRF 与审计 |
+| 环境档案管理 | active | M1 核心切片已实现（CRUD/生命周期/路径安全；导入导出 pending） | `profile-management/SPEC.md` | - | 档案 CRUD、隔离与下载目录、回收站生命周期、导入导出校验与路径安全 |
+| 指纹规格与启动参数 | active | M1 核心切片已实现（校验/确定性 argv/LaunchPlan） | `fingerprint-engine/SPEC.md` | - | 规格、种子、一致性、能力清单与 argv |
+| 浏览器运行时与显示环境 | active | M1 有头切片已实现（状态机/进程组/日志/对账；无头与容器 pending） | `browser-runtime/SPEC.md` | - | 状态机、隔离、监督、有头/无头、Xvfb、沙箱与日志尾部 |
+| 正向代理协议与网络泄漏防护 | active | M1 共享引擎切片已实现（VLESS/共享出站/引用计数；Tier A 其余 pending） | `proxy-gateway/SPEC.md` | - | VLESS/VMess/SS/Trojan/Hysteria2/WireGuard、basic HTTP(S)/SOCKS5、共享引擎、分享链接、远程 DNS 与失败关闭 |
+| 控制面 API 与鉴权 | active | M0 契约冻结，实现 pending | `control-api/SPEC.md` | - | REST/WS、会话、Token、CSRF 与审计 |

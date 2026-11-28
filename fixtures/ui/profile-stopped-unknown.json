@@ -1,0 +1,16 @@
+{
+  "schema_ref": "../../docs/UI-SURFACES.md#3-档案详情",
+  "surface": "/profiles/:id",
+  "state": {
+    "runtime": "stopped",
+    "isolation": "unknown",
+    "reduced_assurance": true
+  },
+  "semantics": {
+    "runtime_label": "未运行",
+    "isolation_label": "未确认",
+    "isolation_marker": "dashed-question",
+    "stopped_is_neutral_only_for_runtime": true,
+    "unknown_is_not_safe": true
+  }
+}

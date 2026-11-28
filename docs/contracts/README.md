@@ -9,6 +9,7 @@
 | [`kernel-manifest.schema.json`](kernel-manifest.schema.json) | [`browser-runtime`](../specs/browser-runtime/SPEC.md)、[`fingerprint-engine`](../specs/fingerprint-engine/SPEC.md) | 内核能力清单、启动前校验、升级差异比较 |
 | [`proxy-engine-manifest.schema.json`](proxy-engine-manifest.schema.json) | [`proxy-gateway`](../specs/proxy-gateway/SPEC.md) | 协议引擎版本、校验和、协议矩阵、许可与升级差异 |
 | [`profile-export.schema.json`](profile-export.schema.json) | [`profile-management`](../specs/profile-management/SPEC.md) | 明文配置导出、导入校验；不包含代理凭据、Token、Cookie |
+| [`release-gate.schema.json`](release-gate.schema.json) | [`TEST-PLAN.md`](../TEST-PLAN.md)、[`CI.md`](../CI.md) | GATE-001 `release-gate.json` 的结构；固定必需 ID 与 waiver 语义由 `scripts/release/gate.mjs` 校验 |
 | [`openapi.yaml`](openapi.yaml) | [`control-api`](../specs/control-api/SPEC.md) | REST 端点、DTO、鉴权、分页与错误响应 |
 | [`events.schema.json`](events.schema.json) | [`control-api`](../specs/control-api/SPEC.md) | WebSocket/Tauri 事件 envelope 与 payload |
 | [`manifests/`](manifests/) | [`browser-runtime`](../specs/browser-runtime/SPEC.md)、[`proxy-gateway`](../specs/proxy-gateway/SPEC.md) | 148 内核与 Xray v26.11.9 候选发布清单、资产校验和 |

@@ -1,0 +1,38 @@
+{
+  "schema_ref": "../../docs/contracts/fingerprint-spec.schema.json",
+  "case": "macos-verified-spoof-toggles",
+  "spec": {
+    "schema_version": 1,
+    "seed": 420042,
+    "platform": "macos",
+    "platform_version": "14.5",
+    "brand": "Opera",
+    "brand_version": "148.0.0.0",
+    "hardware_concurrency": 12,
+    "languages": ["zh-CN", "en"],
+    "timezone": "Asia/Shanghai",
+    "window": {"width": 1024, "height": 768},
+    "spoof": {"audio": false, "canvas": false, "gpu": false},
+    "webrtc": {"disable_non_proxied_udp": true},
+    "network": {"doh_mode": "disabled", "ipv6_mode": "block"}
+  },
+  "expected_argv": [
+    "--user-data-dir=/synthetic/profile",
+    "--fingerprint=420042",
+    "--fingerprint-platform=macos",
+    "--fingerprint-platform-version=14.5",
+    "--fingerprint-brand=Opera",
+    "--fingerprint-brand-version=148.0.0.0",
+    "--fingerprint-hardware-concurrency=12",
+    "--lang=zh-CN",
+    "--accept-lang=zh-CN,en",
+    "--timezone=Asia/Shanghai",
+    "--window-size=1024,768",
+    "--disable-spoofing=audio,canvas,gpu"
+  ],
+  "expected_network": {
+    "doh_mode": "disabled",
+    "ipv6_mode": "block",
+    "disable_non_proxied_udp": true
+  }
+}

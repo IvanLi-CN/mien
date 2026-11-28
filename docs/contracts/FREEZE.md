@@ -1,0 +1,64 @@
+# Mien contract freeze
+
+- Freeze version: `M0-contract-freeze`
+- Freeze identity: `M0-contract-freeze` (authoritative validation is the digest table below and `contracts:check`).
+- Generated at: `2026-11-24T23:37:37Z` (UTC).
+
+## Frozen files and digests
+
+The `contracts:check` job computes SHA-256 digests for the frozen source files and compares generated client output against its checked-in snapshot. The current freeze digest receipt is below; a changed contract must update this receipt in the same change.
+
+| File | SHA-256 |
+| --- | --- |
+| `docs/contracts/openapi.yaml` | `42a76a18bbcd286c2ae9b62883f8ceb716afbce62ae8ca5a87aa911d65599dd2` |
+| `docs/contracts/events.schema.json` | `bb6a7cb24d11f6ac8d0cf3922f2405a25e7e71207b9b8649a78312e1daff207b` |
+| `docs/contracts/fingerprint-input.schema.json` | `58a658c61a6c222e51f13af81b02939e8f13065991e54cc391e5abf9d0c0fcc7` |
+| `docs/contracts/fingerprint-spec.schema.json` | `836ab6c56e8aee8737c64511ed80ccac68b6f08507dae98c413167915f407725` |
+| `docs/contracts/profile-export.schema.json` | `4a532d7f903b6ac05c63508169a54ec76805fcf9a5b34fe614720d05615a6f96` |
+| `docs/contracts/kernel-manifest.schema.json` | `9bec784b845b5395395bc86ad2621f0af38ff16b042705251321dd134869bf9d` |
+| `docs/contracts/proxy-engine-manifest.schema.json` | `3908f9c1f9afd10e8480acfc861833ac08c0cd18c7cf99ee4817865ab4496a00` |
+| `docs/ERROR-CODES.md` | `9ed8793afdd286a3f0bafdcc025968e9fdc33d6da129a7e0c87d5dbcad23c3fd` |
+| `docs/DATABASE-SCHEMA.md` | `07393833278cfa33d9506f11c92a4b39c10daa7344da3a0a4a722e786cfe8d6c` |
+| `migrations/0001_init.sql` | `793bb208f537caa1184c97f5400040245d6b16da0d3ab7b937ee788c6ffcd0d2` |
+| `docs/XRAY-MAPPING.md` | `551da3edb61683c903d8e63cf9cdd88885e1fbaca1dbc001306401d427803608` |
+| `docs/UI-SURFACES.md` | `fadcd599db8d6429d2942d584af144c100d5417d4101d439ac4dd83c9d88917e` |
+| `docs/TEST-FIXTURES.md` | `29d2335339ffa860e3afad0039b4db8576328d1d0507293d93082776d9aaa67e` |
+| `deploy/docker/seccomp/chromium.json` | `43cf666b8a0eb6490dc623e8ea49758146fc5cd6233ac38b16b181146fdfcfd` |
+| `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-linux-x86_64.json` | `38881280438f8115dd91617d34828d3acfe1dfc4ad6208f692ae19e2cc979a64` |
+| `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-macos-arm64.json` | `b1382beafc17a8c5b7d35e6e90d3f4445a335fd46f5b02466358f5c03f10602b` |
+| `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-windows-x64.json` | `2fe183dd6de230052b06e013f1294d7c2fc4e553c464f83f3eac9cc8e82f2c1f` |
+| `docs/contracts/manifests/xray-core-v26.11.9-linux-x86_64.json` | `70ca1cdc538445583ecc2bd4503e299de8c1b82dd672e229edde57cde8693bbd` |
+| `docs/contracts/manifests/xray-core-v26.11.9-macos-arm64.json` | `81fd9c5a2792bb2dd0f5622020ceee89c6d4d5eb6fde0a1d8306f7c5eadf8568` |
+| `deploy/docker/seccomp/PROVENANCE.json` | `8976516beef891faa01eb41c9823c9fa30e8c8ae2a3ca76b3143f6e1520cfd2b` |
+| `deploy/docker/seccomp/artifacts/moby-profiles-a0fa7080-default.json` | `3320527d4568265ac97a077609b1bfd4cfd0d789eeb9239b7e094b1526675406` |
+| `docs/contracts/generated/openapi.d.ts` | `d2217065066617625ca20665d99d4e664d6cac2c6cd11704560281e2dab6de65` |
+
+`contracts:check` additionally validates the manifest and seccomp directory structure and provenance.
+
+## Evidence applied
+
+- T3 Xray confirmed the HandlerService/RoutingService CRUD primitives, loopback binding, block-first failure-closed bootstrap, shared VLESS outbound, and bounded kill/rebuild behavior. Xray native CRUD is not idempotent: gateway reconciliation must map duplicate add and unknown remove to idempotent success; mux concurrency is normalized by v26.11.9 to `128`; Hysteria2 requires `protocol: hysteria`, `version: 2`, `streamSettings.network: hysteria`, and `hysteriaSettings`.
+- T3 accepted the Hysteria2 configuration schema only; no controlled UDP/TLS peer was available, so Hysteria2 is not frozen as end-to-end connectivity. TUIC is rejected as `unknown config id: tuic` and remains outside v1.
+- T4 verified fingerprint/platform/language/timezone/window/CPU, Edge and Opera brand samples, and audio/canvas/GPU spoof effects on the pinned macOS arm64 build. `clientrects`, `font`, proxy-server, non-proxied UDP, Chrome/Vivaldi brand behavior, independent platform-version behavior, and sandbox/Seatbelt effectiveness remain unverified; pseudo-headful changes UA only.
+- Docker display and namespace sandbox are verified on a real amd64 host (`docs/spikes/docker/`): headful window geometry, renderer user/pid namespaces, and `Seccomp=2`. The `mien-chromium` AppArmor profile is authored but unloaded; both available test hosts are unprivileged containers, so the run used the documented `apparmor=unconfined` fallback. noVNC one-time tokens and Hysteria2 UDP remain unverified. These do not block the macOS headed M1 path.
+
+## Change process after freeze
+
+Any contract change must update the owning SPEC, implementation VER record, executable test or fixture, and affected user-facing documentation in one change. The `contracts` job must pass on the same commit; generated client output, error-code mappings, UI route parity, DDL/migration checks, and seccomp provenance are blocking checks. Do not edit a generated or derived file alone; update its source and regenerate the snapshot.
+
+## Check boundaries
+
+- `x-required-scope` is checked only for membership in `TokenScope`; changing an operation from `profiles.read` to another valid scope passes the structural check, so authorization meaning still requires review.
+- SQLite execution and migration parity currently cover the `schema_migrations` ledger DDL only; full business-table DDL-to-migration parity will be added with the T9a business-table migrations.
+- The generated-client snapshot covers `openapi.yaml` only; `events.schema.json` is validated independently and is not represented in that client snapshot.
+
+## Known blocks
+
+- Docker display and namespace sandbox are verified on a real amd64 host (`docs/spikes/docker/`), but the `mien-chromium` AppArmor profile has not been loaded on any available host (both test hosts are unprivileged containers); the run used the documented `apparmor=unconfined` fallback. M3 Docker release material must not claim the hardened AppArmor path until a host load succeeds.
+- noVNC one-time viewer tokens are not implemented.
+- Hysteria2 UDP connectivity was not tested end to end.
+- `--disable-spoofing=clientrects|font` had no observed target effect in T4 and is not a verified capability; pseudo-headful changes UA only and retains other Headless characteristics.
+
+## To adjudicate
+
+- The locked PRD/architecture/test-plan material describes future Docker and protocol surfaces more broadly than the measured M0 evidence. This freeze records the measured boundaries without changing those locked documents; product scope and release timing must be adjudicated before promoting unverified capabilities.

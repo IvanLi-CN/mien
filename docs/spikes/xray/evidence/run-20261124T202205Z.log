@@ -1,0 +1,373 @@
+
+[20:22:05] environment
+Darwin Ivans-Mac-mini.local 27.2.0 Darwin Kernel Version 27.2.0: Wed Oct 14 23:47:07 PDT 2026; root:xnu-13432.41.4~25/RELEASE_ARM64_T8132 arm64 Darwin
+binary=/Users/ivan/orca/workspaces/mien/t3-xray-spike/fixtures/.cache/xray/unpack/xray
+asset_sha256=233f0c66681cd0726f81a6b2b6ed6a5710869e312047b522e46ed53035bebd26 expected=233f0c66681cd0726f81a6b2b6ed6a5710869e312047b522e46ed53035bebd26
+binary_sha256=1b2d5ebe3a4c332203db24b81a052c6d6688a7f80705090f031b7416013ee1b2
+version=Xray 26.11.9 (Xray, Penetrates Everything.) 676eaf6 (go1.27.3 darwin/arm64)
+
+[20:22:05] bootstrap: API-only inbound, block-first outbound, API route
+startup_ms=86
+{
+    "outbounds": [
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.blackhole.Config"
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig"
+            },
+            "tag": "block"
+        }
+    ]
+}
+
+{
+    "inbounds": [
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.dokodemo.Config",
+                "allowedNetworks": [
+                    "TCP"
+                ],
+                "rewriteAddress": "127.0.0.1"
+            },
+            "receiverSettings": {
+                "_TypedMessage_": "xray.app.proxyman.ReceiverConfig",
+                "listen": "127.0.0.1",
+                "portList": 50015
+            },
+            "tag": "api"
+        }
+    ]
+}
+
+{
+    "rules": [
+        {
+            "tag": "api"
+        }
+    ]
+}
+
+bootstrap_assertions=PASS block_first api_only loopback no_final_script_balancers
+
+[20:22:05] dynamic CRUD and idempotent gateway wrapper
+adding: out:shared-vless
+{}
+
+adding: out:shared-vless
+failed to add outbound: rpc error: code = Unknown desc = app/proxyman/outbound: existing tag found: out:shared-vless
+duplicate_add_outbound=wrapper treats ALREADY_EXISTS as success after tag lookup
+adding: rt:a:in
+{}
+
+adding: rt:b:in
+{}
+
+adding: rt:a:in
+failed to add inbound: rpc error: code = Unknown desc = app/proxyman/inbound: existing tag found: rt:a:in
+duplicate_add_inbound=wrapper treats ALREADY_EXISTS as success after tag lookup
+{}
+
+{}
+
+failed to perform AddRule: rpc error: code = Unknown desc = app/router: duplicate ruleTag rt:a:rule
+duplicate_add_rule=wrapper treats ALREADY_EXISTS as success after ruleTag lookup
+{
+    "outbounds": [
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.blackhole.Config"
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig"
+            },
+            "tag": "block"
+        },
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.vless.outbound.Config",
+                "vnext": {
+                    "address": "127.0.0.1",
+                    "port": 50016,
+                    "user": {
+                        "account": {
+                            "_TypedMessage_": "xray.proxy.vless.Account",
+                            "encryption": "none",
+                            "id": "<redacted-uuid>"
+                        }
+                    }
+                }
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig",
+                "multiplexSettings": {
+                    "concurrency": 128,
+                    "enabled": true,
+                    "xudpProxyUDP443": "reject"
+                },
+                "streamSettings": {
+                    "protocolName": "tcp"
+                }
+            },
+            "tag": "out:shared-vless"
+        }
+    ]
+}
+
+{
+    "inbounds": [
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.http.ServerConfig"
+            },
+            "receiverSettings": {
+                "_TypedMessage_": "xray.app.proxyman.ReceiverConfig",
+                "listen": "127.0.0.1",
+                "portList": 50018,
+                "sniffingSettings": {}
+            },
+            "tag": "rt:a:in"
+        },
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.http.ServerConfig"
+            },
+            "receiverSettings": {
+                "_TypedMessage_": "xray.app.proxyman.ReceiverConfig",
+                "listen": "127.0.0.1",
+                "portList": 50019,
+                "sniffingSettings": {}
+            },
+            "tag": "rt:b:in"
+        },
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.dokodemo.Config",
+                "allowedNetworks": [
+                    "TCP"
+                ],
+                "rewriteAddress": "127.0.0.1"
+            },
+            "receiverSettings": {
+                "_TypedMessage_": "xray.app.proxyman.ReceiverConfig",
+                "listen": "127.0.0.1",
+                "portList": 50015
+            },
+            "tag": "api"
+        }
+    ]
+}
+
+{
+    "rules": [
+        {
+            "tag": "api"
+        },
+        {
+            "ruleTag": "rt:a:rule",
+            "tag": "out:shared-vless"
+        },
+        {
+            "ruleTag": "rt:b:rule",
+            "tag": "out:shared-vless"
+        }
+    ]
+}
+
+dynamic_counts=outbounds:2(including block),inbounds:3,rules:3(including api)
+
+[20:22:05] controlled VLESS server and loopback fixture through two shared profiles
+proxy_port=50018 fixture_response_bytes=20322 xray_route=rt:a:in->out:shared-vless
+proxy_port=50019 fixture_response_bytes=20322 xray_route=rt:b:in->out:shared-vless
+shared_parallel_requests=2 mux_concurrency=8 established_client_tcp_connections=3
+traffic_proof=fixture only reachable via loopback HTTP inbound and route log
+server_access_log_tail:
+2026/11/25 04:22:08.949368 [Info] [795060191] transport/internet/tcp: dialing TCP to tcp:127.0.0.1:50017
+2026/11/25 04:22:08.949381 [Debug] [795060191] transport/internet: dialing to tcp:127.0.0.1:50017
+2026/11/25 04:22:08.949350 from tcp:127.0.0.1:50041 accepted tcp:127.0.0.1:50017 [vless-server -> direct]
+2026/11/25 04:22:08.949548 [Info] [795060191] proxy/freedom: connection opened to tcp:127.0.0.1:50017, local endpoint 127.0.0.1:50064, remote endpoint 127.0.0.1:50017
+2026/11/25 04:22:08.949578 [Debug] [795060191] proxy: CopyRawConn (maybe) readv
+
+[20:22:08] shared outbound and connection reuse evidence
+{
+    "outbounds": [
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.blackhole.Config"
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig"
+            },
+            "tag": "block"
+        },
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.vless.outbound.Config",
+                "vnext": {
+                    "address": "127.0.0.1",
+                    "port": 50016,
+                    "user": {
+                        "account": {
+                            "_TypedMessage_": "xray.proxy.vless.Account",
+                            "encryption": "none",
+                            "id": "<redacted-uuid>"
+                        }
+                    }
+                }
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig",
+                "multiplexSettings": {
+                    "concurrency": 128,
+                    "enabled": true,
+                    "xudpProxyUDP443": "reject"
+                },
+                "streamSettings": {
+                    "protocolName": "tcp"
+                }
+            },
+            "tag": "out:shared-vless"
+        }
+    ]
+}
+
+same_outbound_key_profiles=2 xray_shared_outbound_count=1
+adding: out:distinct-credential
+{}
+
+{
+    "outbounds": [
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.vless.outbound.Config",
+                "vnext": {
+                    "address": "127.0.0.1",
+                    "port": 50016,
+                    "user": {
+                        "account": {
+                            "_TypedMessage_": "xray.proxy.vless.Account",
+                            "encryption": "none",
+                            "id": "<redacted-uuid>"
+                        }
+                    }
+                }
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig",
+                "multiplexSettings": {
+                    "concurrency": 128,
+                    "enabled": true,
+                    "xudpProxyUDP443": "reject"
+                },
+                "streamSettings": {
+                    "protocolName": "tcp"
+                }
+            },
+            "tag": "out:shared-vless"
+        },
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.vless.outbound.Config",
+                "vnext": {
+                    "address": "127.0.0.1",
+                    "port": 50016,
+                    "user": {
+                        "account": {
+                            "_TypedMessage_": "xray.proxy.vless.Account",
+                            "encryption": "none",
+                            "id": "<redacted-uuid>"
+                        }
+                    }
+                }
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig",
+                "multiplexSettings": {
+                    "concurrency": 128,
+                    "enabled": true,
+                    "xudpProxyUDP443": "reject"
+                },
+                "streamSettings": {
+                    "protocolName": "tcp"
+                }
+            },
+            "tag": "out:distinct-credential"
+        },
+        {
+            "proxySettings": {
+                "_TypedMessage_": "xray.proxy.blackhole.Config"
+            },
+            "senderSettings": {
+                "_TypedMessage_": "xray.app.proxyman.SenderConfig"
+            },
+            "tag": "block"
+        }
+    ]
+}
+
+different_credentials=distinct_outbound_count:2
+
+[20:22:09] non-loopback access checks
+curl: (7) Failed to connect to 192.168.31.6 port 50015 after 0 ms: Couldn't connect to server
+non_loopback_api=PASS address:192.168.31.6
+curl: (7) Failed to connect to 192.168.31.6 port 50018 after 0 ms: Couldn't connect to server
+non_loopback_inbound=PASS address:192.168.31.6
+
+[20:22:09] TUIC rejection and Hysteria2 capability result
+Xray 26.11.9 (Xray, Penetrates Everything.) 676eaf6 (go1.27.3 darwin/arm64)
+A unified platform for anti-censorship.
+2026/11/25 04:22:09.062891 [Info] infra/conf/serial: Reading config: &{Name:/var/folders/nl/qbk0flf9607bv21rd_7d042c0000gn/T//mien-xray.vNkJNL/tuic.json Format:json}
+Failed to start: main: failed to load config files: [/var/folders/nl/qbk0flf9607bv21rd_7d042c0000gn/T//mien-xray.vNkJNL/tuic.json] > infra/conf: failed to build outbound config with tag tuic > infra/conf: failed to load outbound detour config for protocol tuic > infra/conf: unknown config id: tuic
+tuic=PASS rejected (unknown protocol / unsupported outbound)
+hysteria2_config=PASS schema accepted by v26.11.9 (connectivity not claimed; no controlled UDP peer)
+
+[20:22:09] CRUD removals
+{}
+
+{}
+
+{}
+
+removing inbounds: [rt:a:in rt:b:in rt:a:in]
+removing: rt:a:in
+{}
+
+removing: rt:b:in
+{}
+
+removing: rt:a:in
+failed to remove inbound: rpc error: code = Unknown desc = common: not enough information for making a decision
+removing: out:distinct-credential
+{}
+
+removing: out:shared-vless
+{}
+
+removing: out:shared-vless
+{}
+
+remove_idempotency=wrapper maps unknown-tag ErrNoClue to success
+
+[20:22:09] strong-kill and bounded rebuild observation
+curl: (7) Failed to connect to 127.0.0.1 port 50018 after 0 ms: Couldn't connect to server
+strong_kill_proxy=PASS no direct fallback
+adding: out:shared-vless
+{}
+
+adding: rt:a:in
+{}
+
+{}
+
+rebuild_ms=110 original_profile_port=50018
+rebuild_proxy_response_bytes=20322
+
+[20:22:09] RSS and connection snapshot
+32227 30976 /Users/ivan/orca/workspaces/mien/t3-xray-spike/fixtures/.cache/xray/unpack/xray run -config=/var/folders/nl/qbk0flf9607bv21rd_7d042c0000gn/T//mien-xray.vNkJNL/server.json
+32293 31856 /Users/ivan/orca/workspaces/mien/t3-xray-spike/fixtures/.cache/xray/unpack/xray run -config=/var/folders/nl/qbk0flf9607bv21rd_7d042c0000gn/T//mien-xray.vNkJNL/bootstrap.json
+xray    32293 ivan    4u  IPv4 0x4c955721a51da862      0t0  TCP 127.0.0.1:50015 (LISTEN)
+xray    32293 ivan    8u  IPv4 0xcbe9fd60720c3add      0t0  TCP 127.0.0.1:50018 (LISTEN)
+xray    32293 ivan    9u  IPv4 0x5f2c601e3d0cac39      0t0  TCP 127.0.0.1:50081->127.0.0.1:50016 (ESTABLISHED)
+evidence_log=/Users/ivan/orca/workspaces/mien/t3-xray-spike/docs/spikes/xray/evidence/run-20261124T202205Z.log

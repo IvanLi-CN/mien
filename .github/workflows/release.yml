@@ -1,0 +1,271 @@
+# PKG-009: the manual release boundary, enforced by tested code.
+#
+# Every rule lives in `scripts/release/`:
+#   * `release-policy.mjs`      — target parsing, trusted baseline, collision,
+#                                 reservation binding, main-green gate, artifact
+#                                 completeness, attestation coverage, identity
+#                                 record, no-Apple-credential rule;
+#   * `release-policy.test.mjs` — a negative test per rule;
+#   * `rehearsal.mjs`           — the controlled rehearsal `docs/TEST-PLAN.md:322`
+#                                 asks for instead of a real public release;
+#   * `github-facts.mjs`        — GitHub API JSON -> the facts the policy judges;
+#   * `release-manifest.mjs`    — release assets -> digests recomputed from bytes.
+# The steps below only supply inputs and call those scripts.
+#
+# NOT implemented, and failing closed rather than pretending:
+#   * no job builds, signs, uploads, attests, promotes, tags or publishes;
+#   * `publish` exists only to fail, so nobody can read a green workflow as "released".
+# There is no Apple credential: macOS distribution is AdHoc only
+# (`docs/RELEASE.md` §3.9). The only release secret is the Tauri updater key.
+name: Release (manual policy gate)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: "Required release target: patch, minor, major, or X.Y.Z"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Every job is read-only. `reserve` and `stage-policy` need `contents: write` to
+  # see a draft reservation (`docs/CI.md` §7); until the job that creates one exists,
+  # requesting write access a green run never uses would be a permission nobody can
+  # audit. With read-only access a draft is invisible, so every dispatch is a new
+  # identity and `reserve` stops at its draft-creation boundary with
+  # `reservation-missing` semantics rather than claiming a reservation it did not make.
+  resolve-target:
+    name: resolve-target
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+      actions: read
+      packages: read
+    outputs:
+      canonical_version: ${{ steps.resolve.outputs.canonical_version }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+      reservation_tag: ${{ steps.resolve.outputs.reservation_tag }}
+      action: ${{ steps.resolve.outputs.action }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # A new identity is dispatched from main; this workflow never writes main.
+          ref: main
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Policy self-test
+        # The workflow refuses to resolve a target if its own rules regress.
+        run: bun run test:release-policy && bun run test:release-policy-plumbing && bun run test:release-workflow
+      - name: Read main, the merged PR, CI PR and CI Main for this SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          sha="$(git rev-parse HEAD)"
+          git ls-remote --tags origin > artifacts/tags.txt
+          node scripts/release/release-policy.mjs tags \
+            --input artifacts/tags.txt --out artifacts/tags.json
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" > artifacts/releases.json
+          node scripts/release/github-facts.mjs main \
+            --repo "$GITHUB_REPOSITORY" --sha "$sha" --out artifacts/main.json
+      - name: Resolve release_target against the trusted baseline
+        id: resolve
+        env:
+          RELEASE_TARGET: ${{ inputs.release_target }}
+        run: |
+          set -euo pipefail
+          node scripts/release/release-policy.mjs resolve \
+            --target "$RELEASE_TARGET" \
+            --source-sha "$(git rev-parse HEAD)" \
+            --run-id "$GITHUB_RUN_ID" \
+            --tags artifacts/tags.json \
+            --releases artifacts/releases.json \
+            --main artifacts/main.json \
+            --out artifacts/resolved.json
+          for key in canonical_version source_sha reservation_tag action; do
+            echo "$key=$(jq -r ".$key" artifacts/resolved.json)" >> "$GITHUB_OUTPUT"
+          done
+      - name: Release environment credential policy
+        # A runner cannot enumerate its environment's secrets, so the repository
+        # declares them in `.github/release-environment-secrets.json`. The policy
+        # rejects every Apple credential and every undeclared secret, so a stale
+        # notarization key cannot hide in the environment.
+        run: |
+          set -euo pipefail
+          node scripts/release/release-policy.mjs check-secrets \
+            --secrets .github/release-environment-secrets.json \
+            --signing adhoc \
+            --report artifacts/release-environment.json
+      - name: PKG-009 rehearsal
+        # The whole gate sequence over fixtures, which must pass. Each violation is
+        # covered by `release-policy.test.mjs`.
+        run: node scripts/release/rehearsal.mjs --out artifacts/rehearsal.json
+      - name: Upload resolution
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-resolution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/
+          if-no-files-found: ignore
+
+  reserve:
+    name: reserve (binding check only - creates nothing)
+    needs: [resolve-target]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.resolve-target.outputs.source_sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Download resolution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-resolution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+      - name: Validate the reservation binding (creates no draft)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" > artifacts/releases.json
+          node scripts/release/release-policy.mjs bind-reservation \
+            --target "$(jq -r '.release_target' artifacts/resolved.json)" \
+            --canonical "${{ needs.resolve-target.outputs.canonical_version }}" \
+            --source-sha "${{ needs.resolve-target.outputs.source_sha }}" \
+            --run-id "$GITHUB_RUN_ID" \
+            --releases artifacts/releases.json \
+            --action "${{ needs.resolve-target.outputs.action }}" \
+            --report artifacts/bound.json
+      - name: Draft creation boundary
+        # The binding rules above are enforced and tested. What is missing is the
+        # GitHub write that creates the draft. A recovery that already found a bound
+        # reservation continues; a new identity stops here, because continuing would
+        # report a reservation that was never created.
+        env:
+          ACTION: ${{ needs.resolve-target.outputs.action }}
+        run: |
+          if [[ "$ACTION" == "reuse" ]]; then
+            echo "A bound reservation was found; continuing with its version and source."
+            exit 0
+          fi
+          echo "Creating the GitHub release draft is not implemented in this repository." >&2
+          echo "The dispatch validated policy but reserved nothing, so it stops here." >&2
+          exit 1
+
+  # The builds that would produce DMG/Docker/SBOM/attestation do not exist, so no
+  # draft asset exists either. This job collects whatever is there, recomputes the
+  # digests from the bytes, and lets the policy fail closed on the gaps. It has no
+  # skip branch and no "attestations unsupported" escape.
+  stage-policy:
+    name: artifact and attestation policy
+    needs: [resolve-target, reserve]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.resolve-target.outputs.source_sha }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Download resolution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-resolution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts
+      - name: Collect release assets from the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          # A draft is only reachable by release id, so list its assets and fetch
+          # each by id. No draft yields an empty directory, which the policy then
+          # rejects: absent assets are a failure, not a skip.
+          reservation_id="$(jq -r '.reservation_id // empty' artifacts/resolved.json)"
+          if [[ -n "$reservation_id" ]]; then
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/releases/$reservation_id/assets?per_page=100" \
+              --jq '.[] | [.id, .name] | @tsv' > artifacts/assets.tsv
+            while IFS=$'\t' read -r asset_id asset_name; do
+              [[ -n "$asset_id" ]] || continue
+              mkdir -p "assets/$(dirname "$asset_name")"
+              gh api -H 'Accept: application/octet-stream' \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "assets/$asset_name"
+            done < artifacts/assets.tsv
+          else
+            echo 'No draft reservation exists, so the draft has no assets.' >&2
+          fi
+          node scripts/release/release-manifest.mjs \
+            --assets assets \
+            --canonical "${{ needs.resolve-target.outputs.canonical_version }}" \
+            --out artifacts/manifest.json
+      - name: Artifact completeness (SHA256SUMS, SBOM, licenses, seccomp, identity)
+        # `--identity-record` reads the staged `release-identity.json`; an absent one
+        # is a policy rejection (`missing-identity-record`), never a skip.
+        run: |
+          set -euo pipefail
+          node scripts/release/release-policy.mjs check-manifest \
+            --manifest artifacts/manifest.json \
+            --resolved artifacts/resolved.json \
+            --identity-record assets/release-identity.json \
+            --report artifacts/manifest-check.json
+      - name: Attestation coverage (DMG, container, SBOM, seccomp)
+        run: |
+          set -euo pipefail
+          node scripts/release/release-policy.mjs check-attestation \
+            --manifest artifacts/manifest.json \
+            --attestation artifacts/attestation.json \
+            --report artifacts/attestation-check.json
+
+  # GATE-001 stays the release gate (`docs/CI.md` §8). It has no report to check
+  # because no build or test run produces one yet, so it fails closed: that is the
+  # expected state, not an omission, and there is no skip branch.
+  gate-release:
+    name: gate-release (GATE-001)
+    needs: [stage-policy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+      - name: GATE-001 (no report yet, fails closed)
+        run: cargo run -q -p xtask -- release-gate --check release-gate.json --report gate-release-report.json
+      - name: Upload gate conclusion
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate-release-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: gate-release-report.json
+          if-no-files-found: ignore
+
+  # Exactly one place would publish, and it refuses. Publication needs real builds,
+  # generated attestations, GHCR promotion and tag creation; none exist, so this job
+  # must fail rather than let a green-looking workflow imply a release.
+  publish:
+    name: publish (UNIMPLEMENTED - fails closed)
+    needs: [gate-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse to publish
+        run: |
+          echo 'Build, attestation generation, promotion and tag creation are not implemented.' >&2
+          echo 'This workflow validates release policy only; it must not publish.' >&2
+          exit 1

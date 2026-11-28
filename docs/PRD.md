@@ -326,7 +326,7 @@ Tier A 参与发布门禁；Tier B 必须明确标注能力与失败原因，不
 - VLESS、VMess、Shadowsocks、Trojan 的受控节点测试必须通过；Hysteria2 的失败必须记录为已知限制，不能静默降级。
 - 内核的 BSD-3-Clause、Xray-core 的 MPL-2.0 许可、来源信息和发布物合规检查必须完成；TUIC 不得作为 v1 能力宣传。
 - 项目以 Apache-2.0 发布：`LICENSE` 随发布物分发；`NOTICE`、`LICENSES/`、SBOM 与许可扫描无未处置项，第三方再分发义务闭合。
-- Docker 镜像可复现性以两个独立干净 builder 的 digest 证明；SOURCE_DATE_EPOCH 固定为 source commit 时间，BuildKit OCI exporter 设置 rewrite-timestamp=true，禁用 provenance，固定 frontend/base/dependencies 并原样发布首次构建。仅 BuildKit rewrite-timestamp 是 exporter 参数，不是单独 buildx CLI flag。
+- Docker 镜像可复现性以两个独立干净 builder 的 digest 证明；SOURCE_DATE_EPOCH 固定为 source commit 时间，BuildKit OCI exporter 设置 rewrite-timestamp=true，禁用 provenance，固定 frontend/base/dependencies 并原样发布首次构建。仅 BuildKit rewrite-timestamp 是 exporter 参数，不是单独 buildx CLI flag。构建机制已用探针镜像在 GitHub Actions 上双构建验证；生产镜像的可复现性仍需在具备真实资产的 release 路径取证（见 `docs/spikes/docker/evidence/reproducibility.log`），探针结果不得替代。
 - 任何未关闭的高危安全问题阻断发布。
 
 ## 13. 风险与缓解

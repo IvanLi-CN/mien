@@ -1,0 +1,177 @@
+# syntax=docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+# Mien production server image: control plane, static UI and the shared Xvfb display.
+#
+# Base image: debian:bookworm-slim, pinned by digest. The digest is the one already
+# used by `Dockerfile.spike` and recorded in `docs/spikes/docker/evidence/run.log`
+# (base_digest=sha256:e67ee…). It was re-resolved against
+# `registry-1.docker.io/v2/library/debian/manifests/bookworm-slim`, which returns
+# `sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e`.
+# Pinning by digest, not tag, keeps a rebuild from silently changing the C
+# library underneath the kernel.
+#
+# The server binary and the static UI are built outside this file and staged in,
+# because building Rust in-image would need a full toolchain and network access:
+#   deploy/docker/build.sh                       # full image
+#   deploy/docker/build.sh --target runtime-base # OS layer only, no kernel assets
+# The script stages every file this file COPYs, in the names this file expects.
+# `README.server.md` records the exact commands, the asset digests and where the
+# digests come from (`docs/contracts/manifests/*-linux-x86_64.json`).
+
+# The base reference is an argument only so a rate-limited or air-gapped build
+# can point at a registry mirror that serves the *same* digest. The default is
+# the pinned Docker Hub reference; changing it to a tag would defeat the pin.
+ARG BASE_IMAGE=debian@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e
+
+# Runtime base: the pinned distribution plus every apt package the image ships.
+# It is a named stage, not a separate image, so a build can target it
+# (`--target runtime-base`) and get the real OS layer — base image plus apt
+# packages — without the kernel and Xray archives, whose 141 MiB Chromium asset
+# CI deliberately does not download. The stages are ordered so `runtime-base`
+# comes first: a build that targets it never evaluates the `server-binary` stage
+# below, with either the classic builder or BuildKit. The final image is
+# unchanged: same base digest, same apt command, same layer order, same ENV.
+FROM ${BASE_IMAGE} AS runtime-base
+
+# `MIEN_BIND` and `MIEN_PUBLIC_URL` are a pair: `validate_bind` rejects a
+# non-loopback bind without an absolute public URL, and the same value drives the
+# Cookie `Origin` check and `Secure`. Both are set here so the image starts as
+# shipped; a real deployment overrides both with its own origin.
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:99 \
+    HOME=/data/home \
+    XDG_CONFIG_HOME=/data/home/.config \
+    XDG_CACHE_HOME=/data/home/.cache \
+    XDG_RUNTIME_DIR=/tmp/runtime-mien \
+    XAUTHORITY=/tmp/mien-Xauthority \
+    TMPDIR=/tmp \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    MIEN_PUBLIC_URL=http://127.0.0.1:8787 \
+    MIEN_BIND=0.0.0.0:8787 \
+    MIEN_DATA_ROOT=/data \
+    MIEN_WEB_DIST=/opt/mien/web \
+    MIEN_KERNEL_BIN=/opt/mien/chromium/chrome \
+    MIEN_XRAY_BIN=/opt/mien/xray/xray \
+    RUST_LOG=info
+
+RUN apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
+ && apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install --no-install-recommends -y \
+      ca-certificates \
+      curl \
+      fonts-dejavu \
+      fonts-liberation \
+      jq \
+      libasound2 \
+      libatk-bridge2.0-0 \
+      libatk1.0-0 \
+      libatspi2.0-0 \
+      libc6 \
+      libcairo2 \
+      libcups2 \
+      libdrm2 \
+      libgbm1 \
+      libglib2.0-0 \
+      libgtk-3-0 \
+      libnspr4 \
+      libnss3 \
+      libpango-1.0-0 \
+      libu2f-udev \
+      libvulkan1 \
+      libx11-6 \
+      libxcb1 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxkbcommon0 \
+      libxrandr2 \
+      openbox \
+      procps \
+      sqlite3 \
+      tini \
+      unzip \
+      x11-utils \
+      xauth \
+      xz-utils \
+      xvfb \
+ && rm -rf /var/lib/apt/lists/*
+
+FROM ${BASE_IMAGE} AS server-binary
+
+ARG SERVER_BINARY=mien-server
+COPY ${SERVER_BINARY} /mien-server
+RUN test -x /mien-server
+
+FROM runtime-base AS server
+
+# Locked kernel and proxy-engine assets. They are never downloaded here: the
+# build receives the already-verified archives and re-checks their digests so a
+# wrong or tampered file fails the build instead of shipping. Digests come from
+# `docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-linux-x86_64.json`
+# (sha256) and `docs/contracts/manifests/xray-core-v26.11.9-linux-x86_64.json`.
+ARG CHROMIUM_ARCHIVE=chromium.tar.xz
+ARG XRAY_ARCHIVE=xray.zip
+ARG CHROMIUM_SHA256=70d239830332e5820aa34dfcb284161cac0429eee25da642830afe04bda717f4
+ARG XRAY_SHA256=b651f7e1d9966ee2c1b1ee1bf8b52c72771824d3065dce96bbc8bcc19ed95f82
+
+COPY ${CHROMIUM_ARCHIVE} /tmp/chromium.tar.xz
+COPY ${XRAY_ARCHIVE} /tmp/xray.zip
+RUN echo "${CHROMIUM_SHA256}  /tmp/chromium.tar.xz" | sha256sum -c - \
+ && echo "${XRAY_SHA256}  /tmp/xray.zip" | sha256sum -c - \
+ && mkdir -p /opt/mien/chromium /opt/mien/xray \
+ && tar -xJf /tmp/chromium.tar.xz --strip-components=1 -C /opt/mien/chromium \
+ && unzip -q /tmp/xray.zip -d /opt/mien/xray \
+ && test -x /opt/mien/chromium/chrome \
+ && test -x /opt/mien/xray/xray \
+ && rm -f /tmp/chromium.tar.xz /tmp/xray.zip
+
+COPY --from=server-binary /mien-server /usr/local/bin/mien-server
+COPY dist/ /opt/mien/web/
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY healthcheck.sh /usr/local/bin/healthcheck.sh
+COPY verify-server.sh /usr/local/bin/verify-server.sh
+
+# Non-root layout shared with the spike: UID/GID 10001 owns `/data` only, and the
+# entrypoint never escalates. `MIEN_WEB_DIST` is read-only to that user.
+RUN chmod 0555 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh \
+ && chmod 0755 /usr/local/bin/mien-server \
+ && chmod 0555 /usr/local/bin/verify-server.sh \
+ && mkdir -p /opt/mien/seccomp \
+ && groupadd --gid 10001 mien \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /data/home --shell /usr/sbin/nologin mien \
+ && mkdir -p /data/home/.config /data/home/.cache /data/secrets /data/profiles \
+ && chown -R 10001:10001 /data \
+ && chmod 0700 /data /data/home /data/home/.config /data/home/.cache /data/secrets /data/profiles \
+ && chmod -R a+rX /opt/mien
+
+# Audit copy only, exactly as in the spike: Docker loads the host-side seccomp
+# file at container creation. The image copy is never applied by itself.
+COPY seccomp/chromium.json /opt/mien/seccomp/chromium.json
+
+USER 10001:10001
+WORKDIR /data
+
+# `/data` carries the database, `secrets/master.key`, and per-profile browser
+# directories. `--shm-size=1g` and a writable `/tmp` are runtime requirements, not
+# build-time ones: see README.server.md for the run command.
+VOLUME ["/data"]
+EXPOSE 8787
+
+# Exit codes are contractual, not decorative:
+#   0 -> ready:            `/healthz` 200 and `/readyz` 200
+#   1 -> not ready:        `/healthz` 200 but `/readyz` 503. 503 is a documented
+#                          readiness answer ("dependencies not ready"), so it is
+#                          *not* reported as a probe failure; Docker still shows
+#                          the container as unhealthy, which is the correct user
+#                          -visible state while migrations or the display start.
+#   2 -> probe failure:    `/healthz` not 200, or `/readyz` answered something
+#                          other than 200/503, or the request could not be made.
+#                          This is the only bucket that means "the probe itself
+#                          could not reach a live process".
+# `--start-period=90s` covers first-start migration to `0008` plus Xvfb/openbox
+# startup; `--interval=15s` keeps steady-state cost negligible.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=3 \
+  CMD ["/usr/local/bin/healthcheck.sh"]
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+CMD ["/usr/local/bin/mien-server"]

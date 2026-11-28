@@ -1,0 +1,57 @@
+{
+  "schema": "mien.dns-canary/1",
+  "owner": "network",
+  "purpose": "Authored DNS canary scenarios for remote-DNS and failure-classification tests. Names are synthetic under .test; no real resolver traffic or user network data is recorded here.",
+  "resolver": {
+    "kind": "local stub",
+    "bind": "127.0.0.1:0",
+    "protocols": ["udp", "tcp"],
+    "zone": "canary.test",
+    "answering": {
+      "a": "127.0.0.1",
+      "aaaa": "::1",
+      "ttl": 30
+    },
+    "other_names": "NXDOMAIN"
+  },
+  "scenarios": [
+    {
+      "id": "DNS-001",
+      "case": "target-name-resolved-locally",
+      "expected_names": ["network.canary.test"],
+      "observed_queries": [
+        {"name": "network.canary.test", "source": "canary", "qtype": "A"}
+      ],
+      "verdict": "leaked",
+      "meaning": "The browser asked the local resolver for a target name; remote DNS is not in effect."
+    },
+    {
+      "id": "DNS-002",
+      "case": "only-node-name-resolved-locally",
+      "expected_names": ["network.canary.test"],
+      "observed_queries": [
+        {"name": "node.canary.test", "source": "canary", "qtype": "A"}
+      ],
+      "verdict": "not_leaked",
+      "meaning": "Only the proxy node's own host name was resolved locally, which the contract allows."
+    },
+    {
+      "id": "DNS-003",
+      "case": "resolver-sees-nothing",
+      "expected_names": ["network.canary.test"],
+      "observed_queries": [],
+      "verdict": "inconclusive",
+      "meaning": "A resolver that observes no query is not evidence that none happened; the platform may resolve out of process."
+    },
+    {
+      "id": "DNS-004",
+      "case": "case-and-trailing-dot-normalised",
+      "expected_names": ["Network.Canary.Test."],
+      "observed_queries": [
+        {"name": "network.canary.test", "source": "canary", "qtype": "A"}
+      ],
+      "verdict": "leaked",
+      "meaning": "Name comparison is case-insensitive and ignores the root dot."
+    }
+  ]
+}

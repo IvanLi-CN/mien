@@ -1,0 +1,50 @@
+name: Security
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+concurrency:
+  group: security
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Audit Bun dependencies
+        run: bun audit
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659
+      - name: Audit Rust dependencies (skip until workspace exists)
+        shell: bash
+        run: |
+          if [[ -f Cargo.lock ]]; then cargo install cargo-audit@0.23.0 --locked && cargo audit; else echo 'SKIP cargo audit: Cargo.lock not present (T2 scaffold pending)'; fi
+  container:
+    name: container sbom and vulnerabilities
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # The entry point is checked directly. The previous guard,
+      # `hashFiles('deploy/docker/Dockerfile')`, matched nothing because the real
+      # file is `Dockerfile.server`, so the trivy step never ran once.
+      - name: Verify the container build entry point
+        shell: bash
+        run: |
+          test -x deploy/docker/build.sh || {
+            echo 'deploy/docker/build.sh is missing or not executable; the container build has no entry point' >&2
+            exit 1
+          }
+          test -f deploy/docker/Dockerfile.server
+          deploy/docker/build.sh --help >/dev/null
+      # Builds the real OS layer, emits SPDX + CycloneDX SBOMs, runs trivy with
+      # severity HIGH,CRITICAL and exit code 1, applies
+      # deploy/docker/security-exceptions.yaml and prints every exception. A HIGH or
+      # CRITICAL finding without a valid, unexpired exception fails this job.
+      - name: Container image SBOM and vulnerability scan
+        uses: ./.github/actions/container-evidence
+        with:
+          retention-days: "30"

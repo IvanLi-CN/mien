@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+#
+# Reproducibility PROBE. This is not the production server image and must never be
+# published or cited as proof that `Dockerfile.server` is reproducible.
+#
+# `Dockerfile.server` needs the 141 MB fingerprint-chromium archive and the Xray
+# ZIP, which CI does not download. What this file proves is the narrower claim the
+# release contract depends on: the fixed parameter set (pinned Dockerfile frontend,
+# pinned base image, pinned Debian snapshot, SOURCE_DATE_EPOCH, OCI exporter with
+# rewrite-timestamp=true, provenance and SBOM disabled, one platform) makes two
+# independent builders produce the same OCI manifest digest.
+#
+# Fixed inputs, each intentional:
+#   - frontend: dockerfile 1.29.0 pinned by index digest. `docker/dockerfile:1`
+#     is a moving tag and would let the syntax implementation drift between runs.
+#     1.29.0 is the newest release whose index digest is
+#     sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+#     (tags 1, 1.29 and 1.29.0 all resolve to it).
+#   - base image: debian bookworm-slim pinned by digest, the same digest
+#     `Dockerfile.server` and `Dockerfile.spike` use.
+#   - apt: the Debian snapshot timestamp is the lock. A snapshot is immutable and
+#     its Release file is signed and checksummed, so every .deb is fixed without
+#     repeating versions here; duplicating versions would create a second source of
+#     truth that can contradict the archive. `Check-Valid-Until=false` is required
+#     because snapshot security suites keep the original Valid-Until date, which is
+#     long past; the snapshot index itself is the immutable, signed reference.
+#   - build args: `SOURCE_DATE_EPOCH` is supplied by the caller and is deliberately
+#     not declared with `ARG` inside a stage, so it cannot leak into the image
+#     config as an env var.
+#
+# Volatile state that must not survive the install step. `rewrite-timestamp` clamps
+# tar header mtimes, but it cannot rewrite what a file *contains*, so every file an
+# installer writes wall-clock time into has to be deleted here:
+#   - /var/log/apt/{history,term}.log, /var/log/apt/eipp.log.xz: apt timestamps.
+#   - /var/log/dpkg.log: dpkg action lines.
+#   - /var/log/alternatives.log: written by the `less` postinst, which runs
+#     update-alternatives and logs the current time.
+#   - /var/cache/ldconfig/aux-cache: directory mtimes from this build's filesystem.
+#   - /var/lib/apt/lists: package indexes fetched at build time.
+FROM debian@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e
+
+ARG DEBIAN_SNAPSHOT=20261123T000000Z
+ARG DEBIAN_SECURITY_SNAPSHOT=20261123T000000Z
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Replace the moving deb.debian.org sources from the base image with the pinned
+# snapshot. deb822 format is kept so the base image's Signed-By keyring path and
+# component set stay identical to a stock bookworm image.
+RUN set -eux; \
+    printf '%s\n' \
+      'Types: deb' \
+      "URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" \
+      'Suites: bookworm bookworm-updates' \
+      'Components: main' \
+      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+      > /etc/apt/sources.list.d/debian.sources; \
+    printf '%s\n' \
+      'Types: deb' \
+      "URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SECURITY_SNAPSHOT}" \
+      'Suites: bookworm-security' \
+      'Components: main' \
+      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+      > /etc/apt/sources.list.d/debian-security.sources
+
+RUN set -eux; \
+    apt-get -o Acquire::Check-Valid-Until=false \
+            -o Acquire::ForceIPv4=true \
+            -o Acquire::Retries=5 \
+            -o Acquire::http::Timeout=60 update; \
+    apt-get -o Acquire::Check-Valid-Until=false \
+            -o Acquire::ForceIPv4=true \
+            -o Acquire::Retries=5 \
+            -o Acquire::http::Timeout=60 install --no-install-recommends -y \
+      jq \
+      less \
+      tini; \
+    rm -rf /var/lib/apt/lists/* /var/log/apt; \
+    rm -f /var/log/dpkg.log /var/log/alternatives.log /var/cache/ldconfig/aux-cache
+
+COPY repro-probe/payload.json /opt/mien/repro/payload.json
+
+# Consume the copied file and pin the installed tool versions into the image so a
+# silent snapshot or package change fails the build instead of changing the digest.
+RUN set -eux; \
+    jq -e '.probe == "mien-docker-reproducibility"' /opt/mien/repro/payload.json; \
+    tini --version; \
+    less --version | head -n 1
+
+# Assert the volatile *contents* really are gone. A future package that starts logging
+# on install would otherwise make the second build differ with no visible reason; this
+# step turns that into a named failure in the build log. `/var/lib/apt/lists` is allowed
+# to exist as an empty directory because apt recreates it; an empty directory has no
+# mtime stored in the layer beyond the tar header, which rewrite-timestamp clamps.
+RUN set -eux; \
+    test ! -e /var/log/apt; \
+    test ! -e /var/log/dpkg.log; \
+    test ! -e /var/log/alternatives.log; \
+    test ! -e /var/cache/ldconfig/aux-cache; \
+    [ -z "$(ls -A /var/lib/apt/lists)" ]; \
+    test -s /opt/mien/repro/payload.json
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["jq", "--version"]

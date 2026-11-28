@@ -21,11 +21,14 @@
 | --- | --- | --- | --- |
 | `.github/workflows/ci-reusable.yml` | `workflow_call` | 由调用方决定 | 共享 lint、Rust、Web、契约、集成和 e2e smoke |
 | `.github/workflows/ci-pr.yml` | `pull_request` 的 `opened`、`synchronize`、`reopened`、`ready_for_review`；`merge_group` | `ci-pr-${{ github.event.pull_request.number || github.ref }}`，取消过期 candidate | PR candidate gate；`CI PR / required` 是唯一 required check |
-| `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与打包 smoke |
-| `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、容器和已知漏洞复查 |
+| `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与镜像 SBOM/漏洞扫描 smoke |
+| `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、镜像 SBOM 与已知漏洞复查 |
 | `.github/workflows/release.yml` | `workflow_dispatch`，输入 `release_target` | `release`，不取消 | target 解析、reservation、全量验证、macOS/Docker 构建（Docker 双构建比对）、attestation、镜像提升、tag 与 GitHub Release、发布后验证 |
+| `.github/workflows/reproducibility.yml` | `workflow_dispatch`；`pull_request`，paths 限定 `deploy/docker/**` 与相关脚本/自身 | `docker-repro-${{ github.event.pull_request.number || github.ref }}`，取消过期 candidate | Docker 双构建机制探针：两个独立 runner/独立 builder 构建 `Dockerfile.repro-probe`，比对 OCI manifest digest；**不**构建生产镜像，**不是** required check |
 
 `ci-pr.yml` 不监听 `pull_request.edited`；只有代码或 review-ready 状态变化才重新评估 required gate。`ci-main.yml` 与 `release.yml` 使用独立并发 namespace，不能被 PR 的取消策略误伤。
+
+`reproducibility.yml` 不进入 PR required 集合，也不进入发布链路；它验证的是"这套固定参数能否让两次干净构建得到同一个 OCI digest"。生产镜像需要 141 MB fingerprint-chromium 与 Xray 资产，CI 不下载、不使用替代资产，所以生产镜像的双构建仍由 release 的 `docker-amd64` 在具备真实资产时执行。探针 digest 相等不能被引用为生产镜像可复现的证据；两者的区别和探针的全部固定参数记录在 [`spikes/docker/evidence/reproducibility.log`](spikes/docker/evidence/reproducibility.log)。job 名固定为 `Docker Reproducibility / result`。
 
 ## 3. PR 流水线
 
@@ -46,17 +49,29 @@ flowchart TD
 
 | Job | 主要命令 | 说明 |
 | --- | --- | --- |
-| `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bun run license:check`、`bunx biome check .`、`bunx tsc --noEmit`、`actionlint` | Rust、前端依赖与静态检查；前端许可扫描失败阻断；不使用 `continue-on-error` |
+| `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bun run license:check`、`bunx biome check .`、`bunx tsc --noEmit`、`bun run test:release-gate`、`bun run test:repro-compare`、`python3 -m py_compile scripts/release/repro-record.py`、`actionlint` | Rust、前端依赖与静态检查；前端许可扫描失败阻断；不使用 `continue-on-error`；`actionlint` 覆盖 `.github/workflows/*.yml` 全部文件，含 `reproducibility.yml` |
 | `rust` | `cargo nextest run --workspace` | 单元和库级集成；失败上传 nextest JUnit 报告 |
 | `web` | `bun install --frozen-lockfile`、`bun run typecheck`、`bun run test`、`bun run build` | 前端类型、测试和静态资源构建 |
-| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 与相对链接/锚点解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 与 AppArmor 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；生成差异、未知错误码、映射漂移、断链或任一校验失败均阻断 |
+| `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 与相对链接/锚点解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 与 AppArmor 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture、`cargo run -q -p xtask -- licenses --check` | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；许可报告漂移、生成差异、未知错误码、映射漂移、断链或任一校验失败均阻断；本任务只给 T1 workflow 补丁建议，不直接修改 workflow |
 | `integration` | 服务端启动、SQLite、档案生命周期、API 鉴权、代理配置与 Xray fixture | 使用真实进程和临时数据目录；不连接外部网络 |
 | `e2e smoke` | Docker `linux/amd64` + Xvfb + Playwright | PR 只跑一条代表性有头启动/停止链路；完整矩阵留在 main 与 release |
 | `required` | 聚合 `needs` 结果 | `if: always()`；任何上游 `failure`、`cancelled` 或意外 `skipped` 都判失败 |
 
 PR 初始阶段不按路径过滤。等基线稳定后可以引入 classifier 减少无关 workload，但 required 聚合 job 必须始终存在并覆盖实际改动域；不能用 paths filter 让 required check 缺席。
 
-`ci-main.yml` 复用同一套验证，但增加完整 e2e、容器矩阵、容量 smoke 和 macOS 打包 smoke。main 失败不回滚已合并代码，但阻断后续 release。
+`ci-main.yml` 复用同一套验证，但增加完整 e2e、镜像证据（SBOM + 漏洞扫描）、容量 smoke 和 macOS 打包 smoke。main 失败不回滚已合并代码，但阻断后续 release。
+
+### 3.1 镜像 SBOM 与漏洞扫描
+
+`ci-main.yml` 的 `package-smoke` 与 `security.yml` 的 `container` 都调用同一个复合 action `.github/actions/container-evidence/action.yml`，因此原先恒跳过的两处容器检查收敛成一个实现；PR 的 `lint` job 另外静态校验该实现（`test:container` 与 `dockerfile.mjs check`）：
+
+1. `deploy/docker/install-scanners.sh` 下载固定版本的 syft 1.57.2 与 trivy 0.76.2，逐个校验 SHA-256 后才解包；
+2. `deploy/docker/build.sh --target runtime-base` 真正构建 `Dockerfile.server` 的 OS 层（固定 digest 的 Debian 基础镜像 + 全部 apt 包），把上下文组装、apt 清单、COPY 源与资产摘要的校验放进 `scripts/release/dockerfile.mjs`；
+3. `docker save` 导出该镜像，`deploy/docker/scan-image.sh` 用 syft 生成 SPDX 2.3 与 CycloneDX 1.7 JSON 到 `artifacts/sbom/`，用 trivy 以 `severity: HIGH,CRITICAL`、`exit-code: 1` 生成 `artifacts/scan/<name>.trivy.json`；
+4. `scripts/release/scan-report.mjs` 校验 SBOM 非空、`spdxVersion`/`bomFormat` 存在、包数 > 0，并要求 `dpkg` 与 Dockerfile 里每个 apt 包都在 SBOM 中；然后应用 `deploy/docker/security-exceptions.yaml`，把每条命中的例外打印出来，未过期且未命中的例外会被标为 `unmatched`，过期例外直接失败。剩余 HIGH/CRITICAL 非零即失败；
+5. 结论写入 `artifacts/scan/<name>.summary.json`，其 `release_gate_evidence` 是 `{path, sha256}` 数组，形状与 `docs/contracts/release-gate.schema.json` 的 evidence 一致，可直接被 `release-gate.json` 引用。
+
+`container-evidence` 只构建 `runtime-base` 阶段，**不构建完整镜像**：最终阶段需要 141 MiB 的 fingerprint Chromium 归档与 Xray 归档，CI 不下载它们，也不用假资产绕过 Dockerfile 的摘要校验。该事实写入随 artifact 上传的 `artifacts/image/chromium-not-built.txt`，扫描结论只覆盖 OS 层；Rust/Bun 依赖层由 dependabot、`cargo audit` 与 `bun audit` 覆盖。完整镜像必须在有资产的宿主执行 `deploy/docker/build.sh --assets-dir <dir>`，再 `deploy/docker/scan-image.sh --image mien-server:local`。
 
 ## 4. 发布流水线
 
@@ -187,6 +202,8 @@ tag 保护使用两套目标为 v* 的 ruleset：创建规则只启用 Restrict 
 
 GATE-001 由 gate-release 在产物/attestation/人工测试完成后评估；test 提供测试分报告，打包与人工测试补齐产物证据。metadata-only reserve 不等于准入通过，不受“不得创建资产草稿”的误用约束。promote-docker 与 release 每次（含单独 recovery）读取并重验 release-gate.json；PRD-ACC-001..010 必须 pass，其他允许接受的 P1 才可按 TEST-PLAN 携有效 waiver，P0/阻断 P1 不能 accepted。缺报告、ID、许可、双构建、attestation、有效 waiver 或 source/digest 不匹配均阻断发布。
 
+GATE-001 的实现是 `scripts/release/gate.mjs`，报告结构见 [`contracts/release-gate.schema.json`](contracts/release-gate.schema.json)，调用入口为 `xtask release-gate --check <path>`（`--init` 只生成全 `missing` 骨架，`--report` 输出机器可读结论），校验器测试为 `bun run test:release-gate`。校验器不访问网络、不读 GitHub API；报告文件不存在即失败，没有 skip 分支。`release.yml` 的 `gate-release` 只调用该入口，在尚无 `release-gate.json` 的骨架阶段保持 fail-closed，PR 门禁不引用它。
+
 ## 9. 失败、重跑与回滚
 
 - PR gate 失败时修复代码或测试；不使用 `continue-on-error`、降低断言、删除 required check 或扩大 waiver 来变绿。
@@ -207,6 +224,8 @@ GATE-001 由 gate-release 在产物/attestation/人工测试完成后评估；te
 3. 阶段 3：加入 Docker e2e smoke、内核下载校验和代理矩阵 fixture。
 4. 阶段 4：加入 macOS 打包 smoke、AdHoc 签名与 entitlements 验证、SBOM 与 Trivy。
 5. 阶段 5：启用 `release` environment、draft reservation、手动 `release_target` workflow、tag 保护（`Restrict updates` + `Restrict deletions` + `Restrict creations`，仅 release App 绕过 creations）、强制 attestation、更新清单和发布后验证；加入 Docker 双构建 digest 比对与 Apache-2.0 `LICENSE`/`NOTICE`/`LICENSES/` 门禁（对应 ROADMAP M4）。
+
+许可 contracts job 补丁建议（本任务不直接改 T1 workflow）：在依赖安装与 checkout 后加入 `cargo run -q -p xtask -- licenses --check`，失败直接阻断 `CI PR / required`；生成阶段由 release 的 `macos-arm64`、`docker-amd64` 分别生成 Rust/Bun 与容器 SBOM，并由 `stage-release` 汇总 `NOTICE`、`LICENSES/`、`third-party-report.json` 和 SBOM。该结构化检查不下载依赖。
 
 ## 11. 参考
 

@@ -1,0 +1,23 @@
+syntax = "proto3";
+package xray.app.proxyman;
+import "common/net/address.proto";
+import "common/net/port.proto";
+import "transport/internet/config.proto";
+message InboundConfig {}
+message SniffingConfig { bool enabled = 1; repeated string destination_override = 2; bool metadata_only = 4; bool route_only = 5; }
+message ReceiverConfig {
+  xray.common.net.PortList port_list = 1;
+  xray.common.net.IPOrDomain listen = 2;
+  xray.transport.internet.StreamConfig stream_settings = 3;
+  bool receive_original_destination = 4;
+  SniffingConfig sniffing_settings = 6;
+}
+message OutboundConfig {}
+message SenderConfig {
+  xray.common.net.IPOrDomain via = 1;
+  xray.transport.internet.StreamConfig stream_settings = 2;
+  MultiplexingConfig multiplex_settings = 4;
+  string via_cidr = 5;
+  xray.transport.internet.DomainStrategy target_strategy = 6;
+}
+message MultiplexingConfig { bool enabled = 1; int32 concurrency = 2; int32 xudpConcurrency = 3; string xudpProxyUDP443 = 4; }

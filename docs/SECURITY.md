@@ -115,7 +115,7 @@ flowchart LR
 
 ### 5.3 进程与文件
 
-- 内核、Xvfb、openbox、x11vnc、websockify 与 Xray 均使用参数数组启动，不经过 shell；子进程先 `env_clear`，再只注入白名单变量：`HOME`、`XDG_CONFIG_HOME`、`XDG_CACHE_HOME`、`TMPDIR`、`DISPLAY`、`LANG`、`LC_ALL`、`TZ` 和固定 `PATH`。不继承宿主环境，不传递主密钥、Token、代理凭据、数据库路径或 `MIEN_*` 配置。
+- 内核、Xvfb、openbox、x11vnc、websockify 与 Xray 均使用参数数组启动，不经过 shell；子进程先 `env_clear`，再只注入白名单变量：`HOME`、`XDG_CONFIG_HOME`、`XDG_CACHE_HOME`、`TMPDIR`、`DISPLAY`、`XAUTHORITY`、`LANG`、`LC_ALL`、`TZ` 和固定 `PATH`。不继承宿主环境，不传递主密钥、Token、代理凭据、数据库路径或 `MIEN_*` 配置。`XAUTHORITY` 与 `DISPLAY` 成对出现：容器与无桌面宿主上 Xvfb 使用随机 cookie，缺少 `XAUTHORITY` 时内核无法连接 X 服务器，有头启动会失败。
 - 进程组管理；正常停止优先 SIGTERM，超时后终止进程组。
 - 档案锁与并发配额；控制面重启后按 PID、启动时间和命令行对账。
 - 路径规范化、前缀校验、拒绝符号链接；导入文件大小与 schema 限制。

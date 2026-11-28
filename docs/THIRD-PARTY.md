@@ -78,3 +78,60 @@ openbox、x11vnc、websockify、noVNC 与 Xray-core 是独立程序，不作为�
 - [`contracts/manifests/`](contracts/manifests/)
 - [`SECURITY.md`](SECURITY.md)
 - [`TECH-STACK.md`](TECH-STACK.md)
+
+## 6. 自动生成与发布阻断
+
+许可清单由 `cargo run -q -p xtask -- licenses` 生成，`--check` 只比较结构化输入与已提交产物，不下载网络内容；`xtask check` 已调用 `licenses --check`，因此 `NOTICE`、`LICENSES/` 与 `third-party-report.json` 漂移会使检查失败。生成器只接受报告中声明的白名单许可证：Cargo 链接依赖仅允许 `MIT`、`Apache-2.0`、`BSD-2-Clause`、`BSD-3-Clause`、`ISC`、`Unicode-3.0`、`Zlib` 及 `Apache-2.0 WITH LLVM-exception`，前端允许集合另加 `0BSD`、`CC0-1.0`、`Unlicense`、`BlueOak-1.0.0`，独立运行时组件按其实际分发许可收录 MPL/GPL/LGPL/OFL/CC-BY-SA；未知、缺失或白名单外许可证立即非零退出。
+
+### 6.1 组件矩阵与证据
+
+生成报告的每一行包含 `id`、`version`、`license`、`distribution`、`obligations`、`sourceUrl` 和 `evidencePaths`。版本来源固定为：fingerprint-chromium 与 Xray-core 取 `docs/contracts/manifests/*.json`，Rust 取 `Cargo.lock` 配合离线 `cargo metadata`，前端取 `bun.lock` 配合安装后的 `node_modules/<package>/package.json`（本机无 `node_modules` 时可使用 Bun cache；PR job 必须先 `bun install --frozen-lockfile`），容器组件取 `deploy/docker/`、`PROVENANCE.json` 与 release job 的镜像 SBOM；生成器不下载任何源码或许可证文本。
+
+| 组件 | 版本/证据 | 许可证 | 分发形态 | 义务与源码获取 |
+| --- | --- | --- | --- | --- |
+| 项目 Mien | 仓库根 `LICENSE` | Apache-2.0 | 项目 | 随发布物分发完整 `LICENSE`；源码为本仓库对应发布 SHA。 |
+| fingerprint-chromium | `148.0.7778.215`；各平台 kernel manifest | BSD-3-Clause | 独立静态目录/内核资产 | 保留版权和许可，不暗示背书；源码：<https://github.com/adryfish/fingerprint-chromium/tree/148.0.7778.215>。 |
+| Xray-core | `v26.11.9`；Xray manifest | MPL-2.0 | 独立进程，不链接 | 保留许可和来源；未修改时提供上游 Corresponding Source，修改 MPL 文件时公开修改文件；源码：<https://github.com/XTLS/Xray-core/tree/v26.11.9>。 |
+| Rust crates | `Cargo.lock` 精确版本 | 逐包 SPDX，限宽松白名单 | 链接依赖 | 保留选择的许可证文本；GPL/AGPL/SSPL、未知或缺失许可证阻断；源码 URL 来自 cargo metadata repository/crates.io。 |
+| Bun 前端依赖 | `bun.lock` 精确版本 | 逐包 SPDX，限前端白名单 | 打包静态资源 | 保留包许可证与归属；源码 URL 来自 package metadata/npm fallback。 |
+| Debian bookworm-slim | 发布镜像固定 digest + image SBOM | Debian 各包实际许可证 | 容器基础镜像 | release `docker-amd64` job 生成包级 SBOM、许可文本和源码 URL；GPL/LGPL 包提供 Corresponding Source 或至少三年书面要约。 |
+| Xvfb/xorg-server | 容器包精确版本 | MIT/X11 | 独立进程 | 保留版权、许可和包级源码记录。 |
+| openbox、x11vnc | 容器包精确版本 | GPL-2.0-or-later | 独立进程 | 保留 GPL 文本、源码 URL 与 Corresponding Source/书面要约。 |
+| websockify | 容器包/源精确版本 | LGPL-3.0 | 独立进程 | 保留 LGPL 文本、源码和可替换方式；修改文件必须公开。 |
+| noVNC | 容器源精确版本 | MPL-2.0；资源另含 BSD-3-Clause/BSD-2-Clause/OFL-1.1/CC-BY-SA-3.0/MIT | 独立静态目录 | 保留 MPL 文件头、资源/字体归属与 `core/des.js` BSD-style 声明；修改 MPL 文件必须公开。源码：<https://github.com/novnc/noVNC/tree/v1.6.0>（实际版本以镜像 SBOM/构建输入为准）。 |
+| tini | 容器包精确版本 | Apache-2.0 | 独立进程 | 保留 Apache 文本和源码 URL：<https://github.com/krallin/tini>。 |
+| Moby seccomp | commit `a0fa70805f742f7da15b367770d802ea2a86c68b`；`PROVENANCE.json` | Apache-2.0 | 独立宿主配置 | 保留上游文本、commit、修改记录和摘要；源码：<https://github.com/moby/profiles/tree/a0fa70805f742f7da15b367770d802ea2a86c68b>。 |
+
+容器版本不得使用 `container-locked version` 作为最终发布证据：这是当前未处置项，必须由 `docker-amd64` 以固定基础镜像 digest、Dockerfile/安装包版本和镜像 SBOM 替换报告中的占位值，否则发布阻断。
+
+### 6.2 NOTICE 与 LICENSES 目录约定
+
+`NOTICE` 为生成文件，每个组件使用固定字段顺序：`Component`、`Version`、`License`、`Distribution`、`Source`、`Obligations`、`Evidence`；同一组件多许可证用 `; ` 分隔，证据路径始终为仓库相对路径。`LICENSES/<id>.txt` 的 `<id>` 是 SPDX identifier（例如 `Apache-2.0.txt`、`MPL-2.0.txt`、`BSD-3-Clause.txt`）；同一 SPDX 文本只存一份，发布 staging 必须从固定包/源码归档写入精确上游文本，不接受仅有 URL 的占位文本。不得提交第三方二进制，Xray/Chromium 仅以清单与 release 构建输入记录。
+
+### 6.3 SBOM 与 job 责任
+
+`contracts` job 不下载、不构建镜像，只执行 `cargo run -q -p xtask -- licenses --check` 和 `cargo run -q -p xtask -- contracts`；PR workflow 的 contracts job 应加入该命令（现有 T1 workflow 不在本任务修改，补丁建议见 §6.4）。Rust SBOM 由 `cargo sbom --output-format cyclonedx-json > SBOM/rust.cdx.json` 生成，若 runner 尚未安装 cargo-sbom 则由 release job fail closed；Bun SBOM 由 `syft dir:. --scope all-layers -o cyclonedx-json=SBOM/frontend.cdx.json` 在 `bun install --frozen-lockfile` 后生成；容器 SBOM 由 `syft <image>@<digest> -o cyclonedx-json=SBOM/container.cdx.json` 生成。macOS job 生成 Rust/Bun/application SBOM，docker-amd64 job 生成 container SBOM、包级许可和漏洞报告，stage-release 汇总为发布附件并校验摘要；不把许可证报告当成 SBOM 的替代品。
+
+### 6.4 PR contracts job 补丁建议（不直接改 T1 workflow）
+
+在 `.github/workflows/ci-reusable.yml` 的 `contracts` job、所有 `checkout` 与依赖安装步骤成功后加入：
+
+```yaml
+- name: Check third-party license inventory
+  run: cargo run -q -p xtask -- licenses --check
+```
+
+该步骤只做结构化校验，不下载第三方内容；`xtask check` 本地同样执行。若要从干净 runner 生成而非校验，先执行 `bun install --frozen-lockfile`，再运行 `cargo run -q -p xtask -- licenses`，并将 `NOTICE`、`LICENSES/`、`third-party-report.json` 作为 job artifact；PR required gate 只接受 `licenses --check` 成功。
+
+### 6.5 未处置即阻断发布清单
+
+| 项目 | 证据/Owner | 状态 | 阻断条件 |
+| --- | --- | --- | --- |
+| 容器基础镜像 digest 与包级 SBOM | `docker-amd64` / Release owner | 未处置 | 缺 digest、包版本、许可证文本、源码 URL 或 GPL/LGPL Corresponding Source。 |
+| 容器组件精确版本 | `deploy/docker/*` + image SBOM / T8 | 未处置 | 仍使用生成器的 `container-locked version` 占位值。 |
+| 精确第三方许可证文本 | release staging / Legal owner | 未处置 | `LICENSES/*.txt` 仍含 “Canonical license text” provenance stub，或缺归属。 |
+| 安全例外与未维护依赖 | `deny.toml`、`src-tauri/deny.toml` / T8 | 未处置 | `RUSTSEC-2026-0459`、time/quick-xml 与 6 条 unmaintained 仅是安全例外，不得当作许可证通过；未有接受记录、升级或移除即阻断。 |
+
+当前判定命令：`cargo run -q -p xtask -- licenses --check && jq -e '.licenseStatus == "pass" and (.unresolvedLicenseItems | length == 0) and (.releaseBlockers | length == 0)' third-party-report.json`。当前报告必然为阻断状态，原因是容器证据、精确文本和已知安全例外尚未处置；即使许可证扫描为 pass，也不得发布。
+
+## 7. 参考

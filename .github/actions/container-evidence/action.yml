@@ -1,0 +1,127 @@
+name: Container image evidence
+description: Build the OS layer of the production image, then emit SBOMs and the vulnerability report.
+# This action is the single implementation behind the packaging smoke in
+# `ci-main.yml` and the container job in `security.yml`.
+#
+# It builds `Dockerfile.server --target runtime-base`, which is the pinned Debian
+# base plus every apt package the final image installs. The full image is NOT
+# built here: the final stage needs the 141 MiB fingerprint Chromium archive and
+# the Xray archive, and downloading both on every run is not acceptable. That
+# limitation is written into `artifacts/image/chromium-not-built.txt`, never
+# hidden behind a fake asset, because the Dockerfile checks the real digests.
+inputs:
+  platform:
+    description: Target platform for the build and scan.
+    required: false
+    default: linux/amd64
+  retention-days:
+    description: Artifact retention in days.
+    required: false
+    default: "14"
+outputs:
+  summary-path:
+    description: Path to the machine-readable scan summary.
+    value: ${{ steps.scan.outputs.summary-path }}
+runs:
+  using: composite
+  steps:
+    # `scripts/release/scan-report.mjs` parses the exception list with the `yaml`
+    # package from package.json, so the JS dependencies must exist before the scan.
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+    - name: Install JS dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
+
+    - name: Install pinned syft and trivy
+      shell: bash
+      run: deploy/docker/install-scanners.sh --dir "$GITHUB_WORKSPACE/target/scanners"
+
+    - name: Build the image OS layer
+      shell: bash
+      run: |
+        deploy/docker/build.sh \
+          --target runtime-base \
+          --platform "${{ inputs.platform }}" \
+          --tag mien-server:runtime-base \
+          --image-id-file artifacts/image/runtime-base.id
+
+    - name: Export the built image
+      shell: bash
+      run: |
+        mkdir -p artifacts/image
+        docker save --output artifacts/image/runtime-base.tar mien-server:runtime-base
+        test -s artifacts/image/runtime-base.tar
+        docker image inspect --format '{{.Id}} {{.RepoTags}}' mien-server:runtime-base | tee artifacts/image/runtime-base.inspect.txt
+
+    - name: SBOM and vulnerability scan
+      id: scan
+      shell: bash
+      env:
+        MIEN_SYFT: ${{ github.workspace }}/target/scanners/bin/syft
+        MIEN_TRIVY: ${{ github.workspace }}/target/scanners/bin/trivy
+        TRIVY_CACHE_DIR: ${{ github.workspace }}/target/trivy-cache
+      run: |
+        set +e
+        deploy/docker/scan-image.sh \
+          --docker-archive artifacts/image/runtime-base.tar \
+          --label runtime-base \
+          --image-ref mien-server:runtime-base \
+          --image-id "$(tr -d '\n' < artifacts/image/runtime-base.id)" \
+          --platform "${{ inputs.platform }}"
+        status=$?
+        set -e
+        echo "summary-path=artifacts/scan/runtime-base.summary.json" >> "$GITHUB_OUTPUT"
+        exit "$status"
+
+    - name: Record the build and scan conclusion
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p artifacts/image
+        image_id=$(tr -d '\n' < artifacts/image/runtime-base.id 2>/dev/null || echo unknown)
+        {
+          echo "image=mien-server:runtime-base"
+          echo "image_id=$image_id"
+          echo "platform=${{ inputs.platform }}"
+          echo "dockerfile=deploy/docker/Dockerfile.server"
+          echo "target=runtime-base"
+          echo "scan_status=${{ steps.scan.outcome }}"
+          echo "gap=complete image not built; see chromium-not-built.txt"
+        } > artifacts/image/build.txt
+        cat artifacts/image/build.txt
+
+    - name: Record what CI did not build
+      if: always()
+      shell: bash
+      run: |
+        mkdir -p artifacts/image
+        cat > artifacts/image/chromium-not-built.txt <<'TXT'
+        The complete production image was NOT built in CI.
+
+        Dockerfile.server's final stage COPYs two verified release assets:
+        the 141 MiB fingerprint Chromium archive and the Xray archive. This run
+        built `--target runtime-base`, which is the pinned Debian base plus every
+        apt package the final image installs, and scanned that image. No fake or
+        placeholder asset was substituted; doing so would weaken the digest
+        checks the Dockerfile performs.
+
+        Consequence: the SBOM and vulnerability report cover the OS layer (base
+        image + apt packages) of the real image definition, not the unpacked
+        Chromium/Xray files. Package-level coverage for the Rust and Bun
+        dependency trees comes from dependabot, cargo-audit and bun audit; the
+        final image must be built and scanned on a host that has the assets
+        (`deploy/docker/build.sh --assets-dir <dir>`, then
+        `deploy/docker/scan-image.sh --image mien-server:local`).
+        TXT
+
+    - name: Upload SBOM, scan report and image metadata
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: container-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          artifacts/sbom/
+          artifacts/scan/
+          artifacts/image/
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: warn

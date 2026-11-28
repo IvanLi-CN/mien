@@ -1,0 +1,184 @@
+name: CI Reusable
+on:
+  workflow_call:
+    inputs:
+      full-e2e:
+        description: Run the full end-to-end matrix for mainline validation
+        required: false
+        type: boolean
+        default: false
+      job:
+        description: Run one of the reusable CI jobs for the caller's named job
+        required: false
+        type: string
+        default: all
+permissions:
+  contents: read
+jobs:
+  lint:
+    if: inputs.job == 'all' || inputs.job == 'lint'
+    name: lint
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - name: Rust formatting
+        shell: bash
+        run: |
+          if [[ -f Cargo.toml ]]; then cargo fmt --check; else echo 'SKIP cargo fmt --check: Cargo.toml not present (T2 scaffold pending)'; fi
+      - name: Install Rust CI tools
+        if: hashFiles('Cargo.toml') != ''
+        run: cargo install cargo-deny@0.21.0 --locked && cargo install cargo-audit@0.22.0 --locked
+      - name: Rust Clippy
+        shell: bash
+        run: |
+          if [[ -f Cargo.toml ]]; then cargo clippy --all-targets -- -D warnings; else echo 'SKIP cargo clippy: Cargo.toml not present (T2 scaffold pending)'; fi
+      - name: cargo-deny
+        shell: bash
+        run: |
+          if [[ -f Cargo.toml ]]; then cargo deny check; else echo 'SKIP cargo deny: Cargo.toml not present (T2 scaffold pending)'; fi
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Frontend license policy
+        run: bun run license:check
+      - name: Biome
+        run: bunx biome check scripts/contracts/check.mjs scripts/license-check.mjs scripts/release/gate.mjs scripts/release/gate.test.mjs scripts/release/dockerfile.mjs scripts/release/dockerfile.test.mjs scripts/release/scan-report.mjs scripts/release/scan-report.test.mjs scripts/release/build-context.test.mjs scripts/release/repro-compare.mjs scripts/release/repro-compare.test.mjs scripts/release/release-notes.mjs scripts/release/release-notes.test.mjs scripts/release/updater-signature.mjs scripts/release/updater-signature.test.mjs scripts/release/release-policy.mjs scripts/release/release-policy.test.mjs scripts/release/release-policy-plumbing.test.mjs scripts/release/rehearsal.mjs scripts/release/github-facts.mjs scripts/release/release-manifest.mjs scripts/release/release-workflow.test.mjs --formatter-enabled=false
+      - name: Release gate checker tests
+        run: bun run test:release-gate
+      - name: Container contract and SBOM report tests
+        run: bun run test:container
+      - name: Dockerfile contract
+        run: node scripts/release/dockerfile.mjs check
+      - name: Known limitations coverage (PKG-008)
+        run: bun run test:release-notes && bun run notes:check
+      - name: Updater manifest signature tests (PKG-003)
+        run: bun run test:updater
+      - name: Reproducibility comparison tests
+        run: bun run test:repro-compare
+      - name: Release policy rules and rehearsal (PKG-009)
+        run: bun run test:release-policy && bun run test:release-policy-plumbing
+      - name: Release workflow wiring (PKG-009)
+        run: bun run test:release-workflow
+      - name: Release rehearsal over fixtures (PKG-009)
+        run: node scripts/release/rehearsal.mjs
+      - name: Reproducibility record extractor syntax
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
+        run: python3 -m py_compile scripts/release/repro-record.py
+      - name: TypeScript
+        run: bunx tsc --noEmit
+      - name: actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml
+  rust:
+    if: inputs.job == 'all' || inputs.job == 'rust'
+    name: rust
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - name: Rust tests (skip until workspace exists)
+        shell: bash
+        run: |
+          if [[ -f Cargo.toml ]]; then cargo install cargo-nextest@0.9.100 --locked && cargo nextest run --workspace --profile ci; else echo 'SKIP cargo nextest: Cargo.toml not present (T2 scaffold pending)'; fi
+      - name: Upload nextest JUnit report
+        if: always() && hashFiles('target/nextest/ci/junit.xml') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nextest-junit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/nextest/ci/junit.xml
+          retention-days: 14
+      - name: Upload nextest test log
+        if: always() && hashFiles('target/nextest/ci/test-list.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nextest-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/nextest/ci/
+          retention-days: 14
+  web:
+    if: inputs.job == 'all' || inputs.job == 'web'
+    name: web
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Web checks
+        shell: bash
+        run: |
+          if [[ -f ui/package.json ]]; then cd ui && bun install --frozen-lockfile && bun run typecheck && bun run test && bun run build; else echo 'SKIP web checks: ui/package.json not present (T2 web scaffold pending)'; fi
+  contracts:
+    if: inputs.job == 'all' || inputs.job == 'contracts'
+    name: contracts
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Install contract tools
+        run: bun install --frozen-lockfile
+      - name: Install SQLite and OpenAPI lint runtime
+        run: sudo apt-get update && sudo apt-get install --yes sqlite3
+      - name: Validate frozen contracts
+        run: bun run contracts:check
+      - name: Contract field parity tests
+        run: bun run test:field-parity
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    needs: [lint, rust, web, contracts]
+    if: always() && (inputs.job == 'all' || inputs.job == 'integration')
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659
+      - name: Install cargo-deny
+        run: cargo install cargo-deny@0.21.0 --locked
+      - name: Integrate core, migrations, contracts and web build
+        shell: bash
+        run: |
+          if [[ -f Cargo.toml ]]; then
+            bun install --frozen-lockfile
+            cargo run -q -p xtask -- check --skip-host
+          else
+            echo 'blocked: Cargo.toml missing'; exit 1
+          fi
+  e2e-smoke:
+    name: e2e smoke
+    runs-on: ubuntu-latest
+    needs: [integration]
+    if: always() && (inputs.job == 'all' || inputs.job == 'e2e-smoke')
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Web shell smoke (headless)
+        shell: bash
+        run: |
+          if [[ -f package.json ]]; then
+            bun install --frozen-lockfile
+            bunx playwright install --with-deps chromium
+            bun run test:e2e
+          else
+            echo 'blocked: package.json missing'; exit 1
+          fi
+      - name: Headed kernel matrix (Docker + Xvfb)
+        if: inputs.full-e2e
+        shell: bash
+        run: |
+          echo 'blocked: headed Docker smoke lands with M3; not silently skipped'
+          exit 1
+      - name: Upload failed Playwright traces
+        if: failure() && hashFiles('ui/test-results/**') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: e2e-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ui/test-results/
+          retention-days: 7

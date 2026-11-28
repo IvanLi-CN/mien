@@ -1,0 +1,15 @@
+{
+  "case": "rejected-unverified-values",
+  "manifest": "docs/contracts/manifests/fingerprint-chromium-148.0.7778.215-macos-arm64.json",
+  "negative_cases": [
+    {"field": "brand", "value": "Chrome", "error_code": "KERNEL_UNSUPPORTED"},
+    {"field": "brand", "value": "Vivaldi", "error_code": "KERNEL_UNSUPPORTED"},
+    {"field": "hardware_concurrency", "value": 8, "error_code": "KERNEL_UNSUPPORTED"},
+    {"field": "spoof.font", "value": false, "error_code": "KERNEL_UNSUPPORTED"},
+    {"field": "spoof.clientrects", "value": false, "error_code": "KERNEL_UNSUPPORTED"},
+    {"field": "flag", "value": "proxy-server", "error_code": "KERNEL_UNSUPPORTED"},
+    {"field": "network.doh_mode", "value": "auto", "error_code": "FINGERPRINT_INVALID"},
+    {"field": "network.ipv6_mode", "value": "allow", "error_code": "FINGERPRINT_INVALID"},
+    {"field": "webrtc.disable_non_proxied_udp", "value": false, "error_code": "FINGERPRINT_NETWORK_UNSAFE"}
+  ]
+}

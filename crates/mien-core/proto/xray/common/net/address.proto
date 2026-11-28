@@ -1,0 +1,5 @@
+syntax = "proto3";
+package xray.common.net;
+message IPOrDomain {
+  oneof address { bytes ip = 1; string domain = 2; }
+}
