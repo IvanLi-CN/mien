@@ -33,7 +33,7 @@ draws on. A file can serve several families, so the column sums past 205.
 | `RT-001..026` | 26 | runtime | `tests/runtime_integration.rs`, `tests/reconcile.rs`, `tests/admission.rs`, `tests/slice_e2e.rs`, `tests/shutdown_stop.rs` | 24 |
 | `API-001..020` | 20 | control API | `tests/http.rs`, `tests/profiles_api.rs`, `tests/auth.rs`, `tests/tokens.rs`, `tests/events.rs`, `tests/audit_api.rs`, `tests/static_ui.rs` | 85 |
 | `SEC-001..009` | 9 | security baseline | `tests/auth.rs`, `src/runtime/probe.rs`, `docs/SECURITY.md` | 16 |
-| `PKG-001..009` | 9 | packaging | `scripts/release/`, `.github/workflows/` | 2 |
+| `PKG-001..009` | 9 | packaging | `scripts/release/`, `.github/workflows/` | 3 |
 | `PERF-001..007` | 7 | performance | — | **0** |
 | `PRD-ACC-001..010` | 10 | end-to-end acceptance | — | **0** |
 
@@ -42,7 +42,7 @@ draws on. A file can serve several families, so the column sums past 205.
 **23 of 169 IDs have no test source whatsoever.** They are not "probably
 covered somewhere"; there is nothing to point at.
 
-- `PKG-001..009`: release packaging. Two IDs now have a real assertion and seven
+- `PKG-001..009`: release packaging. Three IDs now have a real assertion and six
   do not:
   - `PKG-003` (updater signature): `scripts/release/updater-signature.test.mjs`
     plus `macos-adhoc.sh --updater-public-key`. The verifier parses minisign
@@ -56,10 +56,22 @@ covered somewhere"; there is nothing to point at.
     category with no substance, and the repository documents are asserted to
     pass. **What it does not cover**: the text itself is documentation; nothing
     proves a shipped release contains it.
-  - `PKG-001`, `PKG-002`, `PKG-004`, `PKG-005`, `PKG-006`, `PKG-007` and
-    `PKG-009` remain without a test source. `PKG-001`/`PKG-002` need a real
-    signed `.app` and DMG; `PKG-005` needs Docker, which is disabled on this
-    host; `PKG-007` is currently a **failure**, not a gap: 12 distinct
+  - `PKG-009` (GitHub Actions release): `scripts/release/release-policy.mjs`,
+    `rehearsal.mjs`, `release-manifest.mjs`, `github-facts.mjs` and their tests,
+    all called by `release.yml`. The policy rejects a missing or invalid
+    `release_target`, a target not greater than the trusted baseline, a version
+    collision outside the exact-identity match, a reservation that disagrees on
+    version or source, a source that is not merged-and-green on `CI Main`, an
+    artifact manifest missing any required entry, an attestation that covers
+    different bytes, and any Apple certificate or undeclared secret.
+    **What it does not cover**: nothing builds or publishes. Every job is
+    `contents: read`, `publish` is `exit 1`, and draft reservation creation
+    needs a write token no job requests. The rehearsal proves the policy, not
+    a release.
+  - `PKG-001`, `PKG-002`, `PKG-004`, `PKG-005`, `PKG-006` and `PKG-007`
+    remain without a test source. `PKG-001`/`PKG-002` need a real signed
+    `.app` and DMG; `PKG-005` needs Docker, which is disabled on this host;
+    `PKG-007` is currently a **failure**, not a gap: 12 distinct
     HIGH/CRITICAL CVEs in the pinned base image (see
     `deploy/docker/security-exceptions.yaml`), and the list is deliberately
     empty.
