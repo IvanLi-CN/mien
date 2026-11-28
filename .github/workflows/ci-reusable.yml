@@ -45,7 +45,9 @@ jobs:
       - name: Frontend license policy
         run: bun run license:check
       - name: Biome
-        run: bunx biome check scripts/contracts/check.mjs scripts/license-check.mjs --formatter-enabled=false
+        run: bunx biome check scripts/contracts/check.mjs scripts/license-check.mjs scripts/release/gate.mjs scripts/release/gate.test.mjs --formatter-enabled=false
+      - name: Release gate checker tests
+        run: bun run test:release-gate
       - name: TypeScript
         run: bunx tsc --noEmit
       - name: actionlint

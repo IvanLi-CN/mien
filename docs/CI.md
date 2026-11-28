@@ -187,6 +187,8 @@ tag 保护使用两套目标为 v* 的 ruleset：创建规则只启用 Restrict 
 
 GATE-001 由 gate-release 在产物/attestation/人工测试完成后评估；test 提供测试分报告，打包与人工测试补齐产物证据。metadata-only reserve 不等于准入通过，不受“不得创建资产草稿”的误用约束。promote-docker 与 release 每次（含单独 recovery）读取并重验 release-gate.json；PRD-ACC-001..010 必须 pass，其他允许接受的 P1 才可按 TEST-PLAN 携有效 waiver，P0/阻断 P1 不能 accepted。缺报告、ID、许可、双构建、attestation、有效 waiver 或 source/digest 不匹配均阻断发布。
 
+GATE-001 的实现是 `scripts/release/gate.mjs`，报告结构见 [`contracts/release-gate.schema.json`](contracts/release-gate.schema.json)，调用入口为 `xtask release-gate --check <path>`（`--init` 只生成全 `missing` 骨架，`--report` 输出机器可读结论），校验器测试为 `bun run test:release-gate`。校验器不访问网络、不读 GitHub API；报告文件不存在即失败，没有 skip 分支。`release.yml` 的 `gate-release` 只调用该入口，在尚无 `release-gate.json` 的骨架阶段保持 fail-closed，PR 门禁不引用它。
+
 ## 9. 失败、重跑与回滚
 
 - PR gate 失败时修复代码或测试；不使用 `continue-on-error`、降低断言、删除 required check 或扩大 waiver 来变绿。

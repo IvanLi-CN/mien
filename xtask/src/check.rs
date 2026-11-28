@@ -118,6 +118,7 @@ fn web(root: &Path) -> anyhow::Result<()> {
     }
     run_step(root, "bunx", &["biome", "check", "."])?;
     run_step(root, "bun", &["run", "typecheck"])?;
+    run_step(root, "bun", &["run", "test:release-gate"])?;
     run_step(root, "bun", &["run", "test"])?;
     run_step(root, "bun", &["run", "build"])
 }
