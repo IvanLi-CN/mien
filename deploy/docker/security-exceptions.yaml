@@ -1,0 +1,21 @@
+# Accepted image vulnerabilities (SEC-004 / PKG-007).
+#
+# `deploy/docker/scan-image.sh` reads this file on every scan. An entry is the
+# only way a HIGH/CRITICAL finding stops blocking the release: no waiver, no
+# `ignore-unfixed`, no lowered severity list. The list is deliberately empty
+# until a finding has a written reason, an owner and an expiry.
+#
+# Fields, all required:
+#   id       CVE id (suppresses that CVE) or package name (suppresses every
+#            HIGH/CRITICAL finding for that package)
+#   reason   why the finding cannot be fixed now, in one sentence
+#   expires  YYYY-MM-DD; the scan fails on and after this date
+#   owner    the person accountable for the fix
+# Optional:
+#   package  narrow a CVE entry to one package
+#   note     extra context, printed with the exception
+#
+# An exception that matches nothing is printed as `unmatched` so stale entries
+# surface instead of silently accumulating. Expired entries fail the scan even if
+# they still match, and an empty file is invalid: write `exceptions: []`.
+exceptions: []

@@ -21,6 +21,9 @@ data/
 /release-gate.json
 /gate-release-report.json
 
+# 镜像 SBOM、漏洞扫描与构建上下文：本地或 CI 生成，不进代码库
+/artifacts/
+
 # 本机环境
 .env
 .env.*
