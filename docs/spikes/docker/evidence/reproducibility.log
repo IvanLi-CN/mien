@@ -61,6 +61,20 @@ Dockerfile 的最后一个 RUN 断言这些内容确实不存在（`/var/lib/apt
 - 探针镜像只装 `jq`、`less`、`tini` 与依赖，不包含 Chromium、Xray、Xvfb 或服务端二进制。它的层数与生产镜像无关。
 - 生产镜像的双构建仍未验证；`docs/RELEASE.md` §7 与 `docs/PRD.md` §12.2 已把这一缺口写明。
 
+## 取 digest 的三种做法
+
+都已在真实 OCI archive 上验证过（用固定基础镜像 `skopeo copy` 到一个 `oci-archive:`，三条路径给出同一 digest）：
+
+| 做法 | 命令 | 结果 |
+| --- | --- | --- |
+| 读 `index.json` | `tar -xOf out.tar index.json \| jq -r '.manifests[0].digest'` | 正确。注意 `index.json` 是**对象**（`{"schemaVersion","mediaType","manifests":[…]}`），不是数组；`jq '.[0].digest'` 会报 `Cannot index object with number`。 |
+| 直接哈希 manifest blob | `tar -xOf out.tar blobs/sha256/<hex> \| sha256sum` | 正确，用来证明 `index.json` 里的 digest 与内容一致。 |
+| skopeo | `skopeo inspect --raw oci-archive:out.tar \| sha256sum` | 正确。输出是该 platform 的 manifest，哈希即 manifest digest。 |
+
+三种都等于 buildx `--metadata-file` 里的 `containerimage.digest`；`repro-record.py` 同时做了前两种并与 metadata 交叉核对，所以不依赖单一来源。
+
+`index.json` 里的 descriptor 还带 `platform` 字段，因此也可以按 `select(.platform.architecture=="amd64")` 过滤；单平台构建只有一个 manifest，脚本用"必须恰好一个且未命名"来 fail closed，避免拿错 digest。
+
 ## 复现
 
 ```sh
