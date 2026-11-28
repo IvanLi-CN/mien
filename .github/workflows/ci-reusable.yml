@@ -45,7 +45,7 @@ jobs:
       - name: Frontend license policy
         run: bun run license:check
       - name: Biome
-        run: bunx biome check scripts/contracts/check.mjs scripts/license-check.mjs scripts/release/gate.mjs scripts/release/gate.test.mjs scripts/release/dockerfile.mjs scripts/release/dockerfile.test.mjs scripts/release/scan-report.mjs scripts/release/scan-report.test.mjs scripts/release/build-context.test.mjs scripts/release/repro-compare.mjs scripts/release/repro-compare.test.mjs scripts/release/release-notes.mjs scripts/release/release-notes.test.mjs scripts/release/updater-signature.mjs scripts/release/updater-signature.test.mjs --formatter-enabled=false
+        run: bunx biome check scripts/contracts/check.mjs scripts/license-check.mjs scripts/release/gate.mjs scripts/release/gate.test.mjs scripts/release/dockerfile.mjs scripts/release/dockerfile.test.mjs scripts/release/scan-report.mjs scripts/release/scan-report.test.mjs scripts/release/build-context.test.mjs scripts/release/repro-compare.mjs scripts/release/repro-compare.test.mjs scripts/release/release-notes.mjs scripts/release/release-notes.test.mjs scripts/release/updater-signature.mjs scripts/release/updater-signature.test.mjs scripts/release/release-policy.mjs scripts/release/release-policy.test.mjs scripts/release/release-policy-plumbing.test.mjs scripts/release/rehearsal.mjs scripts/release/github-facts.mjs scripts/release/release-manifest.mjs scripts/release/release-workflow.test.mjs --formatter-enabled=false
       - name: Release gate checker tests
         run: bun run test:release-gate
       - name: Container contract and SBOM report tests
@@ -58,6 +58,12 @@ jobs:
         run: bun run test:updater
       - name: Reproducibility comparison tests
         run: bun run test:repro-compare
+      - name: Release policy rules and rehearsal (PKG-009)
+        run: bun run test:release-policy && bun run test:release-policy-plumbing
+      - name: Release workflow wiring (PKG-009)
+        run: bun run test:release-workflow
+      - name: Release rehearsal over fixtures (PKG-009)
+        run: node scripts/release/rehearsal.mjs
       - name: Reproducibility record extractor syntax
         env:
           PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
