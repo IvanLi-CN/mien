@@ -36,7 +36,10 @@ PLIST
     fi
     ;;
   -dv)
-    printf 'Executable=%s\nSignature=adhoc\nFlags=0x10000(runtime)\n' "$last"
+    # Mirrors real `codesign -dv --verbose=4` for an ad-hoc, hardened-runtime
+    # signature: the runtime bit lives in the CodeDirectory flags, not in a
+    # `Flags=` line. A stub that printed `Flags=...` let a broken check pass.
+    printf 'Executable=%s\nCodeDirectory v=20500 size=35889 flags=0x10002(adhoc,runtime) hashes=1+1 location=embedded\nSignature=adhoc\nTeamIdentifier=not set\n' "$last"
     ;;
   --verify)
     printf '%s: valid on mock host\n' "$last"

@@ -199,7 +199,12 @@ verify_target() {
     fail "codesign display failed: $target"
   fi
   grep -q 'Signature=adhoc' "$details" || { rm -f "$details"; fail "not an AdHoc signature: $target"; }
-  grep -Eq 'Flags=.*runtime' "$details" || { rm -f "$details"; fail "hardened runtime flag missing: $target"; }
+  # Real `codesign -dv` reports the hardened-runtime bit as
+  # `CodeDirectory ... flags=0x10002(adhoc,runtime)`; it never prints a bare
+  # `Flags=` line for an ad-hoc signature. Match the flag token instead of a
+  # made-up key name, or every genuine signature is rejected.
+  grep -Eq 'flags=0x[0-9a-fA-F]+\([^)]*runtime[^)]*\)' "$details" \
+    || { rm -f "$details"; fail "hardened runtime flag missing: $target"; }
   rm -f "$details"
   if [ "$kind" = jit ]; then
     if ! codesign -d --entitlements :- "$target" >"$TMP_ENTITLEMENTS" 2>&1; then
