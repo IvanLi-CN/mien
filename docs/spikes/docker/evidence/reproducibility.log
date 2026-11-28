@@ -16,6 +16,7 @@
 | [`46098745568`](https://github.com/IvanLi-CN/mien/actions/runs/46098745568) | `dd403176a1f6…` | `1795833252` | `sha256:4dfe25850f44…` | `sha256:4dfe25850f44…` | 是 |
 | [`46099006647`](https://github.com/IvanLi-CN/mien/actions/runs/46099006647) | `7e7ee1b83b09…` | `1795833442` | `sha256:602930768005…` | `sha256:602930768005…` | 是 |
 | [`46099276039`](https://github.com/IvanLi-CN/mien/actions/runs/46099276039) | `c546968d5a19…` | `1795833647` | `sha256:f8c831952237…` | `sha256:f8c831952237…` | 是 |
+| [`46101273921`](https://github.com/IvanLi-CN/mien/actions/runs/46101273921) | `1359fc9e7da2…` | `1795835194` | `sha256:5350ad4b9849…` | `sha256:5350ad4b9849…` | 是 |
 
 完整 digest：
 
@@ -24,9 +25,10 @@ run 46098420899  sha256:9784ed8190b9f525d538368d7bf47135b04d1afbd35c9f7f803edda4
 run 46098745568  sha256:4dfe25850f44c1f5724759301ea8f36b2fb5905003ffe6bf68962479c9a3e981
 run 46099006647  sha256:6029307680054dcbc8aee59a4904658e1d53a19836c749231c117e111de5fffa
 run 46099276039  sha256:f8c83195223728cfd1667e12daa3a2ecf0fdb161b1114ae5e3a201516b031058
+run 46101273921  sha256:5350ad4b9849748f812d142e78cd0a978da3b2850f72142385211f0672ead57b
 ```
 
-四次 run 的 `build-a`、`build-b`、`compare`、`result` 四个 job 全部 `success`，`repro-compare.mjs` 都是 `PASS`，报告 `verdict: equal`，每次 14/14 项通过，两份 `record.json` 字节相同。
+上表五次 run 的 `build-a`、`build-b`、`compare`、`result` 四个 job 全部 `success`，`repro-compare.mjs` 都是 `PASS`，报告 `verdict: equal`，每次 14/14 项通过，两份 `record.json` 字节相同。
 
 同一 run 内两个 builder 的 digest 相等；不同 run 之间的 digest 不同，这是预期且必要的：`SOURCE_DATE_EPOCH` 取自各自 commit 的提交时间（run 1 与 run 2 相差 234 秒），config 的 `created` 与 history 时间戳随之改变，manifest digest 必须跟着变。如果不同 commit 的 run 得到同一个 digest，反而说明 epoch 没有生效。`repro-record.py` 用"最后一个 history 条目的 `created` 必须等于 `SOURCE_DATE_EPOCH`"把这一点变成硬断言。
 
