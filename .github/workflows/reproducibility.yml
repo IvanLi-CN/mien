@@ -108,7 +108,8 @@ jobs:
             exit 1
           }
           inspect=$(docker buildx inspect --bootstrap "repro-${{ matrix.builder }}")
-          buildkit=$(printf '%s\n' "$inspect" | awk -F'\t' '/BuildKit version:/ {print $2}' | head -n 1)
+          # inspect 输出是空格对齐的,不是 tab 分隔;取最后一个字段避开标签宽度。
+          buildkit=$(printf '%s\n' "$inspect" | awk '/^BuildKit version:/ {print $NF}' | head -n 1)
           [ -n "$buildkit" ] || {
             echo "no BuildKit version in inspect output" >&2
             printf '%s\n' "$inspect" >&2
