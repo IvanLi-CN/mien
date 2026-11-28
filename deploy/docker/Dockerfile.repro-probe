@@ -89,15 +89,17 @@ RUN set -eux; \
     tini --version; \
     less --version | head -n 1
 
-# Assert the volatile files really are gone. A future package that starts logging on
-# install would otherwise make the second build differ with no visible reason; this
-# step turns that into a named failure in the build log.
+# Assert the volatile *contents* really are gone. A future package that starts logging
+# on install would otherwise make the second build differ with no visible reason; this
+# step turns that into a named failure in the build log. `/var/lib/apt/lists` is allowed
+# to exist as an empty directory because apt recreates it; an empty directory has no
+# mtime stored in the layer beyond the tar header, which rewrite-timestamp clamps.
 RUN set -eux; \
     test ! -e /var/log/apt; \
     test ! -e /var/log/dpkg.log; \
     test ! -e /var/log/alternatives.log; \
     test ! -e /var/cache/ldconfig/aux-cache; \
-    test ! -e /var/lib/apt/lists; \
+    [ -z "$(ls -A /var/lib/apt/lists)" ]; \
     test -s /opt/mien/repro/payload.json
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
