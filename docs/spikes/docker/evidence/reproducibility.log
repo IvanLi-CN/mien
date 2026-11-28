@@ -8,24 +8,31 @@
 
 ## 结果
 
-两次成功 run，都来自两个独立 builder：
+下表每一行是一次 run，每次都在同一 commit 上由两个独立 builder 构建：
 
-| 项 | run A | run B（含本文件的那次提交） |
-| --- | --- | --- |
-| workflow run | [`46098420899`](https://github.com/IvanLi-CN/mien/actions/runs/46098420899) | [`46098745568`](https://github.com/IvanLi-CN/mien/actions/runs/46098745568) |
-| run 结论 | `success`；`build-a`、`build-b`、`compare`、`result` 全部 success | 同上，四个 job 全部 success |
-| source_sha | `2de96c8a5a77dc61f94593036ee78c275e553bcf` | `dd403176a1f6caabfd2fd4d81711f4bf5bc4e207` |
-| SOURCE_DATE_EPOCH | `1795833018` | `1795833252` |
-| builder A digest | `sha256:9784ed8190b9f525d538368d7bf47135b04d1afbd35c9f7f803edda424efdacb` | `sha256:4dfe25850f44c1f5724759301ea8f36b2fb5905003ffe6bf68962479c9a3e981` |
-| builder B digest | `sha256:9784ed8190b9f525d538368d7bf47135b04d1afbd35c9f7f803edda424efdacb` | `sha256:4dfe25850f44c1f5724759301ea8f36b2fb5905003ffe6bf68962479c9a3e981` |
-| 是否相等 | **是** | **是** |
-| 比对项 | 14/14 通过，两份 `record.json` 字节相同 | 14/14 通过 |
+| run | source_sha | SOURCE_DATE_EPOCH | builder A digest | builder B digest | 相等 |
+| --- | --- | --- | --- | --- | --- |
+| [`46098420899`](https://github.com/IvanLi-CN/mien/actions/runs/46098420899) | `2de96c8a5a77…` | `1795833018` | `sha256:9784ed8190b9…` | `sha256:9784ed8190b9…` | 是 |
+| [`46098745568`](https://github.com/IvanLi-CN/mien/actions/runs/46098745568) | `dd403176a1f6…` | `1795833252` | `sha256:4dfe25850f44…` | `sha256:4dfe25850f44…` | 是 |
+| [`46099006647`](https://github.com/IvanLi-CN/mien/actions/runs/46099006647) | `7e7ee1b83b09…` | `1795833442` | `sha256:602930768005…` | `sha256:602930768005…` | 是 |
+| [`46099276039`](https://github.com/IvanLi-CN/mien/actions/runs/46099276039) | `c546968d5a19…` | `1795833647` | `sha256:f8c831952237…` | `sha256:f8c831952237…` | 是 |
 
-同一 run 内两个 builder 的 digest 相等；两次 run 之间的 digest 不同，这是预期且必要的：`SOURCE_DATE_EPOCH` 取自各自 commit 的提交时间（相差 234 秒），config 的 `created` 与 history 时间戳随之改变，manifest digest 必须跟着变。如果两次 run 的 digest 相同，反而说明 epoch 没有生效。`repro-record.py` 用"最后一个 history 条目的 `created` 必须等于 `SOURCE_DATE_EPOCH`"把这一点变成硬断言。
+完整 digest：
 
-还有一个必须说明的自指问题：每次修改本文件都会产生新的 commit 与新的提交时间，因此携带本文件的那个 commit 构建出的 digest 必然不同于本表记录的值。这不是缺陷——结论是"同一 commit 的两个 builder 得到同一个 digest"，不是"某个 digest 恒定"。截至 run `46099006647`（`7e7ee1b8…`）第三次双构建仍相等（`sha256:6029307680054dcbc8aee59a4904658e1d53a19836c749231c117e111de5fffa`），也印证了这一点。
+```
+run 46098420899  sha256:9784ed8190b9f525d538368d7bf47135b04d1afbd35c9f7f803edda424efdacb
+run 46098745568  sha256:4dfe25850f44c1f5724759301ea8f36b2fb5905003ffe6bf68962479c9a3e981
+run 46099006647  sha256:6029307680054dcbc8aee59a4904658e1d53a19836c749231c117e111de5fffa
+run 46099276039  sha256:f8c83195223728cfd1667e12daa3a2ecf0fdb161b1114ae5e3a201516b031058
+```
 
-平台为 `linux/amd64`，config digest 在 run A 为 `sha256:932827084c9a87346b5c7687f72b976d03ec2114a9cbee939b1cbac34c8f428c`，层数为 6（index 1 + 一次 install + 3 个后续 step）。`compare` job 的 `repro-compare.mjs` 输出 `repro-compare: PASS`，报告中 `verdict: equal`。
+四次 run 的 `build-a`、`build-b`、`compare`、`result` 四个 job 全部 `success`，`repro-compare.mjs` 都是 `PASS`，报告 `verdict: equal`，每次 14/14 项通过，两份 `record.json` 字节相同。
+
+同一 run 内两个 builder 的 digest 相等；不同 run 之间的 digest 不同，这是预期且必要的：`SOURCE_DATE_EPOCH` 取自各自 commit 的提交时间（run 1 与 run 2 相差 234 秒），config 的 `created` 与 history 时间戳随之改变，manifest digest 必须跟着变。如果不同 commit 的 run 得到同一个 digest，反而说明 epoch 没有生效。`repro-record.py` 用"最后一个 history 条目的 `created` 必须等于 `SOURCE_DATE_EPOCH`"把这一点变成硬断言。
+
+还有一个必须说明的自指问题：每次修改本文件都会产生新的 commit 与新的提交时间，因此携带本文件的那个 commit 构建出的 digest 必然不同于本表记录的值。这不是缺陷——结论是"同一 commit 的两个 builder 得到同一个 digest"，不是"某个 digest 恒定"。上表第 3、4 行就是这种情形：它们各自的 digest 都不同于记录它们的那次 run。
+
+平台为 `linux/amd64`，config digest 在 run A 为 `sha256:932827084c9a87346b5c7687f72b976d03ec2114a9cbee939b1cbac34c8f428c`。共 6 层，与 Dockerfile 逐条对应：基础镜像 1 层、写 sources 1 层、apt install 1 层、`COPY payload.json` 1 层、两个只读校验 RUN 各 1 层。最后两个 RUN（`jq`/`tini`/`less --version` 与清理断言）不写文件系统，因此它们的层是空 tar，两层 digest 相同（`sha256:4f4fb700ef54…`，32 字节）——这是 list（而非 `tar --diff` 语义）下空层被保留的正常结果。`compare` job 的 `repro-compare.mjs` 输出 `repro-compare: PASS`，报告中 `verdict: equal`。
 
 ## 固定参数
 
@@ -56,7 +63,7 @@ Dockerfile 的最后一个 RUN 断言这些内容确实不存在（`/var/lib/apt
 ## 验证范围与限制
 
 - 本证据来自 `pull_request` 触发的 run；`source_sha` 是该 PR 的 head commit（`2de96c8a…`、`dd403176…`），不是 GitHub 合成的 merge commit，也不是发布 SHA。workflow 对 `pull_request` 使用 `github.event.pull_request.head.sha || github.sha`，对 `workflow_dispatch` 使用所 dispatch ref 的 commit。
-- 两次构建都由同一个 workflow 的 `build` job 矩阵产生，矩阵两个实例落在不同 runner，各自 `docker/setup-buildx-action` 新建 `repro-a` / `repro-b` builder。GitHub Actions 不保证复用同一物理机，但也不能证明一定不是同一物理机；本证据能确定的是两个 builder 实例互相看不到对方的缓存，且都从零拉取基础镜像与全部 `.deb`。
+- 每次 run 内的两次构建都由同一个 workflow 的 `build` job 矩阵产生，矩阵两个实例落在不同 runner，各自 `docker/setup-buildx-action` 新建 `repro-a` / `repro-b` builder。GitHub Actions 不保证（也无法证明）两个实例不在同一物理机；本证据能确定的是两个 builder 实例互相看不到对方的缓存，且都从零拉取基础镜像与全部 `.deb`，并且 `--no-cache` 排除了本 builder 的层复用。
 - `compare` job 的输入是两份 `record.json`，其 digest 由 `repro-record.py` 从导出归档的 `index.json` 与 blob 字节重新计算，并与 buildx `--metadata-file` 报告的 `containerimage.digest` 交叉核对（`repro-compare.mjs` 的 14 项检查里含 2 项这样的交叉核对）。归档中带 `org.opencontainers.image.ref.name` 注释、manifest 数量不为 1、或 blob 哈希与 digest 不符时脚本失败。
 - 探针镜像只装 `jq`、`less`、`tini` 与依赖，不包含 Chromium、Xray、Xvfb 或服务端二进制。它的层数与生产镜像无关。
 - 生产镜像的双构建仍未验证；`docs/RELEASE.md` §7 与 `docs/PRD.md` §12.2 已把这一缺口写明。
@@ -73,7 +80,7 @@ Dockerfile 的最后一个 RUN 断言这些内容确实不存在（`/var/lib/apt
 
 三种都等于 buildx `--metadata-file` 里的 `containerimage.digest`；`repro-record.py` 同时做了前两种并与 metadata 交叉核对，所以不依赖单一来源。
 
-`index.json` 里的 descriptor 还带 `platform` 字段，因此也可以按 `select(.platform.architecture=="amd64")` 过滤；单平台构建只有一个 manifest，脚本用"必须恰好一个且未命名"来 fail closed，避免拿错 digest。
+按 BuildKit 的实现，单平台构建会把 platform 写进 manifest descriptor（`exporter/containerimage/writer.go` 的 `mfstDesc.Platform = &ps.Platforms[0].Platform`），所以 `index.json` 里可以按 `select(.platform.architecture=="amd64")` 过滤。但探针是单平台，脚本不依赖这个字段，而是要求 "恰好一个 manifest 且未命名"，拿不到就 fail closed。
 
 ## 复现
 
