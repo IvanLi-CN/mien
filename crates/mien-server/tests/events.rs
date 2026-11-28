@@ -36,8 +36,14 @@ const NEW_PASSWORD: &str = "a brand new passphrase";
 const ORIGIN: &str = "http://127.0.0.1:8787";
 const EVENT_TYPE: &str = "profile.updated";
 
+/// 多线程运行时：每个用例都在同一个 runtime 里跑服务端 accept 循环、WebSocket
+/// 任务与客户端读取。`current_thread` 只有一个线程，客户端在自己的
+/// `client.next()` 上忙等时，服务端任务的 live-gap 检查与数据库 await 点拿不到
+/// 调度，`retention_advancing_past_a_live_cursor_closes_the_socket` 会一路等满
+/// 30 秒超时（整文件从 ~5s 变成 ~34s 并失败）。与 `proxies_api.rs` 同一原因。
 fn runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_current_thread()
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
         .expect("runtime")
