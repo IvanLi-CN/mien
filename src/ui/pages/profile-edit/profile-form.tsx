@@ -370,5 +370,8 @@ function toCreateArgs(values: ProfileInput) {
     mode: values.mode,
     startUrl: values.start_url || undefined,
     notes: values.notes ?? undefined,
+    // 契约 `ProfileInput.automation_api` 默认 false；不传就永远拿不到 CDP 端口，
+    // 自动化 API 开关在 UI 上等于无效。
+    automationApi: values.automation_api ?? false,
   };
 }

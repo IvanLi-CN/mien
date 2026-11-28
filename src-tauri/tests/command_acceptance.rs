@@ -90,6 +90,7 @@ fn create_start_status_stop_start_through_the_command_layer() {
                 Some(ProfileMode::Headful),
                 None,
                 None,
+                None,
             )
             .await
             .expect("create"),
@@ -214,4 +215,123 @@ fn create_start_status_stop_start_through_the_command_layer() {
         assert_eq!(items[0]["id"], profile_id.as_str());
         assert_eq!(items[0]["runtime"]["state"], "stopped");
     });
+}
+
+/// PRD-ACC-001 的"访问探针页"：开启自动化 API 后，运行中的内核必须暴露
+/// 可用的 CDP 端口。这里验证端口真的在服务并能报出浏览器版本，而不是只看
+/// `cdpPort` 字段非空——一个写进状态却不监听任何端口的数字没有意义。
+#[test]
+fn automation_api_exposes_a_reachable_cdp_port() {
+    let Some(binary) = kernel() else {
+        return;
+    };
+    assert_eq!(std::env::consts::OS, "macos");
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let state = state::AppState::open_at_with_kernel(directory.path().join("data"), Some(binary))
+        .expect("host state");
+    let app = mock_builder()
+        .manage(state)
+        .build(mock_context(noop_assets()))
+        .expect("mock app");
+    let host = app.state::<state::AppState>();
+    let runtime = tokio::runtime::Runtime::new().expect("runtime");
+
+    runtime.block_on(async {
+        // 创建时开启 automation_api；它必须原样落库，否则 CDP 端口永远不会出现。
+        let created = json(
+            &commands::profiles_create(
+                host.clone(),
+                "cdp-acceptance".into(),
+                None,
+                Some(ProfileMode::Headful),
+                None,
+                None,
+                Some(true),
+            )
+            .await
+            .expect("create"),
+        );
+        assert_eq!(
+            created["automation_api"], true,
+            "the create command must not drop automation_api: {created:?}"
+        );
+        let profile_id = created["id"].as_str().expect("profile id").to_owned();
+
+        let started = json(
+            &commands::runtime_start(host.clone(), profile_id.clone())
+                .await
+                .expect("start"),
+        );
+        assert_eq!(started["state"], "running");
+        // `runtime_start` 只报启动结论；端口属于运行状态，UI 也要再查一次 status。
+        let running = json(
+            &commands::runtime_status(host.clone(), profile_id.clone())
+                .await
+                .expect("status"),
+        );
+        let port = running["cdpPort"].as_u64().unwrap_or_else(|| {
+            panic!("automation_api must yield a CDP port in runtime_status: {running:?}")
+        });
+        let port = u16::try_from(port).expect("cdp port fits u16");
+
+        // CDP 必须是真实监听的服务：读一次 /json/version。
+        let body = http_get(port, "/json/version");
+        assert!(
+            body.contains("webSocketDebuggerUrl") || body.contains("Browser"),
+            "CDP version endpoint must answer with browser metadata, got: {body}"
+        );
+
+        let stopped = json(
+            &commands::runtime_stop(host.clone(), profile_id.clone())
+                .await
+                .expect("stop"),
+        );
+        assert_eq!(stopped["state"], "stopped");
+    });
+}
+
+/// 发一个最小 HTTP/1.1 GET 并返回响应体；只用于本文件的 CDP 探测。
+fn http_get(port: u16, path: &str) -> String {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to the CDP port");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("read timeout");
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+    )
+    .expect("send request");
+    // CDP 不因 `Connection: close` 立刻关连接，所以按 `Content-Length` 读完就停，
+    // 不能等 EOF；等 EOF 只会撞上读超时，而数据其实早就到齐了。
+    let mut raw = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => raw.extend_from_slice(&buffer[..read]),
+            Err(error) => panic!("read from the CDP port failed ({error})"),
+        }
+        let text = String::from_utf8_lossy(&raw);
+        if let Some((head, body)) = text.split_once("\r\n\r\n") {
+            let declared = head.lines().find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            });
+            if let Some(length) = declared {
+                if body.len() >= length {
+                    return body[..length].to_owned();
+                }
+            }
+        }
+    }
+    let text = String::from_utf8_lossy(&raw).into_owned();
+    text.split_once("\r\n\r\n")
+        .map(|(_, body)| body.to_owned())
+        .unwrap_or(text)
 }

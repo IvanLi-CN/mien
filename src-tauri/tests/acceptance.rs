@@ -65,6 +65,7 @@ fn create_start_stop_start_through_the_host_state() {
                 mode: None,
                 start_url: None,
                 notes: None,
+                automation_api: None,
             })
             .await
             .expect("create");

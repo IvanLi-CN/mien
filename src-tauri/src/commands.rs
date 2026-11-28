@@ -82,6 +82,7 @@ pub async fn profiles_create(
     mode: Option<ProfileMode>,
     start_url: Option<String>,
     notes: Option<String>,
+    automation_api: Option<bool>,
 ) -> CommandResult<ProfileView> {
     Ok(state
         .create_profile(CreateProfileInput {
@@ -90,6 +91,7 @@ pub async fn profiles_create(
             mode,
             start_url,
             notes,
+            automation_api,
         })
         .await?)
 }

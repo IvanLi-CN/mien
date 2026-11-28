@@ -161,6 +161,10 @@ pub struct CreateProfileInput {
     pub start_url: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    /// 自动化 API（CDP）。契约 `ProfileInput.automation_api` 默认 false；
+    /// 开启后运行中的内核才会暴露可连接的 CDP 端口。
+    #[serde(default)]
+    pub automation_api: Option<bool>,
 }
 
 /// 更新档案输入；只遍历给出的字段，seed 不可改。
@@ -437,7 +441,9 @@ impl AppState {
             notes: input.notes,
             kernel_version: self.manifest.kernel_version.clone(),
             mode: input.mode.unwrap_or_default(),
-            automation_api: false,
+            // 创建时给定的自动化开关必须原样落库：硬编码 false 会让用户勾选后
+            // 永远拿不到 CDP 端口，PRD-ACC-001 的"访问探针页"因此无法完成。
+            automation_api: input.automation_api.unwrap_or(false),
         };
         let profile = self.repository.create(create).await?;
         Ok(self.view(profile))
