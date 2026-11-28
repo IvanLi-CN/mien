@@ -11,6 +11,7 @@ fn main() {
             "profiles_get",
             "profiles_create",
             "profiles_update",
+            "kernel_install",
             "runtime_start",
             "runtime_stop",
             "runtime_status",

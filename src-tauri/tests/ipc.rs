@@ -34,6 +34,7 @@ fn build_app(state: state::AppState) -> tauri::App<tauri::test::MockRuntime> {
             commands::profiles_get,
             commands::profiles_create,
             commands::profiles_update,
+            commands::kernel_install,
             commands::runtime_start,
             commands::runtime_stop,
             commands::runtime_status,
@@ -113,7 +114,7 @@ fn authorized_commands_create_list_and_report_runtime_state() {
     assert_eq!(stopped["state"], "stopped");
 
     let info = invoke(&webview, "app_info", json!({}));
-    assert_eq!(info["schemaVersion"], 8);
+    assert_eq!(info["schemaVersion"], 9);
 }
 
 /// 未授权命令必须在 IPC 层被拒绝；错误码契约也必须在同一条链路上成立。
@@ -204,6 +205,20 @@ fn ui_payloads_drive_the_real_kernel_lifecycle() {
     );
     let id = created["id"].as_str().expect("profile id").to_owned();
     assert_eq!(created["direct"], true);
+
+    // 启动前必须登记内核安装：校验比的是安装记录，不是刚算出的摘要。
+    let installed = invoke(
+        &webview,
+        "kernel_install",
+        json!({
+            "version": std::env::var("MIEN_KERNEL_VERSION").unwrap_or_else(|_| "148.0.7778.215".into()),
+            "executable": std::env::var("MIEN_KERNEL_BIN").expect("MIEN_KERNEL_BIN"),
+        }),
+    );
+    assert!(
+        installed["executableSha256"].is_string(),
+        "kernel_install must report the digest it recorded: {installed:?}"
+    );
 
     // 2. 启动：有头窗口出现，disclosures 必须包含 direct 与 unverified 网络控制。
     let started = invoke(&webview, "runtime_start", json!({ "profileId": id }));

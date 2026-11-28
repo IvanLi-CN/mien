@@ -75,6 +75,16 @@ fn create_start_stop_start_through_the_host_state() {
             .expect("create");
         let profile_id = created.profile.id.0.clone();
 
+        // 启动前必须先登记安装；没有记录时启动会 fail-closed。
+        state
+            .install_kernel(
+                &state.manifest_kernel_version(),
+                &kernel().expect("kernel path"),
+                None,
+            )
+            .await
+            .expect("install");
+
         let first = state.start_runtime(&profile_id).await.expect("first start");
         assert_eq!(first.state, RuntimeState::Running);
         assert!(first.reduced_assurance, "direct mode is reduced assurance");

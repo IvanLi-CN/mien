@@ -10,6 +10,7 @@
     "allow-profiles-get",
     "allow-profiles-create",
     "allow-profiles-update",
+    "allow-kernel-install",
     "allow-runtime-start",
     "allow-runtime-stop",
     "allow-runtime-status"

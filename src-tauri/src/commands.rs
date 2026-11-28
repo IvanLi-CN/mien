@@ -135,3 +135,39 @@ mod tests {
         assert_eq!(error.message, "kernel executable is missing");
     }
 }
+
+/// 内核安装结果，供 UI 展示"已安装哪个版本、摘要是什么"。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KernelInstallView {
+    pub version: String,
+    pub platform: String,
+    pub executable_sha256: String,
+    pub executable_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_asset_sha256: Option<String>,
+}
+
+/// 登记一次内核安装。运行时的启动校验依赖这条记录。
+#[tauri::command]
+pub async fn kernel_install(
+    state: State<'_, AppState>,
+    version: String,
+    executable: String,
+    source_asset_sha256: Option<String>,
+) -> CommandResult<KernelInstallView> {
+    let install = state
+        .install_kernel(
+            &version,
+            std::path::Path::new(&executable),
+            source_asset_sha256.as_deref(),
+        )
+        .await?;
+    Ok(KernelInstallView {
+        version: install.version,
+        platform: install.platform,
+        executable_sha256: install.executable_sha256,
+        executable_path: install.executable_path,
+        source_asset_sha256: install.source_asset_sha256,
+    })
+}

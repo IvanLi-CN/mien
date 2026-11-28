@@ -384,6 +384,13 @@ impl AppState {
         &self.data_root
     }
 
+    /// 清单锁定的内核版本；安装与测试都以它为准。集成测试作为独立 crate
+    /// 编译，`cfg(test)` 覆盖不到这里。
+    #[allow(dead_code)]
+    pub fn manifest_kernel_version(&self) -> String {
+        self.manifest.kernel_version.clone()
+    }
+
     /// 档案库连接池；命令层与集成测试读关系表时用它，不必暴露整个仓储。
     /// 集成测试作为独立 crate 编译，因此 `cfg(test)` 覆盖不到这里。
     #[allow(dead_code)]
@@ -407,6 +414,45 @@ impl AppState {
             .ok_or_else(kernel_missing)?;
         let sha256 = mien_core::kernel::registry::binary_sha256(&path)?;
         Ok(KernelBinary { path, sha256 })
+    }
+
+    /// 登记一次内核安装：可执行文件必须在位，且来源资产摘要必须与清单一致。
+    ///
+    /// 这是校验的另一半。没有它，`start_runtime` 的 fail-closed 会让产品完全
+    /// 无法启动；有了它，安装过的内核才被信任。
+    ///
+    /// # Errors
+    ///
+    /// 可执行文件缺失、来源摘要与清单不符，或写库失败。
+    pub async fn install_kernel(
+        &self,
+        version: &str,
+        executable: &Path,
+        source_asset_sha256: Option<&str>,
+    ) -> Result<mien_core::kernel::installs::KernelInstall, CoreError> {
+        if !executable.is_file() {
+            return Err(kernel_missing());
+        }
+        // 声明了来源就必须与清单一致：否则"安装"只是把一个任意文件记成可信。
+        if let Some(asset) = source_asset_sha256 {
+            let expected = self.manifest.sha256.to_ascii_lowercase();
+            if asset.to_ascii_lowercase() != expected {
+                return Err(CoreError::validation(
+                    ErrorCode::KernelChecksumMismatch,
+                    "source asset digest does not match the pinned manifest",
+                ));
+            }
+        }
+        let sha256 = mien_core::kernel::registry::binary_sha256(executable)?;
+        let install = mien_core::kernel::installs::KernelInstall {
+            version: version.to_owned(),
+            platform: self.manifest.platform.clone(),
+            executable_sha256: sha256,
+            executable_path: executable.display().to_string(),
+            source_asset_sha256: source_asset_sha256.map(str::to_owned),
+        };
+        mien_core::kernel::installs::record(self.repository.pool(), &install).await?;
+        Ok(install)
     }
 
     fn kernel_candidates(&self, profile: &Profile) -> Vec<PathBuf> {
@@ -599,6 +645,15 @@ impl AppState {
             None => None,
         };
         let kernel = self.kernel_binary(&profile)?;
+        // 内核校验：磁盘上的字节必须与安装记录一致。没有记录就拒绝——未登记的
+        // 二进制无法证明来自某个发布物，放行它等于放行任意可执行文件。
+        mien_core::kernel::installs::verify(
+            self.repository.pool(),
+            &profile.kernel_version,
+            &self.manifest.platform,
+            &kernel.sha256,
+        )
+        .await?;
         let runtime_id = runtime_id(&profile.id.0);
         let started = match &profile.proxy_id {
             Some(_) => {

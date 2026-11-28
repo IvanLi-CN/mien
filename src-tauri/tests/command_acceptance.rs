@@ -115,6 +115,19 @@ fn create_start_status_stop_start_through_the_command_layer() {
             "a fresh profile has no runtime: {created:?}"
         );
 
+        // 启动前必须先登记安装：校验拿的是"安装时的摘要"，不是刚算出来的自己。
+        let installed = json(
+            &commands::kernel_install(
+                host.clone(),
+                host.manifest_kernel_version(),
+                kernel().expect("kernel path").display().to_string(),
+                None,
+            )
+            .await
+            .expect("install"),
+        );
+        assert_eq!(installed["version"], host.manifest_kernel_version());
+
         // 2. 启动：有头内核真的起来；disclosures 必须带 direct 与 unverified 说明。
         let started = json(
             &commands::runtime_start(host.clone(), profile_id.clone())
@@ -268,6 +281,15 @@ fn automation_api_exposes_a_reachable_cdp_port() {
             "the create command must not drop automation_api: {created:?}"
         );
         let profile_id = created["id"].as_str().expect("profile id").to_owned();
+
+        commands::kernel_install(
+            host.clone(),
+            host.manifest_kernel_version(),
+            kernel().expect("kernel path").display().to_string(),
+            None,
+        )
+        .await
+        .expect("install");
 
         let started = json(
             &commands::runtime_start(host.clone(), profile_id.clone())

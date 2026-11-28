@@ -2,4 +2,5 @@
 //!
 //! 占位归属：T4 产出能力清单结论后由 T9-B/T9-D 接入。
 
+pub mod installs;
 pub mod registry;

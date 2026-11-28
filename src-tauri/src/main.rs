@@ -48,6 +48,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::kernel_install,
             commands::profiles_list,
             commands::profiles_get,
             commands::profiles_create,

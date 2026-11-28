@@ -137,6 +137,11 @@ pub fn open_and_migrate(path: &std::path::Path) -> Result<sqlx::SqlitePool, Core
             "event_log",
             include_str!("../../../../migrations/0008_event_log.sql"),
         ),
+        (
+            9,
+            "kernel_installs",
+            include_str!("../../../../migrations/0009_kernel_installs.sql"),
+        ),
     ];
     runtime.block_on(apply_all(&pool, FILES))?;
     Ok(pool)
