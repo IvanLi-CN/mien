@@ -47,6 +47,9 @@ fn creates_lists_and_updates_profiles() {
                 start_url: Some("https://example.com".into()),
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");
@@ -98,6 +101,9 @@ fn status_filter_hides_archived_profiles() {
                 start_url: None,
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");
@@ -109,6 +115,9 @@ fn status_filter_hides_archived_profiles() {
                 start_url: None,
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");
@@ -147,6 +156,9 @@ fn runtime_status_and_stop_are_safe_before_any_start() {
                 start_url: None,
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");
@@ -187,6 +199,9 @@ fn runtime_start_without_a_kernel_reports_kernel_not_found() {
                 start_url: None,
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");
@@ -220,6 +235,9 @@ fn runtime_start_with_a_missing_kernel_bin_fails_closed() {
                 start_url: None,
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");
@@ -246,6 +264,9 @@ fn proxy_bound_profiles_are_refused_until_the_engine_exists() {
                 start_url: None,
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");

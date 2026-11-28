@@ -4,12 +4,12 @@
 //! 失败统一返回 `{ code, message }`，`code` 是 `CoreError::code_str()`。
 
 use mien_core::CoreError;
-use mien_core::domain::profile::{ProfileMode, ProfileQuery};
+use mien_core::domain::profile::ProfileQuery;
 use serde::Serialize;
 use tauri::State;
 
 use crate::state::{
-    AppState, CreateProfileInput, FingerprintInput, ProfileListView, ProfileView, RuntimeStartView,
+    AppState, CreateProfileInput, ProfileListView, ProfileView, RuntimeStartView,
     RuntimeStatusView, UpdateProfileInput, parse_status,
 };
 
@@ -77,23 +77,9 @@ pub async fn profiles_get(state: State<'_, AppState>, id: String) -> CommandResu
 #[tauri::command]
 pub async fn profiles_create(
     state: State<'_, AppState>,
-    name: String,
-    fingerprint: Option<FingerprintInput>,
-    mode: Option<ProfileMode>,
-    start_url: Option<String>,
-    notes: Option<String>,
-    automation_api: Option<bool>,
+    input: CreateProfileInput,
 ) -> CommandResult<ProfileView> {
-    Ok(state
-        .create_profile(CreateProfileInput {
-            name,
-            fingerprint,
-            mode,
-            start_url,
-            notes,
-            automation_api,
-        })
-        .await?)
+    Ok(state.create_profile(input).await?)
 }
 
 /// 更新档案；`patch` 只修改给出的字段。

@@ -85,12 +85,17 @@ fn create_start_status_stop_start_through_the_command_layer() {
         let created = json(
             &commands::profiles_create(
                 host.clone(),
-                "command-acceptance".into(),
-                None,
-                Some(ProfileMode::Headful),
-                None,
-                None,
-                None,
+                state::CreateProfileInput {
+                    name: "command-acceptance".into(),
+                    fingerprint: None,
+                    mode: Some(ProfileMode::Headful),
+                    start_url: None,
+                    notes: None,
+                    automation_api: None,
+                    group_id: None,
+                    tags: Vec::new(),
+                    proxy_id: None,
+                },
             )
             .await
             .expect("create"),
@@ -241,12 +246,17 @@ fn automation_api_exposes_a_reachable_cdp_port() {
         let created = json(
             &commands::profiles_create(
                 host.clone(),
-                "cdp-acceptance".into(),
-                None,
-                Some(ProfileMode::Headful),
-                None,
-                None,
-                Some(true),
+                state::CreateProfileInput {
+                    name: "cdp-acceptance".into(),
+                    fingerprint: None,
+                    mode: Some(ProfileMode::Headful),
+                    start_url: None,
+                    notes: None,
+                    automation_api: Some(true),
+                    group_id: None,
+                    tags: Vec::new(),
+                    proxy_id: None,
+                },
             )
             .await
             .expect("create"),
@@ -334,4 +344,166 @@ fn http_get(port: u16, path: &str) -> String {
     text.split_once("\r\n\r\n")
         .map(|(_, body)| body.to_owned())
         .unwrap_or(text)
+}
+
+/// 契约 `ProfileInput` 的 `group_id`/`tags`/`proxy_id` 必须真的落库。
+/// 这三个字段曾经只在 UI 表单里存在、在提交时被丢弃，用户填了等于没填。
+#[test]
+fn create_persists_group_tags_and_proxy() {
+    assert_eq!(std::env::consts::OS, "macos");
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let state = state::AppState::open_at_with_kernel(directory.path().join("data"), None)
+        .expect("host state");
+    let app = mock_builder()
+        .manage(state)
+        .build(mock_context(noop_assets()))
+        .expect("mock app");
+    let host = app.state::<state::AppState>();
+    let runtime = tokio::runtime::Runtime::new().expect("runtime");
+
+    runtime.block_on(async {
+        let pool = host.pool();
+
+        // 准备分组与代理行：契约要求它们先存在，否则应当是校验失败而不是静默丢弃。
+        let now = mien_core::storage::now_utc();
+        sqlx::query(
+            "INSERT INTO groups (id,name,sort_order,created_at,updated_at) VALUES (?1,?2,?3,?4,?4)",
+        )
+        .bind("01M8G7P1Y4000000000000GRP")
+        .bind("acceptance-group")
+        .bind(0_i64)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .expect("group");
+        sqlx::query("INSERT INTO tags (id,name,color,created_at) VALUES (?1,?2,?3,?4)")
+            .bind("01M8G7P1Y40000000000000TAG")
+            .bind("acceptance-tag")
+            .bind("#336699")
+            .bind(&now)
+            .execute(pool)
+            .await
+            .expect("tag");
+
+        let created = json(
+            &commands::profiles_create(
+                host.clone(),
+                state::CreateProfileInput {
+                    name: "relations".into(),
+                    fingerprint: None,
+                    mode: Some(ProfileMode::Headful),
+                    start_url: None,
+                    notes: None,
+                    automation_api: None,
+                    group_id: Some("01M8G7P1Y4000000000000GRP".into()),
+                    tags: vec!["acceptance-tag".into()],
+                    proxy_id: None,
+                },
+            )
+            .await
+            .expect("create"),
+        );
+
+        // 先断言 UI 拿到的载荷：契约 `Profile` 的这两个字段必须直接可用。
+        assert_eq!(
+            created["group_id"], "01M8G7P1Y4000000000000GRP",
+            "the create payload must carry group_id: {created:?}"
+        );
+        let tags = created["tags"].as_array().expect("tags array");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0], "acceptance-tag");
+
+        let profile_id = created["id"].as_str().expect("id").to_owned();
+        let stored_group: Option<Option<String>> =
+            sqlx::query_scalar("SELECT group_id FROM profiles WHERE id=?1")
+                .bind(&profile_id)
+                .fetch_optional(pool)
+                .await
+                .expect("read group");
+        assert_eq!(
+            stored_group.flatten().as_deref(),
+            Some("01M8G7P1Y4000000000000GRP"),
+            "group_id must reach the database"
+        );
+        let stored_tags: Vec<String> = sqlx::query_scalar(
+            "SELECT t.name FROM tags t JOIN profile_tags pt ON pt.tag_id=t.id \
+             WHERE pt.profile_id=?1",
+        )
+        .bind(&profile_id)
+        .fetch_all(pool)
+        .await
+        .expect("read tags");
+        assert_eq!(stored_tags, vec!["acceptance-tag".to_string()]);
+
+        // 更新时只改分组，标签必须保留；传 null 才清空分组。
+        let profile_id = created["id"].as_str().expect("id").to_owned();
+        let updated = json(
+            &commands::profiles_update(
+                host.clone(),
+                profile_id.clone(),
+                state::UpdateProfileInput {
+                    name: None,
+                    notes: None,
+                    start_url: None,
+                    fingerprint: None,
+                    mode: None,
+                    automation_api: None,
+                    group_id: Some(None),
+                    tags: None,
+                    proxy_id: None,
+                },
+            )
+            .await
+            .expect("update"),
+        );
+        assert!(
+            updated["group_id"].is_null(),
+            "an explicit null clears the group in the payload: {updated:?}"
+        );
+        assert_eq!(
+            updated["tags"].as_array().expect("tags").len(),
+            1,
+            "tags survive a group-only update: {updated:?}"
+        );
+        let cleared: Option<Option<String>> =
+            sqlx::query_scalar("SELECT group_id FROM profiles WHERE id=?1")
+                .bind(&profile_id)
+                .fetch_optional(pool)
+                .await
+                .expect("read group after clear");
+        assert_eq!(cleared.flatten(), None, "an explicit null clears the group");
+        let kept_tags: Vec<String> = sqlx::query_scalar(
+            "SELECT t.name FROM tags t JOIN profile_tags pt ON pt.tag_id=t.id \
+             WHERE pt.profile_id=?1",
+        )
+        .bind(&profile_id)
+        .fetch_all(pool)
+        .await
+        .expect("read tags after group-only update");
+        assert_eq!(
+            kept_tags,
+            vec!["acceptance-tag".to_string()],
+            "tags must survive a group-only update"
+        );
+
+        // 列表视图同样要带关系字段，否则刷新后 UI 又变回空值。
+        let listed = json(
+            &commands::profiles_list(host.clone(), 10, None, None)
+                .await
+                .expect("list"),
+        );
+        let items = listed["items"].as_array().expect("items");
+        assert_eq!(items.len(), 1);
+        assert!(
+            items[0]["group_id"].is_null(),
+            "the list reflects the cleared group: {:?}",
+            items[0]
+        );
+        assert_eq!(
+            items[0]["tags"].as_array().expect("tags").len(),
+            1,
+            "the list carries tags: {:?}",
+            items[0]
+        );
+    });
 }

@@ -161,6 +161,15 @@ pub struct CreateProfileInput {
     pub start_url: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    /// 分组 ID；`None` 表示不分组。契约 `ProfileInput.group_id`。
+    #[serde(default)]
+    pub group_id: Option<String>,
+    /// 标签名列表；不存在时按空列表处理。契约 `ProfileInput.tags`。
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// 代理绑定；`None` 表示直连模式。契约 `ProfileInput.proxy_id`。
+    #[serde(default)]
+    pub proxy_id: Option<String>,
     /// 自动化 API（CDP）。契约 `ProfileInput.automation_api` 默认 false；
     /// 开启后运行中的内核才会暴露可连接的 CDP 端口。
     #[serde(default)]
@@ -182,6 +191,23 @@ pub struct UpdateProfileInput {
     pub mode: Option<ProfileMode>,
     #[serde(default)]
     pub automation_api: Option<bool>,
+    /// 三层区分：字段缺失＝不改，`null`＝清空，字符串＝设值。
+    #[serde(default, deserialize_with = "double_option")]
+    pub group_id: Option<Option<String>>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub proxy_id: Option<Option<String>>,
+}
+
+/// 把 `null` 与"字段缺失"区分开：`null` 反序列化成 `Some(None)`，缺失才是 `None`。
+/// 更新档案时前者表示清空、后者表示保持原值。
+fn double_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 /// 分页结果：`{ items, nextCursor? }`。
@@ -232,6 +258,10 @@ impl From<&RuntimeSnapshot> for RuntimeView {
 pub struct ProfileView {
     #[serde(flatten)]
     pub profile: Profile,
+    /// 分组 ID；契约 `Profile.group_id`。关系表里的值，`Profile` 结构本身不放。
+    pub group_id: Option<String>,
+    /// 标签名数组；契约 `Profile.tags`。
+    pub tags: Vec<String>,
     pub isolation: Isolation,
     pub direct: bool,
     pub reduced_assurance: bool,
@@ -351,6 +381,13 @@ impl AppState {
         &self.data_root
     }
 
+    /// 档案库连接池；命令层与集成测试读关系表时用它，不必暴露整个仓储。
+    /// 集成测试作为独立 crate 编译，因此 `cfg(test)` 覆盖不到这里。
+    #[allow(dead_code)]
+    pub fn pool(&self) -> &mien_core::storage::profile::SqlitePool {
+        self.repository.pool()
+    }
+
     pub fn schema_version(&self) -> u32 {
         self.schema_version
     }
@@ -407,7 +444,19 @@ impl AppState {
     pub async fn list_profiles(&self, query: ProfileQuery) -> Result<ProfileListView, CoreError> {
         let page: ProfilePage = self.repository.list(query).await?;
         Ok(ProfileListView {
-            items: page.items.into_iter().map(|p| self.view(p)).collect(),
+            items: {
+                let ids: Vec<String> = page.items.iter().map(|p| p.id.0.clone()).collect();
+                let related =
+                    mien_core::storage::profile::relations_for(self.repository.pool(), &ids)
+                        .await?;
+                page.items
+                    .into_iter()
+                    .map(|p| {
+                        let (group_id, tags) = related.get(&p.id.0).cloned().unwrap_or_default();
+                        self.build_view(p, group_id, tags)
+                    })
+                    .collect()
+            },
             next_cursor: page.next_cursor,
         })
     }
@@ -418,7 +467,7 @@ impl AppState {
     /// 不存在时返回 `PROFILE_NOT_FOUND`。
     pub async fn get_profile(&self, id: &str) -> Result<ProfileView, CoreError> {
         let profile = self.repository.get(&Self::profile_id(id)).await?;
-        Ok(self.view(profile))
+        self.view(profile).await
     }
 
     /// 创建档案；缺省指纹取 macOS 新规格。
@@ -436,8 +485,8 @@ impl AppState {
         let create = CreateProfile {
             name: input.name,
             fingerprint,
-            start_url: input.start_url,
-            proxy_id: None,
+            start_url: input.start_url.clone(),
+            proxy_id: input.proxy_id.clone(),
             notes: input.notes,
             kernel_version: self.manifest.kernel_version.clone(),
             mode: input.mode.unwrap_or_default(),
@@ -446,7 +495,21 @@ impl AppState {
             automation_api: input.automation_api.unwrap_or(false),
         };
         let profile = self.repository.create(create).await?;
-        Ok(self.view(profile))
+        // 分组与标签在关系表里；写失败时不留下半成品档案。
+        if let Err(error) = mien_core::storage::profile::write_relations(
+            self.repository.pool(),
+            &profile.id.0,
+            input.group_id.as_deref(),
+            &input.tags,
+        )
+        .await
+        {
+            let _ = self.repository.soft_delete(&profile.id).await;
+            let _ = self.repository.purge(&profile.id).await;
+            return Err(error);
+        }
+        let profile = self.repository.get(&profile.id).await?;
+        self.view(profile).await
     }
 
     /// 更新档案；给出的指纹沿用已存 seed。
@@ -474,7 +537,45 @@ impl AppState {
             automation_api: input.automation_api,
         };
         let profile = self.repository.update(&profile_id, patch).await?;
-        Ok(self.view(profile))
+        if let Some(proxy_id) = input.proxy_id {
+            mien_core::storage::profile::set_proxy_id(
+                self.repository.pool(),
+                &profile.id.0,
+                proxy_id.as_deref(),
+            )
+            .await?;
+            let profile = self.repository.get(&profile_id).await?;
+            return self.view(profile).await;
+        }
+        // 只改给出的关系字段：`None` 表示这次不碰，`Some(None)` 表示清空。
+        let tags_changed = input.tags.is_some();
+        let group_changed = input.group_id.is_some();
+        if tags_changed || group_changed {
+            let current_group: Option<String> =
+                mien_core::storage::profile::group_id(self.repository.pool(), &profile.id.0)
+                    .await?;
+            let group = match input.group_id {
+                Some(value) => value,
+                None => current_group,
+            };
+            let tags = match input.tags {
+                Some(tags) => tags,
+                None => {
+                    mien_core::storage::profile::tag_names(self.repository.pool(), &profile.id.0)
+                        .await?
+                }
+            };
+            mien_core::storage::profile::write_relations(
+                self.repository.pool(),
+                &profile.id.0,
+                group.as_deref(),
+                &tags,
+            )
+            .await?;
+            let profile = self.repository.get(&profile_id).await?;
+            return self.view(profile).await;
+        }
+        self.view(profile).await
     }
 
     /// 启动档案：direct 模式直接进入 `StartProfile`；代理绑定在引擎落地前 fail-closed。
@@ -649,13 +750,30 @@ impl AppState {
         build_outbound(&config, key.as_bytes())
     }
 
-    fn view(&self, profile: Profile) -> ProfileView {
+    async fn view(&self, profile: Profile) -> Result<ProfileView, CoreError> {
+        let related = mien_core::storage::profile::relations_for(
+            self.repository.pool(),
+            std::slice::from_ref(&profile.id.0),
+        )
+        .await?;
+        let (group_id, tags) = related.get(&profile.id.0).cloned().unwrap_or_default();
+        Ok(self.build_view(profile, group_id, tags))
+    }
+
+    fn build_view(
+        &self,
+        profile: Profile,
+        group_id: Option<String>,
+        tags: Vec<String>,
+    ) -> ProfileView {
         let direct = profile.proxy_id.is_none();
         let snapshot = self.supervisor.state(&runtime_id(&profile.id.0));
         let isolation = snapshot
             .as_ref()
             .map_or(Isolation::Unknown, |snapshot| snapshot.isolation);
         ProfileView {
+            group_id,
+            tags,
             reduced_assurance: mien_core::runtime::state::reduced_assurance(
                 profile.mode,
                 direct,

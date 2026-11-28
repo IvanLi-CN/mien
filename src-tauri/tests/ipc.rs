@@ -87,7 +87,7 @@ fn authorized_commands_create_list_and_report_runtime_state() {
     let created = invoke(
         &webview,
         "profiles_create",
-        json!({ "name": "ipc-profile", "mode": "headful" }),
+        json!({ "input": { "name": "ipc-profile", "mode": "headful" } }),
     );
     let id = created["id"].as_str().expect("profile id").to_owned();
     assert_eq!(created["name"], "ipc-profile");
@@ -184,7 +184,7 @@ fn ui_payloads_drive_the_real_kernel_lifecycle() {
     let created = invoke(
         &webview,
         "profiles_create",
-        json!({
+        json!({ "input": {
             "name": "ui-acceptance",
             "fingerprint": {
                 "schema_version": 1,
@@ -200,7 +200,7 @@ fn ui_payloads_drive_the_real_kernel_lifecycle() {
                 "network": { "doh_mode": "disabled", "ipv6_mode": "block" }
             },
             "mode": "headful"
-        }),
+        } }),
     );
     let id = created["id"].as_str().expect("profile id").to_owned();
     assert_eq!(created["direct"], true);

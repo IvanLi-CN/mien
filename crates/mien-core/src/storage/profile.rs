@@ -14,7 +14,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{Row, Sqlite, SqlitePool, Transaction};
+use sqlx::{Row, Sqlite, Transaction};
+
+/// 让只读连接池的调用方（宿主层）不必自己依赖 sqlx 的版本。
+pub use sqlx::SqlitePool;
 
 use super::map_sqlx_error;
 use crate::domain::profile::{Profile, ProfileId, ProfileMode, ProfileStatus};
@@ -600,4 +603,140 @@ async fn cleanup_import(pool: &SqlitePool, data_root: &Path, manifest: &ImportMa
     } else {
         false
     }
+}
+
+/// 写入档案的分组与标签。`group_id` 为 `None` 时清空分组；标签整体替换。
+///
+/// 宿主层（Tauri IPC）与 HTTP 服务层都要落这两类关系，SQL 留在 core 里，
+/// 两边不会各写一份、各有各的语义。
+///
+/// # Errors
+///
+/// 事务失败时返回 `CoreError::Storage`，调用方负责回滚档案本身。
+pub async fn write_relations(
+    pool: &SqlitePool,
+    profile_id: &str,
+    group_id: Option<&str>,
+    tags: &[String],
+) -> Result<(), CoreError> {
+    let mut transaction = pool.begin().await.map_err(map_sqlx_error)?;
+    sqlx::query("UPDATE profiles SET group_id=?1 WHERE id=?2")
+        .bind(group_id)
+        .bind(profile_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_sqlx_error)?;
+    sqlx::query("DELETE FROM profile_tags WHERE profile_id=?1")
+        .bind(profile_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_sqlx_error)?;
+    for tag in tags {
+        sqlx::query(
+            "INSERT OR IGNORE INTO profile_tags (profile_id, tag_id) \
+             SELECT ?1, id FROM tags WHERE name=?2",
+        )
+        .bind(profile_id)
+        .bind(tag)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_sqlx_error)?;
+    }
+    transaction.commit().await.map_err(map_sqlx_error)?;
+    Ok(())
+}
+
+/// 读取档案当前的标签名，用于只改分组时保留标签。
+///
+/// # Errors
+///
+/// 查询失败时返回 `CoreError::Storage`。
+pub async fn tag_names(pool: &SqlitePool, profile_id: &str) -> Result<Vec<String>, CoreError> {
+    let tags: Vec<String> = sqlx::query_scalar(
+        "SELECT t.name FROM tags t JOIN profile_tags pt ON pt.tag_id = t.id \
+         WHERE pt.profile_id=?1 ORDER BY t.name",
+    )
+    .bind(profile_id)
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx_error)?;
+    Ok(tags)
+}
+
+/// 读取档案当前的分组 ID；`None` 表示未分组。
+///
+/// # Errors
+///
+/// 查询失败时返回 `CoreError::Storage`。
+pub async fn group_id(pool: &SqlitePool, profile_id: &str) -> Result<Option<String>, CoreError> {
+    let group: Option<Option<String>> =
+        sqlx::query_scalar("SELECT group_id FROM profiles WHERE id=?1")
+            .bind(profile_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sqlx_error)?;
+    Ok(group.flatten())
+}
+
+/// 批量读取档案的分组 ID 与标签名，给列表视图用。
+///
+/// 单独查询会退化成每个档案两次往返；列表页一次要显示几十行，所以这里用
+/// 两条带 `IN (...)` 的查询取回全部关系，再在内存里归并。
+///
+/// # Errors
+///
+/// 存储不可读时返回 `CoreError::Storage`。
+pub async fn relations_for(
+    pool: &SqlitePool,
+    profile_ids: &[String],
+) -> Result<BTreeMap<String, (Option<String>, Vec<String>)>, CoreError> {
+    let mut out: BTreeMap<String, (Option<String>, Vec<String>)> = BTreeMap::new();
+    if profile_ids.is_empty() {
+        return Ok(out);
+    }
+    let placeholders = vec!["?"; profile_ids.len()].join(",");
+    let group_sql = format!("SELECT id, group_id FROM profiles WHERE id IN ({placeholders})");
+    let mut group_query = sqlx::query(&group_sql);
+    for id in profile_ids {
+        group_query = group_query.bind(id);
+    }
+    for row in group_query.fetch_all(pool).await.map_err(map_sqlx_error)? {
+        let id: String = row.get("id");
+        let group: Option<String> = row.get("group_id");
+        out.entry(id).or_default().0 = group;
+    }
+    let tag_sql = format!(
+        "SELECT pt.profile_id AS profile_id, t.name AS name FROM tags t \
+         JOIN profile_tags pt ON pt.tag_id = t.id \
+         WHERE pt.profile_id IN ({placeholders}) ORDER BY t.name"
+    );
+    let mut tag_query = sqlx::query(&tag_sql);
+    for id in profile_ids {
+        tag_query = tag_query.bind(id);
+    }
+    for row in tag_query.fetch_all(pool).await.map_err(map_sqlx_error)? {
+        let id: String = row.get("profile_id");
+        let name: String = row.get("name");
+        out.entry(id).or_default().1.push(name);
+    }
+    Ok(out)
+}
+
+/// 更新档案的代理绑定；`None` 表示改回直连。
+///
+/// # Errors
+///
+/// 存储不可写时返回 `CoreError::Storage`。
+pub async fn set_proxy_id(
+    pool: &SqlitePool,
+    profile_id: &str,
+    proxy_id: Option<&str>,
+) -> Result<(), CoreError> {
+    sqlx::query("UPDATE profiles SET proxy_id=?1 WHERE id=?2")
+        .bind(proxy_id)
+        .bind(profile_id)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx_error)?;
+    Ok(())
 }

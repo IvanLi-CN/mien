@@ -66,6 +66,9 @@ fn create_start_stop_start_through_the_host_state() {
                 start_url: None,
                 notes: None,
                 automation_api: None,
+                group_id: None,
+                tags: Vec::new(),
+                proxy_id: None,
             })
             .await
             .expect("create");
