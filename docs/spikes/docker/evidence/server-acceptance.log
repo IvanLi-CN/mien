@@ -1,74 +1,34 @@
-# M3 server image acceptance (deploy/docker/verify-server.sh + verify-restart.sh)
-#
-# Host: linux/amd64, Docker 29.9.3, user in the docker group (not root).
-# Image: mien-server, 2.19 GB.
-# Run shape: --read-only --tmpfs /tmp:rw,noexec,nosuid,size=1g --shm-size=1g
-#            --cap-drop ALL --security-opt no-new-privileges
-#            --security-opt seccomp=<spike profile> --security-opt apparmor=unconfined
-#            --user 10001:10001 --pids-limit 512 --memory 4g --cpus 2
-#            --ulimit nofile=4096:4096 -v <volume>:/data
-#            -e MIEN_BIND=0.0.0.0:8787 -e MIEN_PUBLIC_URL=<origin>
-#            -e MIEN_ALLOW_DIRECT_EGRESS=1
-#
-# Provenance: recorded from the worker's terminal output for the run that
-# produced commit 31c5f31. The per-assertion PASS/FAIL lines are quoted
-# verbatim below; nothing here is reconstructed from memory.
-#
-# NOT verified here:
-#   - AppArmor: the container ran apparmor=unconfined. The mien-chromium
-#     profile has never been loaded on an available host (securityfs cannot be
-#     mounted), so this run says nothing about the hardened path.
+# M3 server image acceptance — index
 
-## Phase: full (in-container acceptance)
+The M3 exit-criteria acceptance for the production server image is recorded in
+two places, and this file only points at them. It is deliberately **not** a
+substitute for either.
 
-result=91 PASS, 0 FAIL, 0 BLOCKED
-schema_version=8
-isolation_actual=enforced
-seccomp_user_namespace_descendants=2
-no_root_processes_besides_init
-running_uid=10001
+## Raw, byte-verbatim transcript records
 
-## Headless profile (in-container)
+`t32-m3-gap-acceptance.log.md` — recovered from the agent session transcript
+after the host logs were deleted during cleanup. Its own header states which
+outputs are lost: the complete 91-line output of the final run no longer exists,
+so the 91 PASS / 0 FAIL / 0 BLOCKED total rests on a single `grep -c '^PASS'`
+record and **cannot** be reconstructed line by line. The six surviving host
+windows (headless phase, both restarts, in-container headful) are quoted with
+the exact command that produced each one.
 
-headless_isolation_actual=enforced
-headless kernel_pid=394
-headless_cmdline_exact=--headless=new
+## Post-fix re-run (graceful shutdown)
 
-# Full argv as printed by the script (one line, NUL-separated cmdline split into
-# tokens; `grep -qx -- '--headless=new'` matched an exact element, not a
-# substring). The same run repeated the check across four independent launches.
-headless_cmdline=/opt/mien/chromium/chrome --fingerprint=1651157675 --fingerprint-platform=linux --fingerprint-platform-version=6.8.0 --fingerprint-brand=Edge --fingerprint-brand-version=148.0.0.0 --fingerprint-hardware-concurrency=12 --lang=en-US --accept-lang=en-US,en --timezone=UTC --window-size=1280,720 --headless=new --user-data-dir=/data/profiles/01M8F2F93G000000000000800X/chrome --mien-runtime-id=rt-01M8F2F93G000000000000800X --use-mock-keychain --password-store=basic --no-first-run --no-default-browser-check
-#
-# Only window-shaped flag present is --window-size (viewport geometry, also
-# carried by headful launches). --start-maximized / --start-fullscreen / --kiosk
-# were asserted absent by the script.
+The T33 section appended to `t32-m3-gap-acceptance.log.md` records the re-run on
+the fixed build, with the before/after comparison for `docker restart`:
+`crashed` before, `stopped` after, `last_known_isolation` retained, zero
+orphans.
 
-## Phase: graceful restart (docker restart)
+## What this acceptance does not cover
 
-restart pre_restart_state=running runtime_row_state=crashed api_state=crashed
-restart last_known_isolation_retained=pass
-restart orphan_kernel_processes: 0
-
-## Phase: hard restart (docker kill, SIGKILL -> docker start)
-
-hard_restart_orphan_kernel_processes: 0
-hard_restart_reconcile_log: runtime reconciliation finished count=1
-
-## Defect this acceptance found
-
-mien-server never ran RuntimeSupervisor::reconcile at boot and never wrote its
-outcomes back, so a SIGKILL left runtimes.state='running' indefinitely and the
-API kept serving a phantom running runtime. Fixed in 31c5f31: AppState::open
-reconciles before the listener binds, settles non-terminal rows to a terminal
-state, clears pid/pgid and preserves last_known_isolation.
-
-## Known deviation (not fixed here)
-
-`docker restart` settles the row to `crashed`, not `stopped`. The server's
-SIGTERM path only makes `axum::serve` return; it never stops supervised kernels
-and never writes `stopped`, so `crashed` is the only observable outcome. This
-deviates from REQ-RUNTIME-012 (stop via `stopping`, then write `stopped`) and is
-tracked separately.
+- AppArmor: the container ran `apparmor=unconfined`. The `mien-chromium` profile
+  has never been loaded on an available host (`securityfs` cannot be mounted),
+  so none of these runs say anything about the hardened path.
+- `isolation=enforced` was cross-checked against `/proc` in each run (two
+  descendants with `Seccomp: 2` in a user namespace distinct from PID 1);
+  the evidence for that is in the transcript records, not restated here.
 
 # ---------------------------------------------------------------------------
 # T33 re-run: graceful shutdown stops supervised kernels (2026-11-27)
@@ -152,6 +112,8 @@ which runs a real server in a child process and sends it SIGTERM: it passes in
 
 ## Superseded
 
-The "Known deviation (not fixed here)" section above no longer applies: a
-graceful `docker restart` now settles the row to `stopped`. That older section
-is kept unchanged as the record of what the M3 run observed.
+The M3 run recorded a known deviation: `docker restart` settled the row to
+`crashed` instead of `stopped`, because the server's SIGTERM path never stopped
+supervised kernels. That deviation no longer applies — the T33 re-run above
+shows `stopped`, retained `last_known_isolation` and zero orphans. The old
+observation is preserved in `t32-m3-gap-acceptance.log.md`, not restated here.
