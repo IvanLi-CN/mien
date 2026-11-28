@@ -69,14 +69,14 @@ MIEN_ASSET_CACHE=/path/to/assets deploy/docker/build.sh   # assets: chromium.tar
 
 Options that matter:
 
-| Flag | Meaning |
-| --- | --- |
-| `--tag NAME` | image tag, default `mien-server:local` |
-| `--platform P` | default `linux/amd64` |
+| Flag                    | Meaning                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `--tag NAME`            | image tag, default `mien-server:local`                                                                          |
+| `--platform P`          | default `linux/amd64`                                                                                           |
 | `--target runtime-base` | build only the pinned Debian base plus every apt package; no server binary, no `dist/`, no kernel/Xray archives |
-| `--context-dir DIR` | staging directory, default `target/docker-context/mien-server` |
-| `--assets-dir DIR` | directory holding `chromium.tar.xz` and `xray.zip` (or `MIEN_ASSET_CACHE`) |
-| `--prepare-only` | stage the context, print the exact `docker build` command, build nothing |
+| `--context-dir DIR`     | staging directory, default `target/docker-context/mien-server`                                                  |
+| `--assets-dir DIR`      | directory holding `chromium.tar.xz` and `xray.zip` (or `MIEN_ASSET_CACHE`)                                      |
+| `--prepare-only`        | stage the context, print the exact `docker build` command, build nothing                                        |
 
 `--target runtime-base` exists because the final stage needs the 141 MiB kernel
 archive; CI builds and scans the OS layer without inventing a substitute asset.

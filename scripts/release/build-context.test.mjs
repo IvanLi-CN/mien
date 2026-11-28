@@ -69,7 +69,10 @@ test("a re-run replaces stale context files instead of merging them", () => {
     writeFileSync(path.join(context, "stale.txt"), "left over from an older checkout");
     const result = run(["--target", "runtime-base", "--context-dir", context, "--prepare-only"]);
     assert.equal(result.status, 0, result.stdout);
-    assert.ok(!existsSync(path.join(context, "stale.txt")), "stale files would be copied into the image");
+    assert.ok(
+      !existsSync(path.join(context, "stale.txt")),
+      "stale files would be copied into the image",
+    );
   } finally {
     rmSync(context, { recursive: true, force: true });
   }

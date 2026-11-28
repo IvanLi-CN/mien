@@ -44,7 +44,11 @@ function readJson(filename, label) {
   const bytes = readFileSync(filename);
   if (bytes.length === 0) throw new Error(`${label} is empty: ${filename}`);
   try {
-    return { document: JSON.parse(bytes.toString("utf8")), bytes: bytes.length, sha256: sha256File(filename) };
+    return {
+      document: JSON.parse(bytes.toString("utf8")),
+      bytes: bytes.length,
+      sha256: sha256File(filename),
+    };
   } catch (error) {
     throw new Error(`${label} is not valid JSON (${filename}): ${error.message}`);
   }
@@ -70,11 +74,14 @@ export function validateSbom(document, { format, filename, requiredPackages = []
       errors.push(`${filename}: specVersion is missing`);
     const components = Array.isArray(document.components) ? document.components : [];
     count = components.length;
-    for (const component of components) if (typeof component?.name === "string") names.add(component.name);
+    for (const component of components)
+      if (typeof component?.name === "string") names.add(component.name);
   }
   if (count === 0) errors.push(`${filename}: contains no packages`);
   if (count > 0 && !names.has("dpkg"))
-    errors.push(`${filename}: no dpkg package; the image OS layer (base image and apt packages) is missing`);
+    errors.push(
+      `${filename}: no dpkg package; the image OS layer (base image and apt packages) is missing`,
+    );
   const missing = requiredPackages.filter((name) => !names.has(name));
   if (missing.length > 0)
     errors.push(
@@ -104,10 +111,14 @@ export function loadExceptions(text, { now = new Date(), filename = DEFAULT_EXCE
   const raw = document?.exceptions;
   if (raw === undefined || raw === null) {
     if (document === null || document === undefined || Object.keys(document).length === 0)
-      return { exceptions: [], errors: [`${filename}: empty file; write "exceptions: []" instead of leaving it blank`] };
+      return {
+        exceptions: [],
+        errors: [`${filename}: empty file; write "exceptions: []" instead of leaving it blank`],
+      };
     return { exceptions: [], errors: [`${filename}: top-level "exceptions" list is missing`] };
   }
-  if (!Array.isArray(raw)) return { exceptions: [], errors: [`${filename}: "exceptions" must be a list`] };
+  if (!Array.isArray(raw))
+    return { exceptions: [], errors: [`${filename}: "exceptions" must be a list`] };
   const seen = new Set();
   const exceptions = [];
   const today = now.toISOString().slice(0, 10);
@@ -131,8 +142,12 @@ export function loadExceptions(text, { now = new Date(), filename = DEFAULT_EXCE
       seen.add(entry.id);
     }
     if (!isDate(entry.expires)) errors.push(`${where}: expires must be a YYYY-MM-DD date`);
-    else if (entry.expires <= today) errors.push(`${where}: exception for ${entry.id} expired on ${entry.expires}`);
-    if (entry.package !== undefined && (typeof entry.package !== "string" || entry.package.trim() === ""))
+    else if (entry.expires <= today)
+      errors.push(`${where}: exception for ${entry.id} expired on ${entry.expires}`);
+    if (
+      entry.package !== undefined &&
+      (typeof entry.package !== "string" || entry.package.trim() === "")
+    )
       errors.push(`${where}: package must be a non-empty string when present`);
     exceptions.push({
       id: entry.id,
@@ -151,9 +166,7 @@ export function loadExceptions(text, { now = new Date(), filename = DEFAULT_EXCE
 export function exceptionMatches(exception, finding) {
   if (!exception?.id || !finding) return false;
   const byCve = exception.id.toUpperCase().startsWith("CVE-");
-  const idHit = byCve
-    ? exception.id === finding.VulnerabilityID
-    : exception.id === finding.PkgName;
+  const idHit = byCve ? exception.id === finding.VulnerabilityID : exception.id === finding.PkgName;
   if (!idHit) return false;
   return exception.package === undefined || exception.package === finding.PkgName;
 }
@@ -212,7 +225,9 @@ function uniqueSorted(values) {
 export function renderText(report) {
   const lines = [];
   lines.push(`image: ${report.image.ref}${report.image.id ? ` (id ${report.image.id})` : ""}`);
-  lines.push(`tools: syft ${report.tools.syft ?? "unknown"}, trivy ${report.tools.trivy ?? "unknown"}`);
+  lines.push(
+    `tools: syft ${report.tools.syft ?? "unknown"}, trivy ${report.tools.trivy ?? "unknown"}`,
+  );
   for (const sbom of report.sbom)
     lines.push(
       `sbom: ${sbom.path} format=${sbom.format} packages=${sbom.packages} apt_covered=${sbom.apt_packages_present}/${sbom.apt_packages_required} sha256=${sbom.sha256}`,
@@ -474,5 +489,8 @@ export function main(argv = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url)))
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+)
   process.exitCode = main();

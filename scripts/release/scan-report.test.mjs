@@ -7,12 +7,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-  buildSummary,
-  filterFindings,
-  loadExceptions,
-  validateSbom,
-} from "./scan-report.mjs";
+import { buildSummary, filterFindings, loadExceptions, validateSbom } from "./scan-report.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const NOW = new Date("2026-11-28T00:00:00Z");
@@ -58,7 +53,8 @@ const exceptionYaml = (entries) =>
 
 const goodException = {
   id: "CVE-2024-0001",
-  reason: "No fixed version exists in the pinned Debian suite; the binary is not reachable from the container.",
+  reason:
+    "No fixed version exists in the pinned Debian suite; the binary is not reachable from the container.",
   owner: "Ivan Li",
   expires: "2027-01-31",
 };
@@ -89,27 +85,31 @@ test("an SBOM missing an apt package fails with the package name", () => {
     filename: "cdx.json",
     requiredPackages: ["libc6", "libgtk-3-0", "xvfb"],
   });
-  assert.ok(
-    result.errors.some((error) => error.includes("libgtk-3-0") && error.includes("xvfb")),
-  );
+  assert.ok(result.errors.some((error) => error.includes("libgtk-3-0") && error.includes("xvfb")));
   assert.equal(result.present, 1);
 });
 
 test("an empty SBOM is rejected", () => {
-  const result = validateSbom({ spdxVersion: "SPDX-2.3", packages: [] }, {
-    format: "spdx-json",
-    filename: "spdx.json",
-    requiredPackages: [],
-  });
+  const result = validateSbom(
+    { spdxVersion: "SPDX-2.3", packages: [] },
+    {
+      format: "spdx-json",
+      filename: "spdx.json",
+      requiredPackages: [],
+    },
+  );
   assert.ok(result.errors.some((error) => error.includes("contains no packages")));
 });
 
 test("a CycloneDX document without bomFormat is rejected", () => {
-  const result = validateSbom({ components: [{ name: "dpkg" }] }, {
-    format: "cyclonedx-json",
-    filename: "cdx.json",
-    requiredPackages: [],
-  });
+  const result = validateSbom(
+    { components: [{ name: "dpkg" }] },
+    {
+      format: "cyclonedx-json",
+      filename: "cdx.json",
+      requiredPackages: [],
+    },
+  );
   assert.ok(result.errors.some((error) => error.includes("bomFormat")));
   assert.ok(result.errors.some((error) => error.includes("specVersion")));
 });
@@ -173,10 +173,9 @@ test("CVE exceptions suppress only the named CVE", () => {
 });
 
 test("a package-scoped CVE exception does not hide the same CVE in another package", () => {
-  const { exceptions } = loadExceptions(
-    exceptionYaml([{ ...goodException, package: "libc6" }]),
-    { now: NOW },
-  );
+  const { exceptions } = loadExceptions(exceptionYaml([{ ...goodException, package: "libc6" }]), {
+    now: NOW,
+  });
   const filtered = filterFindings(
     trivyReport(
       vulnerability("CVE-2024-0001", "libc6", "HIGH"),
@@ -193,10 +192,9 @@ test("a package-scoped CVE exception does not hide the same CVE in another packa
 });
 
 test("a package-name exception suppresses every finding of that package", () => {
-  const { exceptions } = loadExceptions(
-    exceptionYaml([{ ...goodException, id: "libc6" }]),
-    { now: NOW },
-  );
+  const { exceptions } = loadExceptions(exceptionYaml([{ ...goodException, id: "libc6" }]), {
+    now: NOW,
+  });
   const filtered = filterFindings(
     trivyReport(
       vulnerability("CVE-2024-0001", "libc6", "HIGH"),
@@ -238,8 +236,20 @@ test("the summary mirrors trivy and keeps gate-ready evidence entries", () => {
     generatedAt: NOW.toISOString(),
     toolVersions: { syft: "1.57.2", trivy: "0.76.2" },
     sbom: [
-      { format: "spdx-json", path: "artifacts/sbom/x.spdx.json", sha256: "c".repeat(64), packages: 120, apt_packages_present: 38 },
-      { format: "cyclonedx-json", path: "artifacts/sbom/x.cdx.json", sha256: "d".repeat(64), packages: 4000, apt_packages_present: 38 },
+      {
+        format: "spdx-json",
+        path: "artifacts/sbom/x.spdx.json",
+        sha256: "c".repeat(64),
+        packages: 120,
+        apt_packages_present: 38,
+      },
+      {
+        format: "cyclonedx-json",
+        path: "artifacts/sbom/x.cdx.json",
+        sha256: "d".repeat(64),
+        packages: 4000,
+        apt_packages_present: 38,
+      },
     ],
     filtered,
     exceptions,

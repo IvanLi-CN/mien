@@ -174,7 +174,9 @@ export function copySources(parsed) {
     for (const source of positional.slice(0, -1)) {
       const resolved = path.posix.normalize(resolveArgs(source, parsed.args)).replace(/\/$/, "");
       if (resolved.startsWith("../") || resolved === "..")
-        throw new Error(`line ${instruction.line}: COPY source escapes the build context: ${source}`);
+        throw new Error(
+          `line ${instruction.line}: COPY source escapes the build context: ${source}`,
+        );
       sources.add(resolved);
     }
   }
@@ -232,7 +234,10 @@ export function assetDigests(root = DEFAULT_ROOT) {
       (name) => name.startsWith("fingerprint-chromium-") && name.includes("-linux-x86_64"),
       "Chromium linux-x86_64",
     ),
-    xray: pick((name) => name.startsWith("xray-core-") && name.includes("-linux-x86_64"), "Xray linux-x86_64"),
+    xray: pick(
+      (name) => name.startsWith("xray-core-") && name.includes("-linux-x86_64"),
+      "Xray linux-x86_64",
+    ),
   };
 }
 
@@ -274,7 +279,11 @@ function validateDist(directory, errors) {
     errors.push(`static UI missing: ${index} (build it with: bun run build)`);
     return null;
   }
-  return { path: directory, entries: readdirSync(directory).length, indexBytes: statSync(index).size };
+  return {
+    path: directory,
+    entries: readdirSync(directory).length,
+    indexBytes: statSync(index).size,
+  };
 }
 
 /**
@@ -288,10 +297,18 @@ export function checkContract(options = {}) {
   const serverBinary = path.resolve(root, options.serverBinary ?? DEFAULT_SERVER_BINARY);
   const dist = path.resolve(root, options.dist ?? DEFAULT_DIST);
   const errors = [];
-  const info = { dockerfile: dockerfileRelative, stages: 0, aptPackages: [], copySources: [], assets: [] };
+  const info = {
+    dockerfile: dockerfileRelative,
+    stages: 0,
+    aptPackages: [],
+    copySources: [],
+    assets: [],
+  };
 
   if (!existsSync(dockerfile)) {
-    errors.push(`Dockerfile missing: ${dockerfileRelative}; the container build has no entry point`);
+    errors.push(
+      `Dockerfile missing: ${dockerfileRelative}; the container build has no entry point`,
+    );
     return { errors, info };
   }
 
@@ -306,14 +323,17 @@ export function checkContract(options = {}) {
   info.baseImage = parsed.args.get("BASE_IMAGE") ?? null;
 
   const baseImage = parsed.args.get("BASE_IMAGE");
-  if (!baseImage) errors.push("BASE_IMAGE default is missing; the base image must be pinned by digest");
+  if (!baseImage)
+    errors.push("BASE_IMAGE default is missing; the base image must be pinned by digest");
   else if (!DIGEST_REFERENCE.test(baseImage))
     errors.push(`BASE_IMAGE must be pinned by sha256 digest, got ${baseImage}`);
   for (const stage of parsed.stages) {
     const resolved = resolveArgs(stage.base, parsed.args);
     const known = parsed.stages.some((candidate) => candidate.alias === resolved);
     if (!known && !DIGEST_REFERENCE.test(resolved))
-      errors.push(`line ${stage.line}: stage base ${resolved} is neither a pinned digest nor an earlier stage`);
+      errors.push(
+        `line ${stage.line}: stage base ${resolved} is neither a pinned digest nor an earlier stage`,
+      );
   }
 
   for (const [name, expected] of [
@@ -323,7 +343,9 @@ export function checkContract(options = {}) {
   ]) {
     const actual = parsed.args.get(name);
     if (actual !== expected)
-      errors.push(`ARG ${name} must default to ${expected} (got ${actual ?? "nothing"}); build.sh stages that name`);
+      errors.push(
+        `ARG ${name} must default to ${expected} (got ${actual ?? "nothing"}); build.sh stages that name`,
+      );
   }
 
   try {
@@ -338,7 +360,9 @@ export function checkContract(options = {}) {
     ]) {
       const actual = parsed.args.get(arg);
       if (actual !== digest)
-        errors.push(`ARG ${arg} (${actual ?? "unset"}) does not match the frozen ${label} manifest ${digest}`);
+        errors.push(
+          `ARG ${arg} (${actual ?? "unset"}) does not match the frozen ${label} manifest ${digest}`,
+        );
     }
   } catch (error) {
     errors.push(error.message);
@@ -358,20 +382,32 @@ export function checkContract(options = {}) {
   const repoOwned = new Set(info.copySources);
   for (const source of repoOwned) {
     const staged = path.join(root, "deploy/docker", source);
-    const artifact = source === "mien-server" || source === "dist" || source === "chromium.tar.xz" || source === "xray.zip";
+    const artifact =
+      source === "mien-server" ||
+      source === "dist" ||
+      source === "chromium.tar.xz" ||
+      source === "xray.zip";
     if (!artifact && !existsSync(staged))
-      errors.push(`COPY source ${source} is not staged by build.sh and does not exist at deploy/docker/${source}`);
+      errors.push(
+        `COPY source ${source} is not staged by build.sh and does not exist at deploy/docker/${source}`,
+      );
   }
 
   const finalStage = parsed.stages[parsed.stages.length - 1];
-  const userInstructions = finalStage.instructions.filter((instruction) => instruction.name === "USER");
-  if (userInstructions.length === 0) errors.push("final stage has no USER; the image must not run as root");
+  const userInstructions = finalStage.instructions.filter(
+    (instruction) => instruction.name === "USER",
+  );
+  if (userInstructions.length === 0)
+    errors.push("final stage has no USER; the image must not run as root");
   else {
     const user = userInstructions[userInstructions.length - 1].args.split(":")[0];
     if (!/^[0-9]+$/.test(user) || Number(user) === 0)
-      errors.push(`final stage USER must be a nonzero numeric uid, got ${userInstructions.at(-1).args}`);
+      errors.push(
+        `final stage USER must be a nonzero numeric uid, got ${userInstructions.at(-1).args}`,
+      );
   }
-  const countOf = (name) => finalStage.instructions.filter((instruction) => instruction.name === name).length;
+  const countOf = (name) =>
+    finalStage.instructions.filter((instruction) => instruction.name === name).length;
   if (countOf("ENTRYPOINT") !== 1) errors.push("final stage must declare exactly one ENTRYPOINT");
   if (countOf("HEALTHCHECK") !== 1) errors.push("final stage must declare exactly one HEALTHCHECK");
 
@@ -489,5 +525,8 @@ export function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url)))
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+)
   process.exitCode = main();

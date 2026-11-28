@@ -3,7 +3,15 @@
 // 用例都对着真实仓库的 Dockerfile 与冻结清单跑；合成用例只改一个字段，避免一份
 // “恰好合法”的 fixture 掩盖其他规则。
 import assert from "node:assert/strict";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -51,7 +59,12 @@ function fixtureRoot(mutate) {
 function checkFixture(mutate, options = {}) {
   const dir = fixtureRoot(mutate);
   try {
-    return checkContract({ root: dir, serverBinary: "target/mien-server", dist: "dist", ...options });
+    return checkContract({
+      root: dir,
+      serverBinary: "target/mien-server",
+      dist: "dist",
+      ...options,
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -128,13 +141,17 @@ test("rejects a floating base image tag", () => {
 });
 
 test("rejects an asset digest that drifted from the frozen manifest", () => {
-  const result = checkFixture((text) => text.replace(/ARG CHROMIUM_SHA256=[0-9a-f]{64}/, `ARG CHROMIUM_SHA256=${"0".repeat(64)}`));
+  const result = checkFixture((text) =>
+    text.replace(/ARG CHROMIUM_SHA256=[0-9a-f]{64}/, `ARG CHROMIUM_SHA256=${"0".repeat(64)}`),
+  );
   assert.ok(result.errors.some((error) => error.includes("CHROMIUM_SHA256")));
   assert.equal(assetDigests(root).chromium.sha256.length, 64);
 });
 
 test("rejects a COPY source that escapes the build context", () => {
-  const result = checkFixture((text) => text.replace("COPY entrypoint.sh", "COPY ../entrypoint.sh"));
+  const result = checkFixture((text) =>
+    text.replace("COPY entrypoint.sh", "COPY ../entrypoint.sh"),
+  );
   assert.ok(result.errors.some((error) => error.includes("escapes the build context")));
 });
 
