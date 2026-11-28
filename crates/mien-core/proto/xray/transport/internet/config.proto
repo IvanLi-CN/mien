@@ -1,0 +1,7 @@
+syntax = "proto3";
+package xray.transport.internet;
+import "common/serial/typed_message.proto";
+import "common/net/address.proto";
+enum DomainStrategy { AS_IS = 0; USE_IP = 1; USE_IP4 = 2; USE_IP6 = 3; USE_IP46 = 4; USE_IP64 = 5; FORCE_IP = 6; FORCE_IP4 = 7; FORCE_IP6 = 8; FORCE_IP46 = 9; FORCE_IP64 = 10; }
+message TransportConfig { string protocol_name = 3; xray.common.serial.TypedMessage settings = 2; }
+message StreamConfig { xray.common.net.IPOrDomain address = 8; uint32 port = 9; string protocol_name = 5; repeated TransportConfig transport_settings = 2; string security_type = 3; repeated xray.common.serial.TypedMessage security_settings = 4; }

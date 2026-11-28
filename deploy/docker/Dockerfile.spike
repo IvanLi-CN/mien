@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+# Mien Docker display/sandbox spike; not a production image.
+FROM debian@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e
+
+ARG CHROMIUM_ARCHIVE=chromium.tar.xz
+ARG XRAY_ARCHIVE=xray.zip
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:99 \
+    HOME=/data/home \
+    XDG_CONFIG_HOME=/data/home/.config \
+    XDG_CACHE_HOME=/data/home/.cache \
+    TMPDIR=/tmp \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+RUN apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
+ && apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install --no-install-recommends -y \
+      ca-certificates \
+      fonts-dejavu \
+      fonts-liberation \
+      libasound2 \
+      libatk-bridge2.0-0 \
+      libatk1.0-0 \
+      libatspi2.0-0 \
+      libc6 \
+      libcairo2 \
+      libcups2 \
+      libdrm2 \
+      libgbm1 \
+      libglib2.0-0 \
+      libgtk-3-0 \
+      libnspr4 \
+      libnss3 \
+      libpango-1.0-0 \
+      libu2f-udev \
+      libvulkan1 \
+      libx11-6 \
+      libxcb1 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxkbcommon0 \
+      libxrandr2 \
+      novnc \
+      openbox \
+      procps \
+      tini \
+      unzip \
+      x11-utils \
+      xauth \
+      xz-utils \
+      xvfb \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY ${CHROMIUM_ARCHIVE} /tmp/chromium.tar.xz
+COPY ${XRAY_ARCHIVE} /tmp/xray.zip
+RUN mkdir -p /opt/mien/chromium /opt/mien/xray \
+ && tar -xJf /tmp/chromium.tar.xz --strip-components=1 -C /opt/mien/chromium \
+ && unzip -q /tmp/xray.zip -d /opt/mien/xray \
+ && test -x /opt/mien/chromium/chrome \
+ && test -x /opt/mien/xray/xray \
+ && rm -f /tmp/chromium.tar.xz /tmp/xray.zip
+
+# The image copy is audit-only. Docker must load the host-side file at create time.
+COPY seccomp/chromium.json /opt/mien/seccomp/chromium.json
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 0555 /usr/local/bin/entrypoint.sh \
+ && groupadd --gid 10001 mien \
+ && useradd --uid 10001 --gid 10001 --create-home --home-dir /data/home --shell /usr/sbin/nologin mien \
+ && mkdir -p /data/home/.config /data/home/.cache /data/evidence \
+ && chown -R 10001:10001 /data \
+ && chmod 0700 /data /data/home /data/home/.config /data/home/.cache /data/evidence
+
+USER 10001:10001
+WORKDIR /data
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+CMD ["sleep", "infinity"]

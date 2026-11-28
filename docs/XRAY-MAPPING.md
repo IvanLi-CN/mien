@@ -1,6 +1,6 @@
 # Xray 共享协议引擎映射
 
-本文把 `docs/specs/proxy-gateway/SPEC.md` 的代理契约落到 Xray-core v26.11.9 的进程、API、入站、出站、路由、连接复用和故障恢复。它是实现前的确定性映射；标为“准入确认”的项目必须在 M0 Xray spike 中验证后才能冻结。
+本文把 `docs/specs/proxy-gateway/SPEC.md` 的代理契约落到 Xray-core v26.11.9 的进程、API、入站、出站、路由、连接复用和故障恢复。T3 已冻结可验证边界；未实测能力不得从映射表推导为可用能力。
 
 ## 1. 进程与版本
 
@@ -91,13 +91,13 @@ Chromium 参数：
   "transport": "ws",
   "security": "reality",
   "tls_fingerprint": "sha256:<hex>",
-  "mux": {"enabled": true, "concurrency": 8}
+  "mux": {"enabled": true, "concurrency": 128}
 }
 ```
 
 规则：
 
-- JSON 使用 JCS/键排序；UTF-8 编码；不在对象中放明文凭据。
+- JSON 使用 JCS/键排序；UTF-8 编码；不在对象中放明文凭据。Xray v26.11.9 会把请求的 mux concurrency 归一化为 `128`，因此 key 规范化使用实际生效值。
 - `credential_fingerprint` 使用主密钥对规范化凭据做 HMAC-SHA-256；主密钥轮换会使 key 改变，必须配合运行时迁移。
 - `tls_fingerprint` 覆盖 TLS/REALITY 参数、SNI、证书校验和公钥；不同 TLS 配置不得共享。
 - `mux` 必须参与 key；相同节点但 mux 设置不同属于不同出站。
@@ -115,22 +115,18 @@ Chromium 参数：
 
 ## 5. 协议映射
 
-下表是首版必须实现的映射。字段名以 Xray v26.11.9 的实际 JSON schema 为准；标为“准入确认”的组合必须在 spike 中直接用 Xray 配置验证，sing-box 不参与。
+下表只保留 T3 直接实测成立的映射。字段名以 Xray v26.11.9 的实际 JSON schema 为准；未列出的协议/组合不属于冻结能力。
 
 | Mien 协议 | Tier | Xray protocol | 关键 settings / stream | 备注 |
 | --- | --- | --- | --- | --- |
-| HTTP / HTTPS | basic | `http` | server、port、用户名密码；TLS 按配置 | 认证只在出站；不参与 A/B 门禁 |
-| SOCKS5 | basic | `socks` | server、port、用户名密码 | 域名地址优先；不参与 A/B 门禁 |
-| VLESS | A | `vless` | `vnext` 用户 ID、flow；network、TLS/REALITY、WS/gRPC | 不把 UUID 写入浏览器 |
-| VMess | A | `vmess` | `vnext` 用户 ID、security；network、TLS、WS/gRPC | AEAD |
-| Shadowsocks | A | `shadowsocks` | server、port、method、password | 2022 方法按清单 |
-| Trojan | A | `trojan` | server、port、password；TLS、WS | TLS 必须 |
-| Hysteria2 | B | `hysteria` | `version: 2`、address、port；hysteria transport、auth、TLS | 需要 UDP 出站 |
-| WireGuard | B | `wireguard` | peer 公钥、私钥、endpoint、allowed IPs；隧道内 DNS；`noKernelTun: true` | 隧道内 DNS 必填且只接受 IPv4/IPv6 字面量（Xray `remoteDNS`）；缺失或主机名/DoH URL 等非法值返回 `PROXY_CONFIG_INVALID`，不得用本地 DNS 或 freedom 出站回退；必须设置 `noKernelTun: true`，禁止创建宿主 TUN、写 `/proc/sys` 路由或策略规则 |
+| VLESS | A | `vless` | `vnext` 用户 ID；TCP stream；mux 由引擎归一化为 concurrency `128` | 受控服务端端到端转发通过；不把 UUID 写入浏览器 |
+| Hysteria2 | B | `hysteria` | `version: 2`、address、port、`streamSettings.network: hysteria`、`hysteriaSettings`、auth、TLS | 仅 schema 通过；无受控 UDP/TLS peer，端到端连通未验证 |
+
+VMess、Shadowsocks、Trojan、HTTP/HTTPS、SOCKS5、WireGuard 以及 VLESS 的 WS/gRPC/TLS/REALITY 组合未在 T3 受控环境中验证，不得从 schema 或 Xray 文档推断为冻结能力；TUIC 被 Xray 明确拒绝并不进入 v1。
 
 共享 constraints：
 
-- 所有出站默认启用 TCP 连接复用/多路复用（协议支持时）；Hysteria2 使用其原生 QUIC 连接复用，不假装可被 Xray mux 覆盖。
+- 已验证的 VLESS TCP 出站启用连接复用；Hysteria2 使用其原生 QUIC 连接复用，但端到端能力尚未冻结。
 - 出站只允许一个目标节点；不支持多节点 selector 或自动故障切换。
 - 不生成 `freedom`/direct 出站给浏览器流量；`block` 是首出站。
 - 不启用 Clash API、远程控制或订阅更新。
@@ -142,7 +138,7 @@ Chromium 参数：
 - 删除规则只能按 `ruleTag` 调用 `RemoveRule`，不得按位置或重建整个规则表；重复删除同一 tag 必须幂等。
 - Xray 路由配置没有 `routing.final` 字段，网关不得生成；`block` 必须是出站列表第一项，网关在启动时断言该不变量，断言失败则拒绝服务。未匹配、引擎故障或规则缺失时必须断网，不回退直连。
 - 目标域名由 Xray 出站或代理内 DNS 解析；只有代理节点主机名允许本地 bootstrap 解析。
-- WireGuard 必须声明隧道内 DNS；无法提供时拒绝该配置，不存在 `LIMITATION_LOCAL_DNS` 的可用路径，也不得为该配置生成 freedom 或本地 DNS 回退。WireGuard 出站必须显式设置 `noKernelTun: true`：Xray 在拥有 `CAP_NET_ADMIN` 时会创建宿主 `wg*` 接口、写 `rp_filter`/`disable_ipv6` 并安装策略路由，那些流量会绕过 `block` 首出站的失败关闭路径；准入测试必须断言没有新增宿主接口、路由或 sysctl 写入。
+- 未验证的协议能力不得创建出站或回退到直连；能力校验必须依据本冻结清单。
 - DoH 由 `network.doh_mode=disabled` 和内核能力清单声明的启动开关关闭；IPv6 由 `network.ipv6_mode=block` 和引擎路由/浏览器策略阻止；启动探针验证生效值。清单声明 `doh_mode=unsupported` 或 `ipv6_mode=unsupported` 时，代理档案拒绝启动并返回 `KERNEL_UNSUPPORTED`；`unsupported` 清单是合法 fixture，不得静默降级。
 - WebRTC 非代理 UDP 由浏览器 `--disable-non-proxied-udp` 阻止；关闭该保护必须经过高级确认并写入 `proxy.non_proxied_udp.disable` 审计事件。
 - Hysteria2 的 QUIC/UDP 仅用于引擎到节点，不放宽浏览器非代理 UDP 策略。

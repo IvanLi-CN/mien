@@ -1,0 +1,21 @@
+syntax = "proto3";
+package xray.core;
+import "common/serial/typed_message.proto";
+message Config {
+  repeated InboundHandlerConfig inbound = 1;
+  repeated OutboundHandlerConfig outbound = 2;
+  repeated xray.common.serial.TypedMessage app = 4;
+  repeated xray.common.serial.TypedMessage extension = 6;
+}
+message InboundHandlerConfig {
+  string tag = 1;
+  xray.common.serial.TypedMessage receiver_settings = 2;
+  xray.common.serial.TypedMessage proxy_settings = 3;
+}
+message OutboundHandlerConfig {
+  string tag = 1;
+  xray.common.serial.TypedMessage sender_settings = 2;
+  xray.common.serial.TypedMessage proxy_settings = 3;
+  int64 expire = 4;
+  string comment = 5;
+}

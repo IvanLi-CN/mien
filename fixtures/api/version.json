@@ -1,0 +1,14 @@
+{
+  "schema_ref": "../../docs/contracts/openapi.yaml#/paths/~1api~1v1/get",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "version": "v1",
+      "deprecation_window_days": 90
+    }
+  }
+}

@@ -1,0 +1,3 @@
+syntax = "proto3";
+package xray.common.net;
+enum Network { TCP = 0; UDP = 1; UNKNOWN = 2; }

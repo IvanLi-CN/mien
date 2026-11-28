@@ -1,0 +1,33 @@
+warning: variable does not need to be mutable
+   --> crates/mien-core/tests/proxy_e2e.rs:616:9
+    |
+616 |     let mut engine = EngineProcess::start(bin, &digest(bin)).await.unwrap();
+    |         ----^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: `mien-core` (test "proxy_e2e") generated 1 warning (run `cargo fix --test "proxy_e2e"` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.71s
+     Running tests/proxy_e2e.rs (target/debug/deps/proxy_e2e-035f632ff8ec4c90)
+
+running 6 tests
+[t20 proxy-e2e] req=REQ-PROXY-009 scenario=dead-node protocol=vless origin_hits_after_node_kill=1
+test dead_node_never_reaches_origin ... ok
+[t20 proxy-e2e] req=REQ-PROXY-009,REQ-PROXY-014 scenario=vless-tcp-rejected protocol=vless origin_hits=0 server_route_hop=absent
+[t20 proxy-e2e] req=REQ-PROXY-001,REQ-PROXY-003,REQ-PROXY-005,REQ-PROXY-021 scenario=vmess-tcp protocol=vmess origin=proxy-e2e-61582-61267.test:61290 client_hop_port=61347 direct_peer_port=61310 proxied_peer_port=61349 server_uplink_bytes=0->351 server_route=[e2e-srv-in -> direct]
+test vmess_traffic_traverses_shared_engine ... ok
+[t20 proxy-e2e] req=REQ-PROXY-001,REQ-PROXY-003,REQ-PROXY-005,REQ-PROXY-021 scenario=shadowsocks-tcp protocol=shadowsocks origin=proxy-e2e-61582-61271.test:61293 client_hop_port=61370 direct_peer_port=61306 proxied_peer_port=61374 server_uplink_bytes=0->260 server_route=[e2e-srv-in -> direct]
+[t20 proxy-e2e] req=REQ-PROXY-001,REQ-PROXY-003,REQ-PROXY-005,REQ-PROXY-021 scenario=trojan-tcp protocol=trojan origin=proxy-e2e-61582-61269.test:61294 client_hop_port=61371 direct_peer_port=61307 proxied_peer_port=61375 server_uplink_bytes=0->216 server_route=[e2e-srv-in -> direct]
+test shadowsocks_traffic_traverses_shared_engine ... ok
+test trojan_traffic_traverses_shared_engine ... ok
+[t20 proxy-e2e] req=REQ-PROXY-001,REQ-PROXY-003,REQ-PROXY-005,REQ-PROXY-021 scenario=vless-tcp protocol=vless origin=proxy-e2e-61582-61268.test:61287 client_hop_port=61387 direct_peer_port=61308 proxied_peer_port=61389 server_uplink_bytes=0->173 server_route=[e2e-srv-in -> direct]
+test vless_traffic_traverses_shared_engine ... ok
+[t20 proxy-e2e] req=REQ-PROXY-009,REQ-PROXY-014 scenario=vmess-tcp-rejected protocol=vmess origin_hits=0 server_route_hop=absent
+[t20 proxy-e2e] req=REQ-PROXY-009,REQ-PROXY-014 scenario=shadowsocks-tcp-rejected protocol=shadowsocks origin_hits=0 server_route_hop=absent
+[t20 proxy-e2e] req=REQ-PROXY-009,REQ-PROXY-014 scenario=trojan-tcp-rejected protocol=trojan origin_hits=0 server_route_hop=absent
+test wrong_credentials_never_reach_origin ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.85s
+

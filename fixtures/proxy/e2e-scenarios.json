@@ -1,0 +1,75 @@
+{
+  "configVersion": 1,
+  "notes": [
+    "Scenario table for crates/mien-core/tests/proxy_e2e.rs: real browser-equivalent HTTP traffic through the Mien shared engine into a real Xray server inbound and out into a loopback ECHO origin.",
+    "All UUIDs and passwords are synthetic test constants. Nothing here reaches a real node, and no fixture value is a usable credential.",
+    "The origin host name is generated per run from originHostTemplate so that neither the system resolver nor the test process can resolve it; only the controlled server Xray can, through its own dns.hosts table.",
+    "serverInboundUplinkBytes is a strictly-greater comparison against the growth the controlled server reports for its own inbound. The matching uplink growth is measured before and after the proxied request."
+  ],
+  "originHostTemplate": "proxy-e2e-{run}.test",
+  "echoPathTemplate": "/proxy-e2e/{scenario}",
+  "serverInboundTag": "e2e-srv-in",
+  "serverOutboundTag": "direct",
+  "scenarios": [
+    {
+      "name": "vless-tcp",
+      "protocol": "vless",
+      "credentials": {
+        "id": "11111111-1111-4111-8111-111111111111"
+      },
+      "rejectedCredentials": {
+        "id": "99999999-9999-4999-8999-999999999999"
+      },
+      "options": {}
+    },
+    {
+      "name": "vmess-tcp",
+      "protocol": "vmess",
+      "credentials": {
+        "id": "22222222-2222-4222-8222-222222222222"
+      },
+      "rejectedCredentials": {
+        "id": "99999999-9999-4999-8999-999999999999"
+      },
+      "options": {}
+    },
+    {
+      "name": "shadowsocks-tcp",
+      "protocol": "shadowsocks",
+      "credentials": {
+        "password": "e2e-shadowsocks-password"
+      },
+      "rejectedCredentials": {
+        "password": "e2e-shadowsocks-wrong-password"
+      },
+      "options": {
+        "method": "aes-256-gcm"
+      }
+    },
+    {
+      "name": "trojan-tcp",
+      "protocol": "trojan",
+      "credentials": {
+        "password": "e2e-trojan-password"
+      },
+      "rejectedCredentials": {
+        "password": "e2e-trojan-wrong-password"
+      },
+      "options": {}
+    }
+  ],
+  "expect": {
+    "proxied": {
+      "httpStatus": 200,
+      "bodyContains": [
+        "peer=127.0.0.1:",
+        "req=GET {path} HTTP/1.1"
+      ]
+    },
+    "rejected": {
+      "echoRequests": 0
+    },
+    "originHostResolvableLocally": false,
+    "serverInboundUplinkBytes": ">0"
+  }
+}

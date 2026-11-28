@@ -1,0 +1,72 @@
+# Mien Chromium container confinement.
+#
+# Purpose: let Chromium's namespace sandbox perform the operations that Docker's
+# `docker-default` profile denies without CAP_SYS_ADMIN (mount/umount2/pivot_root/
+# chroot inside its own user namespace), while keeping the container confined to
+# its data volume, tmpfs and the files it needs to run.
+#
+# Install on the host as /etc/apparmor.d/mien-chromium and load with
+# `apparmor_parser -r /etc/apparmor.d/mien-chromium`. The container is started with
+# `--security-opt apparmor=mien-chromium`. This file is a host-side release
+# artifact: its SHA-256 goes into SHA-256SUMS, the SBOM and the attestation.
+
+#include <tunables/global>
+
+profile mien-chromium flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+  #include <abstractions/fonts>
+
+  # Runtime filesystems.
+  / r,
+  /bin/** rix,
+  /usr/** rix,
+  /lib/** rix,
+  /lib64/** rix,
+  /opt/mien/** rix,
+  /etc/** r,
+  /proc/** r,
+  /sys/devices/** r,
+  /sys/module/** r,
+  /dev/null rw,
+  /dev/zero rw,
+  /dev/random rw,
+  /dev/urandom rw,
+  /dev/tty rw,
+  /dev/pts/** rw,
+  /dev/dri/** rw,
+  /dev/shm/** rwkl,
+  /tmp/** rwkl,
+  /data/** rwkl,
+
+  # Chromium writes profile and cache data only under /data.
+  deny /data/secrets/** rwklx,
+  deny /data/db/** rwklx,
+  deny /data/run/** rwklx,
+
+  # Network: browser traffic only; no raw sockets.
+  network inet stream,
+  network inet6 stream,
+  network netlink raw,
+  network unix stream,
+
+  # Chromium's own namespace sandbox needs these inside the container. The kernel
+  # only honours them inside the new user namespace the renderer creates.
+  mount,
+  umount,
+  pivot_root,
+  chroot,
+  userns,
+  signal (send, receive),
+  ptrace (trace, read),
+  capability sys_chroot,
+  capability setuid,
+  capability setgid,
+  capability sys_admin,
+
+  # Deny everything writable outside the allowlist above.
+  deny /etc/** w,
+  deny /usr/** w,
+  deny /bin/** w,
+  deny /lib/** w,
+}

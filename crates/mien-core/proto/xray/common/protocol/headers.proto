@@ -1,0 +1,4 @@
+syntax = "proto3";
+package xray.common.protocol;
+enum SecurityType { UNKNOWN = 0; AUTO = 2; AES128_GCM = 3; CHACHA20_POLY1305 = 4; }
+message SecurityConfig { SecurityType type = 1; }

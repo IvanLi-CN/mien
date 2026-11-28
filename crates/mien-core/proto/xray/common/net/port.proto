@@ -1,0 +1,4 @@
+syntax = "proto3";
+package xray.common.net;
+message PortRange { uint32 from = 1; uint32 to = 2; }
+message PortList { repeated PortRange range = 1; }

@@ -1,0 +1,479 @@
+{
+  "schema_version": 1,
+  "notes": [
+    "Synthetic share-link scenarios for REQ-PROXY-015; every host, key and secret is fake.",
+    "Each case asserts either a full ProxyDraft projection or the stable PROXY_CONFIG_INVALID error and the offending field name.",
+    "Oversized and non-UTF8 inputs are built by the test because they cannot be stored as readable JSON strings here."
+  ],
+  "cases": [
+    {
+      "name": "vless-tcp-tls",
+      "link": "vless://00000000-0000-4000-8000-000000000001@edge.example.test:443?encryption=none&type=tcp&security=tls&sni=edge.example.test",
+      "expect": {
+        "kind": "vless",
+        "server": "edge.example.test",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "tcp",
+          "sni": "edge.example.test"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "vless-ws-reality",
+      "link": "vless://00000000-0000-4000-8000-000000000001@198.51.100.10:443?encryption=none&type=ws&security=reality&sni=www.example.test&fp=chrome&pbk=test-public-key&sid=abcd&path=%2Fr%3Fed%3D2048&host=cdn.example.test&flow=xtls-rprx-vision",
+      "expect": {
+        "kind": "vless",
+        "server": "198.51.100.10",
+        "port": 443,
+        "options": {
+          "security": "reality",
+          "transport": "ws",
+          "sni": "www.example.test",
+          "fingerprint": "chrome",
+          "reality_pbk": "test-public-key",
+          "reality_sid": "abcd",
+          "path": "/r?ed=2048",
+          "host": "cdn.example.test",
+          "flow": "xtls-rprx-vision"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "vless-grpc-tls",
+      "link": "vless://00000000-0000-4000-8000-000000000001@203.0.113.7:8443?type=grpc&security=tls&sni=grpc.example.test&serviceName=svc",
+      "expect": {
+        "kind": "vless",
+        "server": "203.0.113.7",
+        "port": 8443,
+        "options": {
+          "security": "tls",
+          "transport": "grpc",
+          "sni": "grpc.example.test",
+          "service_name": "svc"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "vless-ipv6-literal",
+      "link": "vless://00000000-0000-4000-8000-000000000001@[2001:db8::5]:443?type=tcp&security=tls&sni=ipv6.example.test",
+      "expect": {
+        "kind": "vless",
+        "server": "2001:db8::5",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "tcp",
+          "sni": "ipv6.example.test"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "vless-unsupported-parameter-warning",
+      "link": "vless://00000000-0000-4000-8000-000000000001@edge.example.test:443?type=tcp&security=tls&sni=edge.example.test&alpn=h2%2Chttp%2F1.1",
+      "expect": {
+        "kind": "vless",
+        "server": "edge.example.test",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "tcp",
+          "sni": "edge.example.test"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": [
+          "unsupported parameter `alpn` is ignored"
+        ]
+      }
+    },
+    {
+      "name": "vless-missing-id",
+      "link": "vless://edge.example.test:443?type=tcp",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`id`"
+      }
+    },
+    {
+      "name": "vless-bad-uuid",
+      "link": "vless://not-a-uuid@edge.example.test:443?type=tcp",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`id`"
+      }
+    },
+    {
+      "name": "vless-missing-port",
+      "link": "vless://00000000-0000-4000-8000-000000000001@edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`port`"
+      }
+    },
+    {
+      "name": "vless-unknown-security",
+      "link": "vless://00000000-0000-4000-8000-000000000001@edge.example.test:443?security=xtls&sni=edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`security`"
+      }
+    },
+    {
+      "name": "vless-reality-missing-pbk",
+      "link": "vless://00000000-0000-4000-8000-000000000001@edge.example.test:443?security=reality&sni=edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`pbk`"
+      }
+    },
+    {
+      "name": "vless-unknown-transport",
+      "link": "vless://00000000-0000-4000-8000-000000000001@edge.example.test:443?type=kcp&security=tls&sni=edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`type`"
+      }
+    },
+    {
+      "name": "vmess-ws-tls",
+      "link": "vmess://eyJ2IjoiMiIsInBzIjoiVGVzdCBub2RlIiwiYWRkIjoiZWRnZS5leGFtcGxlLnRlc3QiLCJwb3J0IjoiNDQzIiwiaWQiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6IndzIiwidHlwZSI6Im5vbmUiLCJob3N0IjoiY2RuLmV4YW1wbGUudGVzdCIsInBhdGgiOiIvdm0iLCJ0bHMiOiJ0bHMiLCJzbmkiOiJjZG4uZXhhbXBsZS50ZXN0In0=",
+      "expect": {
+        "kind": "vmess",
+        "server": "edge.example.test",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "ws",
+          "sni": "cdn.example.test",
+          "host": "cdn.example.test",
+          "path": "/vm"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "vmess-grpc-none",
+      "link": "vmess://eyJ2IjoiMiIsInBzIjoiZ3JwYyIsImFkZCI6IjE5OC41MS4xMDAuMTEiLCJwb3J0IjoyMDUzLCJpZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImFpZCI6MCwic2N5IjoiYXV0byIsIm5ldCI6ImdycGMiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiIiLCJwYXRoIjoic3ZjIiwidGxzIjoibm9uZSIsInNuaSI6IiJ9",
+      "expect": {
+        "kind": "vmess",
+        "server": "198.51.100.11",
+        "port": 2053,
+        "options": {
+          "security": "none",
+          "transport": "grpc",
+          "service_name": "svc"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "vmess-legacy-aid-warnings",
+      "link": "vmess://eyJ2IjoiMiIsInBzIjoibGVnYWN5IiwiYWRkIjoiZWRnZS5leGFtcGxlLnRlc3QiLCJwb3J0IjoiNDQzIiwiaWQiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJhaWQiOiI2NCIsInNjeSI6ImFlcy0xMjgtZ2NtIiwibmV0IjoidGNwIiwidHlwZSI6Imh0dHAiLCJ0bHMiOiJub25lIn0=",
+      "expect": {
+        "kind": "vmess",
+        "server": "edge.example.test",
+        "port": 443,
+        "options": {
+          "security": "none",
+          "transport": "tcp"
+        },
+        "credential_fields": [
+          "id"
+        ],
+        "warnings": [
+          "vmess `aid` is ignored because only AEAD is supported",
+          "vmess `scy` is normalized to auto",
+          "vmess header `type` is ignored"
+        ]
+      }
+    },
+    {
+      "name": "vmess-missing-add",
+      "link": "vmess://eyJ2IjoiMiIsInBzIjoieCIsInBvcnQiOiI0NDMiLCJpZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsIm5ldCI6InRjcCJ9",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`add`"
+      }
+    },
+    {
+      "name": "vmess-bad-base64",
+      "link": "vmess://not-base64!!",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "base64"
+      }
+    },
+    {
+      "name": "vmess-unknown-tls",
+      "link": "vmess://eyJ2IjoiMiIsInBzIjoieCIsImFkZCI6ImVkZ2UuZXhhbXBsZS50ZXN0IiwicG9ydCI6IjQ0MyIsImlkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwibmV0IjoidGNwIiwidGxzIjoieHRscyJ9",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`tls`"
+      }
+    },
+    {
+      "name": "ss-legacy-base64",
+      "link": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQtdGVzdA@edge.example.test:8388#Legacy",
+      "expect": {
+        "kind": "shadowsocks",
+        "server": "edge.example.test",
+        "port": 8388,
+        "options": {
+          "security": "none",
+          "transport": "tcp",
+          "method": "aes-256-gcm"
+        },
+        "credential_fields": [
+          "password"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "ss-2022-plain",
+      "link": "ss://2022-blake3-aes-256-gcm:cGFzc3dvcmQtdGVzdC1rZXk=@edge.example.test:8389#2022",
+      "expect": {
+        "kind": "shadowsocks",
+        "server": "edge.example.test",
+        "port": 8389,
+        "options": {
+          "security": "none",
+          "transport": "tcp",
+          "method": "2022-blake3-aes-256-gcm"
+        },
+        "credential_fields": [
+          "password"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "ss-unknown-method-warning",
+      "link": "ss://cm90MTM6cGFzc3dvcmQtdGVzdA@edge.example.test:8390",
+      "expect": {
+        "kind": "shadowsocks",
+        "server": "edge.example.test",
+        "port": 8390,
+        "options": {
+          "security": "none",
+          "transport": "tcp",
+          "method": "rot13"
+        },
+        "credential_fields": [
+          "password"
+        ],
+        "warnings": [
+          "ss `method` is not in the known method list"
+        ]
+      }
+    },
+    {
+      "name": "ss-missing-method",
+      "link": "ss://:password-test@edge.example.test:8388",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`method`"
+      }
+    },
+    {
+      "name": "ss-bad-base64",
+      "link": "ss://not-base64!!",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "base64"
+      }
+    },
+    {
+      "name": "ss-plugin-rejected",
+      "link": "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQtdGVzdA@edge.example.test:8388?plugin=obfs-local%3Bobfs%3Dhttp",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`plugin`"
+      }
+    },
+    {
+      "name": "trojan-tcp-tls",
+      "link": "trojan://password-test@edge.example.test:443?sni=edge.example.test&type=tcp",
+      "expect": {
+        "kind": "trojan",
+        "server": "edge.example.test",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "tcp",
+          "sni": "edge.example.test"
+        },
+        "credential_fields": [
+          "password"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "trojan-ws-host",
+      "link": "trojan://password-test@cdn.example.test:443?type=ws&host=cdn.example.test&path=%2Ftj",
+      "expect": {
+        "kind": "trojan",
+        "server": "cdn.example.test",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "ws",
+          "host": "cdn.example.test",
+          "path": "/tj",
+          "sni": "cdn.example.test"
+        },
+        "credential_fields": [
+          "password"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "trojan-sni-fallback-warning",
+      "link": "trojan://password-test@edge.example.test:443",
+      "expect": {
+        "kind": "trojan",
+        "server": "edge.example.test",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "tcp",
+          "sni": "edge.example.test"
+        },
+        "credential_fields": [
+          "password"
+        ],
+        "warnings": [
+          "parameter `sni` defaults to the node server address"
+        ]
+      }
+    },
+    {
+      "name": "trojan-missing-password",
+      "link": "trojan://@edge.example.test:443?sni=edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`password`"
+      }
+    },
+    {
+      "name": "trojan-missing-port",
+      "link": "trojan://password-test@edge.example.test?sni=edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`port`"
+      }
+    },
+    {
+      "name": "hysteria2-insecure",
+      "link": "hysteria2://auth-token@edge.example.test:8443?sni=edge.example.test&insecure=1",
+      "expect": {
+        "kind": "hysteria2",
+        "server": "edge.example.test",
+        "port": 8443,
+        "options": {
+          "security": "tls",
+          "transport": "hysteria",
+          "sni": "edge.example.test",
+          "allow_insecure": true
+        },
+        "credential_fields": [
+          "auth"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "hysteria2-default-tls",
+      "link": "hysteria2://auth-token@salamander.example.test:443?sni=salamander.example.test",
+      "expect": {
+        "kind": "hysteria2",
+        "server": "salamander.example.test",
+        "port": 443,
+        "options": {
+          "security": "tls",
+          "transport": "hysteria",
+          "sni": "salamander.example.test"
+        },
+        "credential_fields": [
+          "auth"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "name": "hysteria2-missing-auth",
+      "link": "hysteria2://@edge.example.test:8443?sni=edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "`auth`"
+      }
+    },
+    {
+      "name": "hysteria2-bad-flag",
+      "link": "hysteria2://auth-token@edge.example.test:8443?sni=edge.example.test&insecure=maybe",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "insecure"
+      }
+    },
+    {
+      "name": "tuic-rejected",
+      "link": "tuic://00000000-0000-4000-8000-000000000001:password-test@edge.example.test:443?sni=edge.example.test",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "tuic"
+      }
+    },
+    {
+      "name": "wireguard-rejected",
+      "link": "wireguard://test-key@edge.example.test:51820",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "wireguard"
+      }
+    },
+    {
+      "name": "unknown-scheme",
+      "link": "http://edge.example.test:8080",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "scheme"
+      }
+    },
+    {
+      "name": "missing-scheme",
+      "link": "edge.example.test:443",
+      "expect": {
+        "error": "PROXY_CONFIG_INVALID",
+        "message_contains": "scheme"
+      }
+    }
+  ]
+}

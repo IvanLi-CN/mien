@@ -179,6 +179,7 @@ pub trait EventSink {
 | `MIEN_SCREEN` | `1920x1080x24` | Docker Xvfb 分辨率 |
 | `MIEN_MAX_RUNTIMES` | `10` | 最大并发运行档案数 |
 | `MIEN_LOG` | `info` | 日志级别与格式 |
+| `MIEN_WEB_DIST` | 仓库根 `dist/`，其次可执行文件旁的 `web/` | 同源静态 Web UI 目录；启动时解析一次，目录缺失只表示不提供 UI，`/api/*` 与健康检查不受影响 |
 | `ALLOW_UNSANDBOXED` | `false` | 仅服务端生效。显式允许无沙箱内核；必须通过包含性探针与独立 UID/网络边界并审计，启动写入 `isolation=unsandboxed`；桌面端无此例外 |
 | `MIEN_ALLOW_DIRECT_EGRESS` | `false` | 服务端是否允许直连档案；未设置时返回 `DIRECT_EGRESS_DISABLED`，设置后必须写审计并调整网络策略 |
 | `MIEN_VIEWER` | `false` | 是否启用 noVNC 查看器 |

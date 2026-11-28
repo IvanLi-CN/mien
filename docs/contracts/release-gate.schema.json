@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mien.local/contracts/release-gate.schema.json",
+  "title": "Mien release gate report",
+  "description": "Machine-readable GATE-001 report described by docs/TEST-PLAN.md and docs/CI.md. The fixed required ID set lives in the checker (scripts/release/gate.mjs); this schema only constrains shape. PRD-ACC-001..010 may only be `pass`, and `accepted` always needs a P1 waiver with blocking_class=false, an unexpired expires_at, a named acceptor, a scope and a fix plan. A `pass` entry without evidence is invalid. Tooling must also reject P0 waivers, expired waivers, unknown IDs and a source_sha that does not match the target commit; those rules are semantic and live in the checker.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_sha", "generated_at", "entries", "waivers"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source_sha": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "waivers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/waiver"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(-[A-Z][A-Z0-9]*)*-[0-9]{3}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence": {
+      "description": "A repo-relative artifact path or an absolute URL, bound to the SHA-256 of the bytes that were reviewed. Artifacts live outside the repository (docs/TEST-PLAN.md §12).",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "sha256"],
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        }
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "evidence", "ran_at", "command"],
+      "allOf": [
+        {
+          "description": "PRD-ACC-001..010 admit only `pass`; `accepted` and every other status are schema violations, so no waiver can route around acceptance.",
+          "if": {
+            "required": ["id"],
+            "properties": {
+              "id": {
+                "pattern": "^PRD-ACC-0(?:0[1-9]|10)$"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "pass"
+              }
+            }
+          }
+        },
+        {
+          "description": "`pass` needs evidence; an empty array is not proof.",
+          "if": {
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "const": "pass"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "status": {
+          "description": "Only `pass` may release. `accepted` requires a waiver and never applies to PRD-ACC-001..010. `fail`, `skipped` and `missing` always block; so does any status outside this enum, such as `error`.",
+          "enum": ["pass", "fail", "accepted", "skipped", "missing"]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "ran_at": {
+          "description": "When the check ran; null only for `missing`/`skipped` entries that never ran.",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command": {
+          "description": "The exact command that produced the evidence; null when no command ran.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "waiver": {
+      "description": "A named, time-boxed acceptance of a non-blocking P1. P0 and blocking P1 findings have no waiver path, so severity is fixed to P1 and blocking_class to false.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "severity",
+        "blocking_class",
+        "accepted_by",
+        "scope",
+        "expires_at",
+        "fix_plan"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "severity": {
+          "const": "P1"
+        },
+        "blocking_class": {
+          "const": false
+        },
+        "accepted_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fix_plan": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "mien-ui",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "packageManager": "bun@1.4.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "license:check": "bun scripts/license-check.mjs",
+    "test:release-gate": "node --test scripts/release/gate.test.mjs",
+    "test:repro-compare": "node --test scripts/release/repro-compare.test.mjs",
+    "contracts:check": "bun scripts/contracts/check.mjs",
+    "contracts:generate": "bunx openapi-typescript docs/contracts/openapi.yaml -o docs/contracts/generated/openapi.d.ts"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5",
+    "@radix-ui/react-dialog": "^1",
+    "@radix-ui/react-dropdown-menu": "^2",
+    "@tanstack/react-query": "^5",
+    "@tauri-apps/api": "~2.11.0",
+    "i18next": "^25",
+    "openapi-fetch": "^0.13",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-hook-form": "^7",
+    "react-i18next": "^15",
+    "react-router": "^7",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2",
+    "@playwright/test": "^1",
+    "@redocly/cli": "^2.83.0",
+    "@tailwindcss/vite": "^4",
+    "@testing-library/jest-dom": "^6",
+    "@testing-library/react": "^16",
+    "@types/bun": "^1",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "jsdom": "^26",
+    "openapi-typescript": "7.9.1",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vite": "^7",
+    "vitest": "^3",
+    "yaml": "^2.9.1"
+  }
+}

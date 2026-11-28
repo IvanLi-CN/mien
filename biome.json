@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      "!dist",
+      "!target",
+      "!build",
+      "!node_modules",
+      "!deploy/docker/seccomp",
+      "!DESIGN.md",
+      "!README.md",
+      "!src-tauri",
+      "!fixtures",
+      "!docs",
+      "!crates",
+      "!src/ui/styles.css",
+      "!**/*.rs",
+      "!*.config.ts",
+      "!src/vite-env.d.ts",
+      "!third-party-report.json",
+      "!NOTICE",
+      "!LICENSES"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": { "useExhaustiveDependencies": "error" },
+      "suspicious": { "noExplicitAny": "error" },
+      "a11y": { "recommended": true },
+      "style": { "useConst": "error", "useImportType": "error" }
+    }
+  },
+  "css": { "parser": { "tailwindDirectives": true } },
+  "javascript": {
+    "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" }
+  }
+}

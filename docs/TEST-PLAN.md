@@ -318,6 +318,7 @@
 - 桌面管理 UI 默认无本地 HTTP 管理端口；IPC 与 HTTP 语义一致；事件回放与 WebView 边界测试通过。
 - 已知限制在发布说明和 UI 中可见。
 - 门禁自检（GATE-001）：固定 required ID 为 `FP-001..013`、`KERNEL-001..010`、`ENGINE-001..009`、`PROXY-001..006`、`PROXY-008..029`、`EXPORT-001..006`、`UI-001..022`、`RT-001..026`、`API-001..020`、`SEC-001..009`、`PRD-ACC-001..010`、`PKG-001..009`、`PERF-001..007`；缺失、空结果、fail/error/skipped 均拒绝。ACC 必须 pass，ACC-009 还要求 PERF-001..007 全 pass，PERF-008 与 Tier B PROXY-007/030 非门禁。其他强制项仅允许本节具名接受的 P1 使用 accepted，必须有完整且未到期 waiver（缺陷编号、severity=P1、blocking_class=false、接受人、范围、到期日、修复计划），P0/阻断 P1 不可接受。
+- 门禁实现：报告结构固定为 [`contracts/release-gate.schema.json`](contracts/release-gate.schema.json)，校验入口是 `bun scripts/release/gate.mjs --check <path>`（等价 `cargo run -q -p xtask -- release-gate --check <path>`），测试为 `node --test scripts/release/gate.test.mjs`。缺报告文件直接失败，没有 skip 分支；`--init` 生成全部为 `missing` 的骨架，用于把缺口显性化，骨架本身不能通过。固定 required ID 由校验器内的常量维护（共 169 条），并拒绝非门禁 ID（`PERF-008`、`PROXY-007`、`PROXY-030`）；`PRD-ACC-001..010` 的 `accepted`、`P0` waiver、`blocking_class=true`、过期 waiver、无 evidence 的 `pass`、未知 ID 与 `source_sha` 不等于目标提交同样拒绝。
 - 执行点：test 产出测试分报告，打包/人工测试补齐当前 digest 的证据；attest 后 gate-release 汇总并产出 source_sha/reservation_id/全部 digest 绑定的 release-gate.json。promote-docker 与公开 release（含单独重跑）必须重验完整报告；metadata-only reserve 可以先于测试，不表示门禁通过。PKG-009 的发布前结果来自 workflow/policy 的受控演练与恢复用例，真实发布后验证由 verify-release 承担，不让门禁依赖尚未执行的公开发布。
 
 ## 12. 证据与报告

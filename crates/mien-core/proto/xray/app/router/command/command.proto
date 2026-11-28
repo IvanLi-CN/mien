@@ -1,0 +1,28 @@
+syntax = "proto3";
+package xray.app.router.command;
+import "common/net/network.proto";
+import "common/serial/typed_message.proto";
+message RoutingContext { string InboundTag = 1; xray.common.net.Network Network = 2; repeated bytes SourceIPs = 3; repeated bytes TargetIPs = 4; uint32 SourcePort = 5; uint32 TargetPort = 6; string TargetDomain = 7; string Protocol = 8; string User = 9; map<string,string> Attributes = 10; repeated string OutboundGroupTags = 11; string OutboundTag = 12; repeated bytes LocalIPs = 13; uint32 LocalPort = 14; uint32 VlessRoute = 15; }
+message SubscribeRoutingStatsRequest { repeated string FieldSelectors = 1; }
+message TestRouteRequest { RoutingContext RoutingContext = 1; repeated string FieldSelectors = 2; bool PublishResult = 3; }
+message TestRouteResponse {}
+message GetBalancerInfoRequest { string tag = 1; }
+message GetBalancerInfoResponse {}
+message OverrideBalancerTargetRequest { string balancerTag = 1; string target = 2; }
+message OverrideBalancerTargetResponse {}
+message AddRuleRequest { xray.common.serial.TypedMessage config = 1; bool shouldAppend = 2; }
+message AddRuleResponse {}
+message RemoveRuleRequest { string ruleTag = 1; }
+message RemoveRuleResponse {}
+message ListRuleRequest {}
+message ListRuleItem { string tag = 1; string ruleTag = 2; }
+message ListRuleResponse { repeated ListRuleItem rules = 1; }
+service RoutingService {
+ rpc SubscribeRoutingStats(SubscribeRoutingStatsRequest) returns (stream RoutingContext);
+ rpc TestRoute(TestRouteRequest) returns (RoutingContext);
+ rpc GetBalancerInfo(GetBalancerInfoRequest) returns (GetBalancerInfoResponse);
+ rpc OverrideBalancerTarget(OverrideBalancerTargetRequest) returns (OverrideBalancerTargetResponse);
+ rpc AddRule(AddRuleRequest) returns (AddRuleResponse);
+ rpc RemoveRule(RemoveRuleRequest) returns (RemoveRuleResponse);
+ rpc ListRule(ListRuleRequest) returns (ListRuleResponse);
+}

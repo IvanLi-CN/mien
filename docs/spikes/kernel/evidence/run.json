@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "suite": "seeds",
+  "generatedBy": "probe.mjs",
+  "cases": [
+    "seed-1001-a",
+    "seed-1001-b",
+    "seed-1001-c",
+    "seed-2001",
+    "seed-3001",
+    "seed-4001"
+  ],
+  "kernelVersion": "148.0.7778.215",
+  "platform": "macos-arm64",
+  "assetSha256": "b72f091e2e1a7583eed389c4b8e3534ed355e568af8c8bbf8fc30a25e23ca679",
+  "binarySha256": "d918c691ce56648bc555f8f399c29fc83eb02224165a086491688d01707170cb"
+}

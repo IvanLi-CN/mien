@@ -1,0 +1,77 @@
+{
+  "schema": "mien.network-spike-evidence/1",
+  "capturedAt": "2026-11-27T00:30:00Z",
+  "platform": "macos-arm64",
+  "host": "macOS 27.2 (Darwin 26.x), Apple Silicon",
+  "kernel": {
+    "version": "Chromium 148.0.7778.215 (fingerprint-chromium)",
+    "binarySha256": "d918c691ce56648bc555f8f399c29fc83eb02224165a086491688d01707170cb",
+    "mode": "headful",
+    "egress": "direct (no proxy)"
+  },
+  "run": {
+    "command": "MIEN_KERNEL_BIN=<Chromium> cargo test -p mien-core --test network_canary -- --nocapture --test-threads=1",
+    "result": "5 passed; 0 failed",
+    "leftoverRuntimeProcesses": 0
+  },
+  "observations": {
+    "dns": {
+      "attempt": "error (TypeError: Failed to fetch)",
+      "stubQueries": 0,
+      "netlogResolverRequests": 0,
+      "verdict": "inconclusive",
+      "cause": "macOS delegates page resolution to mDNSResponder; host-resolver-rules/dns-server did not route page lookups to the stub"
+    },
+    "webrtc": {
+      "candidateCount": 0,
+      "gatheringState": "complete",
+      "statsLocalCandidates": 2,
+      "statsTransports": ["tcp/0.0.0.0:9", "tcp/[::]:9"],
+      "verdict": "inconclusive",
+      "note": "the kernel produced no UDP candidates at all, so disable_non_proxied_udp cannot be confirmed or refuted"
+    },
+    "ipv6": {
+      "loopbackEcho": "ok (::1)",
+      "globalEgressPeer": "240e:37a:abb7:6700:9939:72b4:6586:a148",
+      "verdict": "reachable",
+      "note": "direct mode reaches global IPv6; the manifest claim ipv6_mode=block is contradicted"
+    },
+    "doh": {
+      "secureDnsMode": 0,
+      "dohServers": 0,
+      "secureDnsAvailable": false,
+      "dotActive": false,
+      "requestPolicies": "17 lookups, all secure_dns_policy=0",
+      "verdict": "disabled"
+    }
+  },
+  "reconciled": {
+    "doh": "declared",
+    "ipv6": "unverified",
+    "disable_non_proxied_udp": "unverified",
+    "dns": "inconclusive"
+  },
+  "controls": {
+    "dohInversion": {
+      "preseeded": "Local State dns_over_https.mode=secure with a synthetic template",
+      "observed": {"secureDnsMode": 2, "dohServers": 1, "secureDnsAvailable": true},
+      "verdict": "enabled",
+      "asserted": true
+    },
+    "webrtcOnSystemChrome": {
+      "browser": "Google Chrome stable (Chrome/158)",
+      "candidateCount": 4,
+      "verdict": "direct",
+      "asserted": true
+    }
+  },
+  "hygiene": {
+    "committedArtifacts": "synthetic .test names, loopback addresses, no resolver logs, no credentials, no host profiles",
+    "launcherFlags": [
+      "--use-mock-keychain",
+      "--password-store=basic",
+      "--no-first-run",
+      "--no-default-browser-check"
+    ]
+  }
+}
