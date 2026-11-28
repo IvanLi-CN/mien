@@ -1,4 +1,5 @@
-//! 仓库任务：`check`、`migrate`、`contracts`、`check-deny-exceptions`、`fixtures fetch|verify`。
+//! 仓库任务：`check`、`migrate`、`contracts`、`check-deny-exceptions`、`fixtures fetch|verify`、
+//! `release-gate`。
 //!
 //! 全部命令以仓库根为工作目录运行；任一步非零退出即整体失败（不使用 `continue-on-error`）。
 //! 迁移只作用于临时 SQLite 库，除非显式给出 `--database`。
@@ -10,6 +11,7 @@ mod deny_exceptions;
 mod fixtures;
 mod licenses;
 mod migrate;
+mod release_gate;
 
 use std::path::{Path, PathBuf};
 
@@ -52,6 +54,21 @@ enum Command {
         #[command(subcommand)]
         command: fixtures::FixturesCommand,
     },
+    /// GATE-001：校验 `release-gate.json`，或用 `--init` 生成全 missing 骨架。
+    ReleaseGate {
+        /// 校验指定报告；缺失、缺 ID 或证据不足均非零退出。
+        #[arg(long, conflicts_with = "init")]
+        check: Option<PathBuf>,
+        /// 生成全部为 missing 的骨架；骨架本身不代表通过。
+        #[arg(long, conflicts_with = "check")]
+        init: bool,
+        /// `--init` 的输出路径，默认 `release-gate.json`。
+        #[arg(long, requires = "init")]
+        out: Option<PathBuf>,
+        /// 机器可读结论输出路径（通过项、失败项与原因）。
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -66,6 +83,18 @@ fn main() -> anyhow::Result<()> {
         Command::CheckDenyExceptions => deny_exceptions::run(&root),
         Command::Licenses { check } => licenses::run(&root, check),
         Command::Fixtures { command } => fixtures::run(&root, &command),
+        Command::ReleaseGate {
+            check,
+            init,
+            out,
+            report,
+        } => release_gate::run(
+            &root,
+            check.as_deref(),
+            init,
+            out.as_deref(),
+            report.as_deref(),
+        ),
     }
 }
 
