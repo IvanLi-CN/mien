@@ -11,6 +11,7 @@
 // 因为它必须能在发布流水线与离线复核里跑。
 import { createHash, createPublicKey, verify as verifySignature } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const MINISIGN_PUBLIC_PREFIX = "untrusted comment:";
 const ED25519_SIGNATURE_BYTES = 64;
@@ -215,8 +216,6 @@ function main(argv) {
   if (result.ok) console.log(`updater-signature: PASS (version ${result.version})`);
   return result.ok ? 0 : 1;
 }
-
-import { fileURLToPath } from "node:url";
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   process.exit(main(process.argv.slice(2)));
