@@ -80,7 +80,7 @@
 3. 镜像内安装 Xvfb、openbox、x11vnc、noVNC、字体、fingerprint-chromium 与 Xray。
 4. 启动时校验内核与 Xray SHA-256；失败拒绝启动。seccomp 与 AppArmor 发布物由部署者安装到宿主路径，容器以该宿主路径和 `apparmor=mien-chromium` 启动。
 5. 健康检查 `/healthz`；就绪检查 `/readyz`。
-6. 从同一 source_sha 使用两个独立干净 builder/缓存构建 linux/amd64；SOURCE_DATE_EPOCH 固定为 source commit 的提交时间（Unix 秒）并以 `--build-arg SOURCE_DATE_EPOCH=<epoch>` 传入。固定基础镜像、BuildKit 与 Dockerfile frontend digest、依赖锁和所有下载输入；image/oci exporter 设置 `rewrite-timestamp=true`（如 `--output type=oci,dest=<path>,rewrite-timestamp=true`），并设置 `--provenance=false`，不能把 rewrite-timestamp 当成 buildx 独立 CLI flag。导出格式、压缩参数和平台保持一致，比对导出产物中将发布的 OCI manifest/index digest；相等才无重构地发布第一次产物，校验 registry digest 不变，第二次仅留证据。签名、SBOM 与 attestation 在相等后单独生成；不相等视为不可复现缺陷，不接受或推 staging tag。
+6. 从同一 source_sha 使用两个独立干净 builder/缓存构建 linux/amd64；SOURCE_DATE_EPOCH 固定为 source commit 的提交时间（Unix 秒）并以 `--build-arg SOURCE_DATE_EPOCH=<epoch>` 传入。固定基础镜像、BuildKit 与 Dockerfile frontend digest、依赖锁和所有下载输入；image/oci exporter 设置 `rewrite-timestamp=true`（如 `--output type=oci,dest=<path>,rewrite-timestamp=true`），并设置 `--provenance=false`，不能把 rewrite-timestamp 当成 buildx 独立 CLI flag。**Dockerfile frontend 必须按 digest 固定**，当前为 `docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183`（`1`、`1.29`、`1.29.0` 三个 tag 解析到同一 index digest）；`docker/dockerfile:1` 是移动 tag，会在两次构建之间引入语法实现漂移。导出格式、压缩参数和平台保持一致，比对导出产物中将发布的 OCI manifest/index digest；相等才无重构地发布第一次产物，校验 registry digest 不变，第二次仅留证据。签名、SBOM 与 attestation 在相等后单独生成；不相等视为不可复现缺陷，不接受或推 staging tag。
 7. 生成 SBOM、漏洞扫描、容器许可扫描、cosign keyless 签名或固定 digest。
 8. 在 x86_64 主机验证 Xvfb 有头、无头、伪有头、代理矩阵、容量、seccomp 宿主加载和数据卷。
 
@@ -116,6 +116,7 @@ resolve-target 读取 draft 并解析 source_sha，reserve 复核绑定后通过
 
 - 项目许可已定为 Apache-2.0，仓库根 `LICENSE` 与 `README` 链接已就位；正式法律评审、`NOTICE` 与 `LICENSES/` 的实际构建仍未完成。
 - `.github/workflows/` 的实际 YAML、branch protection、merge queue、`release` environment、draft reservation、仅允许 release App 绕过 creations 的 tag ruleset、Docker 双构建比对和强制 attestation 尚未落地。
+- 构建机制已由 `.github/workflows/reproducibility.yml` 在 GitHub Actions 上双构建 `Dockerfile.repro-probe` 验证；但该探针不构建生产镜像，**生产镜像的可复现性仍无证据**：CI 不下载 141 MB fingerprint-chromium 与 Xray 资产，生产镜像的双构建必须由具备真实资产的 release 路径取得。证据与固定参数见 [`spikes/docker/evidence/reproducibility.log`](spikes/docker/evidence/reproducibility.log)。
 - entitlements 文件与签名参数尚未在实际打包中验证。
 - Tauri 更新签名密钥尚未生成和配置。
 - 尚未完成正式法律评审与实际 SBOM/NOTICE 构建。

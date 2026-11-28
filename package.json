@@ -18,6 +18,7 @@
     "format": "biome format --write .",
     "license:check": "bun scripts/license-check.mjs",
     "test:release-gate": "node --test scripts/release/gate.test.mjs",
+    "test:repro-compare": "node --test scripts/release/repro-compare.test.mjs",
     "contracts:check": "bun scripts/contracts/check.mjs",
     "contracts:generate": "bunx openapi-typescript docs/contracts/openapi.yaml -o docs/contracts/generated/openapi.d.ts"
   },

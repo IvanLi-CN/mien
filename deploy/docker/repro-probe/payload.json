@@ -1,0 +1,4 @@
+{
+  "probe": "mien-docker-reproducibility",
+  "purpose": "COPY input for the two-builder OCI digest comparison; not a product asset."
+}

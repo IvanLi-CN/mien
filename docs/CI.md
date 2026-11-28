@@ -24,8 +24,11 @@
 | `.github/workflows/ci-main.yml` | `push` 到 `main` | `ci-main`，不取消在途 run | mainline 完整验证、完整 e2e 与打包 smoke |
 | `.github/workflows/security.yml` | 每周 `schedule` 与 `workflow_dispatch` | `security`，不取消在途 run | 依赖、容器和已知漏洞复查 |
 | `.github/workflows/release.yml` | `workflow_dispatch`，输入 `release_target` | `release`，不取消 | target 解析、reservation、全量验证、macOS/Docker 构建（Docker 双构建比对）、attestation、镜像提升、tag 与 GitHub Release、发布后验证 |
+| `.github/workflows/reproducibility.yml` | `workflow_dispatch`；`pull_request`，paths 限定 `deploy/docker/**` 与相关脚本/自身 | `docker-repro-${{ github.event.pull_request.number || github.ref }}`，取消过期 candidate | Docker 双构建机制探针：两个独立 runner/独立 builder 构建 `Dockerfile.repro-probe`，比对 OCI manifest digest；**不**构建生产镜像，**不是** required check |
 
 `ci-pr.yml` 不监听 `pull_request.edited`；只有代码或 review-ready 状态变化才重新评估 required gate。`ci-main.yml` 与 `release.yml` 使用独立并发 namespace，不能被 PR 的取消策略误伤。
+
+`reproducibility.yml` 不进入 PR required 集合，也不进入发布链路；它验证的是"这套固定参数能否让两次干净构建得到同一个 OCI digest"。生产镜像需要 141 MB fingerprint-chromium 与 Xray 资产，CI 不下载、不使用替代资产，所以生产镜像的双构建仍由 release 的 `docker-amd64` 在具备真实资产时执行。探针 digest 相等不能被引用为生产镜像可复现的证据；两者的区别和探针的全部固定参数记录在 [`spikes/docker/evidence/reproducibility.log`](spikes/docker/evidence/reproducibility.log)。job 名固定为 `Docker Reproducibility / result`。
 
 ## 3. PR 流水线
 
@@ -46,7 +49,7 @@ flowchart TD
 
 | Job | 主要命令 | 说明 |
 | --- | --- | --- |
-| `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bun run license:check`、`bunx biome check .`、`bunx tsc --noEmit`、`actionlint` | Rust、前端依赖与静态检查；前端许可扫描失败阻断；不使用 `continue-on-error` |
+| `lint` | `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo deny check`、`bun run license:check`、`bunx biome check .`、`bunx tsc --noEmit`、`bun run test:release-gate`、`bun run test:repro-compare`、`python3 -m py_compile scripts/release/repro-record.py`、`actionlint` | Rust、前端依赖与静态检查；前端许可扫描失败阻断；不使用 `continue-on-error`；`actionlint` 覆盖 `.github/workflows/*.yml` 全部文件，含 `reproducibility.yml` |
 | `rust` | `cargo nextest run --workspace` | 单元和库级集成；失败上传 nextest JUnit 报告 |
 | `web` | `bun install --frozen-lockfile`、`bun run typecheck`、`bun run test`、`bun run build` | 前端类型、测试和静态资源构建 |
 | `contracts` | JSON Schema 编译与 fixture 校验、OpenAPI 生成差异与 lint、内部 `$ref` 与相对链接/锚点解析、ErrorCode 目录/OpenAPI/events schema 与逐码 HTTP/retryable 映射双向比对、事件 schema 校验、SQLite DDL/迁移测试、`spec_contract_check`、seccomp 与 AppArmor 配置结构/SHA-256 校验与宿主路径加载测试、导入导出 fixture、`cargo run -q -p xtask -- licenses --check` | 对应 `docs/contracts/`、`docs/ERROR-CODES.md`、`docs/specs/`、`docs/DATABASE-SCHEMA.md` 与 `deploy/docker/seccomp/`；seccomp 文件必须与 `PROVENANCE.json` 摘要一致；许可报告漂移、生成差异、未知错误码、映射漂移、断链或任一校验失败均阻断；本任务只给 T1 workflow 补丁建议，不直接修改 workflow |

@@ -1,0 +1,237 @@
+# Docker 双构建可复现性探针。
+#
+# 这个 workflow 验证的是构建机制,不是生产镜像。`Dockerfile.server` 需要 141 MB
+# fingerprint-chromium 与 Xray 资产,CI 不下载它们,也不使用假资产。因此两个 job 构建
+# `deploy/docker/Dockerfile.repro-probe`——同一固定 frontend/base/snapshot、同一套
+# exporter 参数的探针镜像——并比对 OCI manifest digest。探针 digest 相等只证明这套固定
+# 参数能让两次干净构建收敛,不能据此宣称生产镜像已可复现;生产镜像的双构建仍由 release
+# 的 `docker-amd64` 在具备真实资产时执行。
+#
+# 两个 job 是两次独立的 runner 实例,各自 `docker buildx create` 一个 builder,不导入也
+# 不导出构建缓存,并 checkout 同一个 source commit。这是 PRD-ACC-010 与 RELEASE.md §4
+# 要求的机制验证,不是发布门禁:本 workflow 不在 PR required 集合里。
+#
+# SOURCE_DATE_EPOCH 的口径:每个 build job 用自己 checkout 出的 commit 的提交时间
+# (`git log -1 --format=%ct`),不是 now。两个 job 都构建
+# `github.event.pull_request.head.sha || github.sha`:PR 时是 PR 的真实 head commit,
+# dispatch 时是所 dispatch ref 的 commit。两者都是不可变 commit,且是同一个 SHA 与同一个
+# 提交时间,所以两份记录可以直接比较;比对脚本还会拒绝 source_sha 或 epoch 不一致的记录,
+# 任何一侧漂移都会失败而不是被平均掉。
+name: Docker Reproducibility
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "deploy/docker/**"
+      - ".github/workflows/reproducibility.yml"
+      - "scripts/release/repro-compare.mjs"
+      - "scripts/release/repro-compare.test.mjs"
+      - "scripts/release/repro-record.py"
+
+concurrency:
+  group: docker-repro-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# 只读权限:两个构建 job 都不推送、不签名、不读 secrets。
+permissions:
+  contents: read
+
+env:
+  # 固定项。改动任一值都必须同时更新 `Dockerfile.repro-probe` 的 frontend digest、
+  # 本文件的注释和 `docs/spikes/docker/evidence/reproducibility.log` 的说明。
+  DOCKERFILE_FRONTEND: docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+  BUILDKIT_IMAGE: moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+  BUILDX_VERSION: v0.39.1
+  PLATFORM: linux/amd64
+  COMPRESSION: gzip
+
+jobs:
+  # 矩阵的两个实例就是两个独立 builder:不同 runner、不同 builder 实例、互不可见缓存。
+  # 矩阵而不是手写两份,是为了让两边真正共用同一段 build 命令;`--no-cache` 加新建
+  # builder 保证没有跨 run 或跨 builder 的层复用。
+  build:
+    name: build-${{ matrix.builder }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        builder: [a, b]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # PR 用真实 head commit(而不是 GitHub 合成的 merge commit),dispatch 用所
+          # dispatch ref 的 commit;不用可能移动的分支名。
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Pin the source commit and its commit time
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          expected='${{ github.event.pull_request.head.sha || github.sha }}'
+          [ "$sha" = "$expected" ] || { echo "checkout $sha != $expected" >&2; exit 1; }
+          # SOURCE_DATE_EPOCH 是提交时间,不是 now。
+          epoch=$(git log -1 --format=%ct "$sha")
+          [[ "$epoch" =~ ^[0-9]+$ ]] || { echo "bad commit time: $epoch" >&2; exit 1; }
+          {
+            echo "source_sha=$sha"
+            echo "source_date_epoch=$epoch"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "source_sha: \`$sha\`"
+            echo "SOURCE_DATE_EPOCH: \`$epoch\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Set up a dedicated builder
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          name: repro-${{ matrix.builder }}
+          driver: docker-container
+          # 固定 BuildKit 版本,不用 runner 自带的 buildkitd。
+          driver-opts: image=${{ env.BUILDKIT_IMAGE }}
+          # 不把 buildx 二进制放进 GitHub Actions cache:本 workflow 不用任何共享缓存。
+          cache-binary: false
+          cleanup: true
+      - name: Record the resolved toolchain
+        id: tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 记录实际解析到的版本,而不是请求值。BuildKit 版本只记录不比对:真正约束它
+          # 的是 `driver-opts: image=<digest>` 的镜像摘要,版本字符串随镜像上游构建
+          # 方式变化,拿它做断言只会制造与可复现性无关的脆弱失败。
+          buildx=$(docker buildx version | awk '{print $2}')
+          [ "$buildx" = "$BUILDX_VERSION" ] || {
+            echo "buildx $buildx != $BUILDX_VERSION" >&2
+            exit 1
+          }
+          inspect=$(docker buildx inspect --bootstrap "repro-${{ matrix.builder }}")
+          buildkit=$(printf '%s\n' "$inspect" | awk -F'\t' '/BuildKit version:/ {print $2}' | head -n 1)
+          [ -n "$buildkit" ] || {
+            echo "no BuildKit version in inspect output" >&2
+            printf '%s\n' "$inspect" >&2
+            exit 1
+          }
+          echo "buildkit=$buildkit" >> "$GITHUB_OUTPUT"
+          {
+            echo "- buildx: \`$buildx\`"
+            echo "- BuildKit: \`$buildkit\` (image ${BUILDKIT_IMAGE})"
+            echo "- builder: \`repro-${{ matrix.builder }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build the probe image into an OCI archive
+        shell: bash
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.pin.outputs.source_date_epoch }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/repro-${{ matrix.builder }}"
+          mkdir -p "$out"
+          # 参数来源见 docs/RELEASE.md §4:
+          #   - build arg SOURCE_DATE_EPOCH:提交时间
+          #   - rewrite-timestamp 是 OCI/image exporter 的属性,不是 buildx 的独立 flag
+          #   - --provenance=false --sbom=false:attestation manifest 会让 index digest
+          #     依赖 buildx 版本与构建元数据
+          #   - --no-cache:不复用本 builder 或任何远端缓存
+          #   - 不传 --tag:导出物的 index.json 只含一个未命名 manifest
+          docker buildx build \
+            --builder "repro-${{ matrix.builder }}" \
+            --platform "$PLATFORM" \
+            --no-cache \
+            --pull \
+            --provenance=false \
+            --sbom=false \
+            --build-arg "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
+            --output "type=oci,dest=$out/image.tar,rewrite-timestamp=true,compression=$COMPRESSION" \
+            --metadata-file "$out/metadata.json" \
+            -f deploy/docker/Dockerfile.repro-probe \
+            deploy/docker
+      - name: Record the resulting OCI descriptor
+        shell: bash
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.pin.outputs.source_date_epoch }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/repro-${{ matrix.builder }}"
+          python3 scripts/release/repro-record.py \
+            --metadata "$out/metadata.json" \
+            --archive "$out/image.tar" \
+            --source-sha '${{ steps.pin.outputs.source_sha }}' \
+            --source-date-epoch "$SOURCE_DATE_EPOCH" \
+            --platform "$PLATFORM" \
+            --frontend "$DOCKERFILE_FRONTEND" \
+            --buildkit-image "$BUILDKIT_IMAGE" \
+            --buildx-version "$BUILDX_VERSION" \
+            --compression "$COMPRESSION" \
+            --out "$out/record.json"
+          cat "$out/record.json"
+          {
+            echo "### build ${{ matrix.builder }}"
+            echo '```json'
+            cat "$out/record.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the build record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: repro-build-${{ matrix.builder }}
+          path: ${{ runner.temp }}/repro-${{ matrix.builder }}/record.json
+          if-no-files-found: error
+          retention-days: 14
+
+  compare:
+    name: compare
+    needs: [build]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: repro-build-*
+          path: ${{ runner.temp }}/records
+      - name: Comparison self-tests
+        shell: bash
+        run: node --test scripts/release/repro-compare.test.mjs
+      - name: Compare the OCI digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/repro-compare.mjs \
+            --a "$RUNNER_TEMP/records/repro-build-a/record.json" \
+            --b "$RUNNER_TEMP/records/repro-build-b/record.json" \
+            --report "$RUNNER_TEMP/repro-report.json" \
+            --summary "$GITHUB_STEP_SUMMARY"
+      - name: Upload the comparison report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: repro-report
+          path: ${{ runner.temp }}/repro-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # 聚合结论,但不是 PR 必需 check;名字固定为 `Docker Reproducibility / result`,
+  # 便于人工追踪 dispatch 结果。
+  result:
+    name: result
+    needs: [build, compare]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject any unsuccessful or skipped build
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$NEEDS_JSON" | jq -e 'all(.[]; .result == "success")' >/dev/null || {
+            echo 'A reproducibility job failed, was cancelled, or was skipped.'
+            printf '%s\n' "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+            exit 1
+          }
+          echo 'Both independent builders produced the same OCI digest.'

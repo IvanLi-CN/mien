@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.29.0@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 # Mien production server image: control plane, static UI and the shared Xvfb display.
 #
 # Base image: debian:bookworm-slim, pinned by digest. The digest is the one already
