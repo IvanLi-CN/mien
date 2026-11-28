@@ -17,7 +17,7 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, StatusCode, header};
 use axum::response::Response;
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use mien_server::events::store::{self, EventLimits};
 use mien_server::events::{EventRuntime, ticket};
 use mien_server::router;
@@ -751,6 +751,13 @@ fn retention_advancing_past_a_live_cursor_closes_the_socket() {
         for index in 1..=2 {
             append_sized(&pool, &limits, index).await;
         }
+        // 唤醒服务端循环：`stream` 每轮先等 `poll` 时长的 `recv`，在并行测试的
+        // 负载下那一轮可能迟迟不返回，30 秒超时就会先到。一次 Ping 让循环立刻
+        // 进入本轮，随后必定执行 gap 检查，与调度时机无关。
+        client
+            .send(Message::Ping(axum::body::Bytes::from_static(b"wake")))
+            .await
+            .expect("wake the server loop");
         // 连接必须显式关闭并带上稳定错误码，而不是静默跳过被裁掉的事件。
         let closed = tokio::time::timeout(Duration::from_secs(30), async {
             loop {
